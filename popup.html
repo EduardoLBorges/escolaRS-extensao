@@ -3,23 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <style>
-    body { width: 300px; padding: 15px; font-family: sans-serif; text-align: center; }
+    body { width: 320px; padding: 15px; font-family: 'Segoe UI', sans-serif; text-align: center; }
+    h3 { margin-top: 0; color: #333; }
     button { 
-      width: 100%; padding: 12px; background: #217346; /* Cor do Excel */
-      color: white; font-weight: bold;
-      border: none; border-radius: 4px; cursor: pointer; 
+      width: 100%; padding: 12px; background: #217346; color: white; 
+      font-weight: bold; border: none; border-radius: 4px; cursor: pointer; 
+      transition: background 0.3s;
     }
-    button:disabled { background: #95a5a6; cursor: not-allowed; }
-    #status { margin-top: 15px; font-size: 13px; color: #555; word-wrap: break-word; }
+    button:hover { background: #1e6b41; }
+    button:disabled { background: #ccc; cursor: wait; }
+    #status { margin-top: 15px; font-size: 13px; color: #555; min-height: 20px; }
+    .note { font-size: 11px; color: #888; margin-bottom: 15px; display: block; }
   </style>
 </head>
 <body>
-  <h3>EscolaRS Exporter</h3>
-  <div style="font-size: 11px; color: #666; margin-bottom: 10px;">
-    ⚠️ Mantenha esta janela aberta
-  </div>
-  <button id="btnExportar">Baixar Excel (.xlsx)</button>
-  <div id="status">Pronto.</div>
+  <h3>EscolaRS Export</h3>
+  <span class="note">⚠️ Mantenha esta janela aberta durante o processo.</span>
+  
+  <button id="btnExportar">Baixar Planilha (.xlsx)</button>
+  <div id="status">Aguardando início...</div>
 
   <script src="xlsx.mini.min.js"></script>
   <script src="popup.js"></script>
