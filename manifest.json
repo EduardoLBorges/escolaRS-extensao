@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "EscolaRS Export Simples",
+  "version": "3.0",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": [
+    "https://*.procergs.com.br/*",
+    "https://professor.escola.rs.gov.br/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://professor.escola.rs.gov.br/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}
