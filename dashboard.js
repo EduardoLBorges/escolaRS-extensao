@@ -72,7 +72,7 @@ function renderDashboard() {
   
   container.insertAdjacentHTML('afterbegin', statsHtml);
 
-  // Renderizar escolas e turmas
+  // Renderizar escolas, turmas e disciplinas
   for (const escola of dashboardData.escolas) {
     const escolaCard = document.createElement('div');
     escolaCard.className = 'escola-card';
@@ -83,33 +83,36 @@ function renderDashboard() {
     escolaCard.appendChild(escolaHeader);
 
     for (const turma of escola.turmas) {
-      const turmaCard = document.createElement('div');
-      turmaCard.className = 'turma-card';
+      // Iterar sobre TODAS as disciplinas da turma
+      for (const disc of turma.disciplinas) {
+        const alunos = disc.alunos || [];
+        const disciplina = disc.disciplina || 'Disciplina';
+        
+        if (alunos.length === 0) continue;
+        
+        const turmaCard = document.createElement('div');
+        turmaCard.className = 'turma-card';
+        
+        const mediaTurma = (alunos.reduce((acc, a) => acc + (a.mediaFinal || 0), 0) / alunos.length).toFixed(1);
+        const aprovados = alunos.filter(a => a.mediaFinal >= 7).length;
+        const percentual = ((aprovados / alunos.length) * 100).toFixed(0);
 
-      const alunos = turma.disciplinas[0]?.alunos || [];
-      const disciplina = turma.disciplinas[0]?.disciplina || 'Disciplina';
-      
-      if (alunos.length === 0) continue;
-      
-      const mediaTurma = (alunos.reduce((acc, a) => acc + (a.mediaFinal || 0), 0) / alunos.length).toFixed(1);
-      const aprovados = alunos.filter(a => a.mediaFinal >= 7).length;
-      const percentual = ((aprovados / alunos.length) * 100).toFixed(0);
-
-      const turmaHeader = document.createElement('div');
-      turmaHeader.className = 'turma-header';
-      turmaHeader.innerHTML = `
-        <div style="flex: 1;">
-          <div>📖 ${turma.nome} - ${disciplina}</div>
-          <div class="turma-info">
-            ${alunos.length} alunos | Média: ${mediaTurma} | ✅ ${aprovados} aprovados (${percentual}%)
+        const turmaHeader = document.createElement('div');
+        turmaHeader.className = 'turma-header';
+        turmaHeader.innerHTML = `
+          <div style="flex: 1;">
+            <div>📖 ${turma.nome} - ${disciplina}</div>
+            <div class="turma-info">
+              ${alunos.length} alunos | Média: ${mediaTurma} | ✅ ${aprovados} aprovados (${percentual}%)
+            </div>
           </div>
-        </div>
-      `;
-      turmaCard.appendChild(turmaHeader);
+        `;
+        turmaCard.appendChild(turmaHeader);
 
-      const table = createStudentsTable(alunos);
-      turmaCard.appendChild(table);
-      escolaCard.appendChild(turmaCard);
+        const table = createStudentsTable(alunos);
+        turmaCard.appendChild(table);
+        escolaCard.appendChild(turmaCard);
+      }
     }
     container.appendChild(escolaCard);
   }
@@ -289,8 +292,16 @@ function applyFilters() {
   const alunoInput = document.getElementById('filter-aluno');
   
   if (escolaSelect) escolaSelect.value = escolaSelecionada;
-  if (turmaSelect) turmaSelect.value = turmaSelecionada;
-  if (alunoInput) alunoInput.value = alunoFiltro;
+  if (turmaSelect) {
+    // Atualizar opções de turma baseado na escola selecionada
+    updateTurmaFilter(escolaSelecionada, turmaSelect);
+    turmaSelect.value = turmaSelecionada;
+  }
+  if (alunoInput) {
+    alunoInput.value = alunoFiltro;
+    // Manter o cursor no campo de busca
+    alunoInput.focus();
+  }
   
   // Recriar stats
   const stats = calculateStats(dashboardData);
@@ -335,36 +346,39 @@ function applyFilters() {
     for (const turma of escola.turmas) {
       if (turmaSelecionada && turma.nome !== turmaSelecionada) continue;
 
-      const alunos = turma.disciplinas[0]?.alunos || [];
-      const alunosFiltrados = alunos.filter(a => a.nome.toLowerCase().includes(alunoFiltro));
-      
-      if (alunosFiltrados.length === 0) continue;
-      
-      temTurmas = true;
-      const turmaCard = document.createElement('div');
-      turmaCard.className = 'turma-card';
+      // Iterar sobre TODAS as disciplinas da turma
+      for (const disc of turma.disciplinas) {
+        const alunos = disc.alunos || [];
+        const alunosFiltrados = alunos.filter(a => a.nome.toLowerCase().includes(alunoFiltro));
+        
+        if (alunosFiltrados.length === 0) continue;
+        
+        temTurmas = true;
+        const turmaCard = document.createElement('div');
+        turmaCard.className = 'turma-card';
 
-      const mediaTurma = alunosFiltrados.length > 0 
-        ? (alunosFiltrados.reduce((acc, a) => acc + (a.mediaFinal || 0), 0) / alunosFiltrados.length).toFixed(1)
-        : 0;
-      const aprovados = alunosFiltrados.filter(a => a.mediaFinal >= 7).length;
-      const percentual = alunosFiltrados.length > 0 ? ((aprovados / alunosFiltrados.length) * 100).toFixed(0) : 0;
+        const mediaTurma = alunosFiltrados.length > 0 
+          ? (alunosFiltrados.reduce((acc, a) => acc + (a.mediaFinal || 0), 0) / alunosFiltrados.length).toFixed(1)
+          : 0;
+        const aprovados = alunosFiltrados.filter(a => a.mediaFinal >= 7).length;
+        const percentual = alunosFiltrados.length > 0 ? ((aprovados / alunosFiltrados.length) * 100).toFixed(0) : 0;
 
-      const turmaHeader = document.createElement('div');
-      turmaHeader.className = 'turma-header';
-      turmaHeader.innerHTML = `
-        <div style="flex: 1;">
-          <div>📖 ${turma.nome} - ${turma.disciplinas[0]?.disciplina || 'Disciplina'}</div>
-          <div class="turma-info">
-            ${alunosFiltrados.length} aluno(s) | Média: ${mediaTurma} | ✅ ${aprovados} aprovado(s) (${percentual}%)
+        const turmaHeader = document.createElement('div');
+        turmaHeader.className = 'turma-header';
+        turmaHeader.innerHTML = `
+          <div style="flex: 1;">
+            <div>📖 ${turma.nome} - ${disc.disciplina || 'Disciplina'}</div>
+            <div class="turma-info">
+              ${alunosFiltrados.length} aluno(s) | Média: ${mediaTurma} | ✅ ${aprovados} aprovado(s) (${percentual}%)
+            </div>
           </div>
-        </div>
-      `;
-      turmaCard.appendChild(turmaHeader);
+        `;
+        turmaCard.appendChild(turmaHeader);
 
-      const table = createStudentsTable(alunosFiltrados);
-      turmaCard.appendChild(table);
-      escolaCard.appendChild(turmaCard);
+        const table = createStudentsTable(alunosFiltrados);
+        turmaCard.appendChild(table);
+        escolaCard.appendChild(turmaCard);
+      }
     }
     
     if (temTurmas) {
