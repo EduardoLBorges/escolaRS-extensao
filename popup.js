@@ -30,10 +30,6 @@ function calcularMediaFinal(listaResultados) {
 // --- API ---
 async function fetchEscolaRS(endpoint, token) {
   const url = `https://secweb.procergs.com.br/ise-escolars-professor/rest/professor/${endpoint}`;
-  
-  // Atualiza status visual apenas
-  const nomeEndpoint = endpoint.split('/').slice(-3).join('/');
-  document.getElementById('status').innerText = `Processando: .../${nomeEndpoint}`;
 
   const response = await fetch(url, {
     method: 'GET',
@@ -48,9 +44,15 @@ async function fetchEscolaRS(endpoint, token) {
 document.getElementById('btnExportar').addEventListener('click', async () => {
   const btn = document.getElementById('btnExportar');
   const statusDiv = document.getElementById('status');
+  const progressContainer = document.getElementById('progress-container');
+  const progressBar = document.getElementById('progress-bar');
   
+  // --- Reset UI ---
   btn.disabled = true;
   statusDiv.style.color = "#000";
+  statusDiv.innerText = "Iniciando...";
+  progressContainer.style.display = "none";
+  progressBar.style.width = "0%";
 
   try {
     // 1. Verificar Autenticação
@@ -68,10 +70,26 @@ document.getElementById('btnExportar').addEventListener('click', async () => {
     const wb = XLSX.utils.book_new(); // Cria Workbook
     let dadosEncontrados = false;
 
+    // --- Setup da Barra de Progresso ---
+    const totalDisciplinas = infoInicial.escolas.reduce((total, esc) => 
+      total + esc.turmas.reduce((subtotal, tur) => subtotal + tur.disciplinas.length, 0), 0);
+    let disciplinasProcessadas = 0;
+
+    if (totalDisciplinas > 0) {
+      progressContainer.style.display = "block";
+    }
+
     // 3. Iterar sobre Escolas > Turmas > Disciplinas
     for (let escola of infoInicial.escolas) {
       for (let turma of escola.turmas) {
         for (let disc of turma.disciplinas) {
+          
+          disciplinasProcessadas++;
+
+          // Mostra qual turma/disciplina está processando
+          const progresso = Math.round((disciplinasProcessadas / totalDisciplinas) * 100);
+          progressBar.style.width = `${progresso}%`;
+          statusDiv.innerText = `Processando: ${turma.nome} - ${disc.nome}`;
           
           // Endpoint com /false para trazer detalhes
           const endpoint = `listarAulasDaTurmaComResultado/${turma.id}/${disc.id}/${idRecHumano}/false`;
@@ -126,6 +144,8 @@ document.getElementById('btnExportar').addEventListener('click', async () => {
 
     // 4. Download
     statusDiv.innerText = "Salvando arquivo...";
+    progressBar.style.width = `100%`; // Garante 100% ao final
+
     const nomeArquivo = `Notas_${infoInicial.nome.replace(/\s+/g,'_')}.xlsx`;
     XLSX.writeFile(wb, nomeArquivo);
     
@@ -135,6 +155,7 @@ document.getElementById('btnExportar').addEventListener('click', async () => {
   } catch (error) {
     statusDiv.style.color = "red";
     statusDiv.innerText = "Erro: " + error.message;
+    progressContainer.style.display = "none"; // Esconde em caso de erro
   } finally {
     btn.disabled = false;
   }
