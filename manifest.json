@@ -8,7 +8,7 @@
     "128": "icons/icon128.png"
   },
   "description": "Exporta notas do EscolaRS para Excel.",
-  "permissions": ["storage", "activeTab"],
+  "permissions": ["storage", "tabs", "notifications"],
   "host_permissions": [
     "https://*.procergs.com.br/*",
     "https://professor.escola.rs.gov.br/*"
@@ -21,6 +21,15 @@
     }
   ],
   "action": {
-    "default_popup": "popup.html"
-  }
+    "default_title": "Abrir Dashboard de Notas"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["dashboard.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }
