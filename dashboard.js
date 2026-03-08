@@ -72,7 +72,7 @@ function renderDashboard() {
   
   container.insertAdjacentHTML('afterbegin', statsHtml);
 
-  // Renderizar escolas, turmas e disciplinas
+  // Renderizar escolas, turmas e disciplinas com abas
   for (const escola of dashboardData.escolas) {
     const escolaCard = document.createElement('div');
     escolaCard.className = 'escola-card';
@@ -82,7 +82,47 @@ function renderDashboard() {
     escolaHeader.innerHTML = `<span>🏫 ${escola.nome}</span><span style="font-size: 13px; opacity: 0.9;">${escola.turmas.length} turma(s)</span>`;
     escolaCard.appendChild(escolaHeader);
 
+    // Container de abas
+    const tabsContainer = document.createElement('div');
+    tabsContainer.className = 'tabs-container';
+    
+    const tabsHeader = document.createElement('div');
+    tabsHeader.className = 'tabs-header';
+    
+    // Criar abas para cada turma
+    let primeiraAba = true;
     for (const turma of escola.turmas) {
+      // Verificar se essa turma tem disciplinas
+      const temDisciplinas = turma.disciplinas.some(d => (d.alunos || []).length > 0);
+      if (!temDisciplinas) continue;
+      
+      const tabBtn = document.createElement('button');
+      tabBtn.className = 'tab-button';
+      if (primeiraAba) {
+        tabBtn.classList.add('active');
+        primeiraAba = false;
+      }
+      tabBtn.textContent = turma.nome;
+      tabBtn.setAttribute('data-turma', turma.nome);
+      tabsHeader.appendChild(tabBtn);
+    }
+    
+    tabsContainer.appendChild(tabsHeader);
+    
+    // Criar conteúdo das abas
+    for (const turma of escola.turmas) {
+      const temDisciplinas = turma.disciplinas.some(d => (d.alunos || []).length > 0);
+      if (!temDisciplinas) continue;
+      
+      const tabContent = document.createElement('div');
+      tabContent.className = 'tab-content';
+      tabContent.setAttribute('data-turma', turma.nome);
+      
+      // Mostrar primeira aba como ativa
+      if (escolaCard.querySelectorAll('.tab-content').length === 0) {
+        tabContent.classList.add('active');
+      }
+      
       // Iterar sobre TODAS as disciplinas da turma
       for (const disc of turma.disciplinas) {
         const alunos = disc.alunos || [];
@@ -90,30 +130,46 @@ function renderDashboard() {
         
         if (alunos.length === 0) continue;
         
-        const turmaCard = document.createElement('div');
-        turmaCard.className = 'turma-card';
+        const discCard = document.createElement('div');
+        discCard.style.marginBottom = '20px';
+        discCard.style.paddingBottom = '20px';
+        discCard.style.borderBottom = '1px solid #e8f5e9';
         
-        const mediaTurma = (alunos.reduce((acc, a) => acc + (a.mediaFinal || 0), 0) / alunos.length).toFixed(1);
-        const aprovados = alunos.filter(a => a.mediaFinal >= 7).length;
-        const percentual = ((aprovados / alunos.length) * 100).toFixed(0);
-
-        const turmaHeader = document.createElement('div');
-        turmaHeader.className = 'turma-header';
-        turmaHeader.innerHTML = `
+        const discHeader = document.createElement('div');
+        discHeader.className = 'turma-header';
+        discHeader.innerHTML = `
           <div style="flex: 1;">
-            <div>📖 ${turma.nome} - ${disciplina}</div>
+            <div>📚 ${disciplina}</div>
             <div class="turma-info">
-              ${alunos.length} alunos | Média: ${mediaTurma} | ✅ ${aprovados} aprovados (${percentual}%)
+              ${alunos.length} alunos | Média: ${(alunos.reduce((acc, a) => acc + (a.mediaFinal || 0), 0) / alunos.length).toFixed(1)}
             </div>
           </div>
         `;
-        turmaCard.appendChild(turmaHeader);
+        discCard.appendChild(discHeader);
 
         const table = createStudentsTable(alunos);
-        turmaCard.appendChild(table);
-        escolaCard.appendChild(turmaCard);
+        discCard.appendChild(table);
+        tabContent.appendChild(discCard);
       }
+      
+      tabsContainer.appendChild(tabContent);
     }
+    
+    // Adicionar event listeners para as abas
+    tabsHeader.querySelectorAll('.tab-button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        // Remove active de todos os botões e abas
+        tabsHeader.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+        tabsContainer.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        
+        // Adiciona active ao botão clicado e sua aba correspondente
+        btn.classList.add('active');
+        const turmaAba = tabsContainer.querySelector(`.tab-content[data-turma="${btn.getAttribute('data-turma')}"]`);
+        if (turmaAba) turmaAba.classList.add('active');
+      });
+    });
+    
+    escolaCard.appendChild(tabsContainer);
     container.appendChild(escolaCard);
   }
   
@@ -213,10 +269,23 @@ function createControls() {
   clearControl.innerHTML = '<label>&nbsp;</label>';
   clearControl.appendChild(clearBtn);
   
+  // Botão de exportar XLSX
+  const exportControl = document.createElement('div');
+  exportControl.className = 'control-group';
+  const exportBtn = document.createElement('button');
+  exportBtn.id = 'export-xlsx';
+  exportBtn.className = 'clearfilters';
+  exportBtn.textContent = '📥 Exportar XLSX';
+  exportBtn.style.background = '#4caf50';
+  
+  exportControl.innerHTML = '<label>&nbsp;</label>';
+  exportControl.appendChild(exportBtn);
+  
   controlsDiv.appendChild(escolaControl);
   controlsDiv.appendChild(turmaControl);
   controlsDiv.appendChild(alunoControl);
   controlsDiv.appendChild(clearControl);
+  controlsDiv.appendChild(exportControl);
   
   // Event listeners - agora os elementos já existem
   escolaSelect.addEventListener('change', () => {
@@ -232,6 +301,13 @@ function createControls() {
     alunoInput.value = '';
     updateTurmaFilter('', turmaSelect);
     applyFilters();
+  });
+  
+  exportBtn.addEventListener('click', () => {
+    const escolaSelecionada = document.getElementById('filter-escola')?.value || '';
+    const turmaSelecionada = document.getElementById('filter-turma')?.value || '';
+    const alunoFiltro = document.getElementById('filter-aluno')?.value?.toLowerCase() || '';
+    exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro);
   });
   
   // Inicializar turmas
@@ -341,11 +417,60 @@ function applyFilters() {
     escolaHeader.innerHTML = `<span>🏫 ${escola.nome}</span>`;
     escolaCard.appendChild(escolaHeader);
 
-    let temTurmas = false;
-
+    // Container de abas
+    const tabsContainer = document.createElement('div');
+    tabsContainer.className = 'tabs-container';
+    
+    const tabsHeader = document.createElement('div');
+    tabsHeader.className = 'tabs-header';
+    
+    // Criar abas para cada turma (com filtro)
+    let primeiraAba = true;
     for (const turma of escola.turmas) {
       if (turmaSelecionada && turma.nome !== turmaSelecionada) continue;
 
+      // Verificar se essa turma tem alunos após filtro
+      let temAlunos = false;
+      for (const disc of turma.disciplinas) {
+        const alunos = disc.alunos || [];
+        const alunosFiltrados = alunos.filter(a => a.nome.toLowerCase().includes(alunoFiltro));
+        if (alunosFiltrados.length > 0) {
+          temAlunos = true;
+          break;
+        }
+      }
+      if (!temAlunos) continue;
+      
+      const tabBtn = document.createElement('button');
+      tabBtn.className = 'tab-button';
+      if (primeiraAba) {
+        tabBtn.classList.add('active');
+        primeiraAba = false;
+      }
+      tabBtn.textContent = turma.nome;
+      tabBtn.setAttribute('data-turma', turma.nome);
+      tabsHeader.appendChild(tabBtn);
+    }
+    
+    if (tabsHeader.querySelectorAll('.tab-button').length === 0) continue; // Nenhuma turma com dados
+    
+    tabsContainer.appendChild(tabsHeader);
+    
+    // Criar conteúdo das abas
+    for (const turma of escola.turmas) {
+      if (turmaSelecionada && turma.nome !== turmaSelecionada) continue;
+
+      const tabContent = document.createElement('div');
+      tabContent.className = 'tab-content';
+      tabContent.setAttribute('data-turma', turma.nome);
+      
+      // Mostrar primeira aba como ativa
+      if (tabsContainer.querySelectorAll('.tab-content').length === 0) {
+        tabContent.classList.add('active');
+      }
+      
+      let temConteudo = false;
+      
       // Iterar sobre TODAS as disciplinas da turma
       for (const disc of turma.disciplinas) {
         const alunos = disc.alunos || [];
@@ -353,37 +478,57 @@ function applyFilters() {
         
         if (alunosFiltrados.length === 0) continue;
         
-        temTurmas = true;
-        const turmaCard = document.createElement('div');
-        turmaCard.className = 'turma-card';
-
+        temConteudo = true;
+        
+        const discCard = document.createElement('div');
+        discCard.style.marginBottom = '20px';
+        discCard.style.paddingBottom = '20px';
+        discCard.style.borderBottom = '1px solid #e8f5e9';
+        
+        const aprovados = alunosFiltrados.filter(a => a.mediaFinal >= 7).length;
+        const percentual = alunosFiltrados.length > 0 ? ((aprovados / alunosFiltrados.length) * 100).toFixed(0) : 0;
         const mediaTurma = alunosFiltrados.length > 0 
           ? (alunosFiltrados.reduce((acc, a) => acc + (a.mediaFinal || 0), 0) / alunosFiltrados.length).toFixed(1)
           : 0;
-        const aprovados = alunosFiltrados.filter(a => a.mediaFinal >= 7).length;
-        const percentual = alunosFiltrados.length > 0 ? ((aprovados / alunosFiltrados.length) * 100).toFixed(0) : 0;
-
-        const turmaHeader = document.createElement('div');
-        turmaHeader.className = 'turma-header';
-        turmaHeader.innerHTML = `
+        
+        const discHeader = document.createElement('div');
+        discHeader.className = 'turma-header';
+        discHeader.innerHTML = `
           <div style="flex: 1;">
-            <div>📖 ${turma.nome} - ${disc.disciplina || 'Disciplina'}</div>
+            <div>📚 ${disc.disciplina || 'Disciplina'}</div>
             <div class="turma-info">
               ${alunosFiltrados.length} aluno(s) | Média: ${mediaTurma} | ✅ ${aprovados} aprovado(s) (${percentual}%)
             </div>
           </div>
         `;
-        turmaCard.appendChild(turmaHeader);
+        discCard.appendChild(discHeader);
 
         const table = createStudentsTable(alunosFiltrados);
-        turmaCard.appendChild(table);
-        escolaCard.appendChild(turmaCard);
+        discCard.appendChild(table);
+        tabContent.appendChild(discCard);
+      }
+      
+      if (temConteudo) {
+        tabsContainer.appendChild(tabContent);
       }
     }
     
-    if (temTurmas) {
-      container.appendChild(escolaCard);
-    }
+    // Adicionar event listeners para as abas
+    tabsHeader.querySelectorAll('.tab-button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        // Remove active de todos os botões e abas
+        tabsHeader.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+        tabsContainer.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        
+        // Adiciona active ao botão clicado e sua aba correspondente
+        btn.classList.add('active');
+        const turmaAba = tabsContainer.querySelector(`.tab-content[data-turma="${btn.getAttribute('data-turma')}"]`);
+        if (turmaAba) turmaAba.classList.add('active');
+      });
+    });
+    
+    escolaCard.appendChild(tabsContainer);
+    container.appendChild(escolaCard);
   }
   
   // Rodapé
@@ -510,4 +655,120 @@ function getNotaTexto(lista, periodo) {
   }
   
   return trimValor;
+}
+
+function exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro) {
+  const wb = XLSX.utils.book_new();
+  let temDados = false;
+  
+  // Coletar dados por turma e criar uma aba para cada
+  for (const escola of dashboardData.escolas) {
+    if (escolaSelecionada && escola.nome !== escolaSelecionada) continue;
+    
+    for (const turma of escola.turmas) {
+      if (turmaSelecionada && turma.nome !== turmaSelecionada) continue;
+      
+      const dados = [];
+      // Cabeçalhos
+      dados.push(['Matrícula', 'Nome', '1º Trim', 'ER1', '2º Trim', 'ER2', '3º Trim', 'ER3', 'Disciplina', 'Média Final', 'Status']);
+      
+      let temAlunosTurma = false;
+      
+      for (const disc of turma.disciplinas) {
+        const alunos = disc.alunos || [];
+        const alunosFiltrados = alunos.filter(a => a.nome.toLowerCase().includes(alunoFiltro));
+        
+        for (const aluno of alunosFiltrados) {
+          temAlunosTurma = true;
+          temDados = true;
+          
+          const nota1Trim = getNotaValorBruto(aluno.notas, '1° Trim', false);
+          const nota1ER = getNotaValorBruto(aluno.notas, '1° Trim', true);
+          const nota2Trim = getNotaValorBruto(aluno.notas, '2° Trim', false);
+          const nota2ER = getNotaValorBruto(aluno.notas, '2° Trim', true);
+          const nota3Trim = getNotaValorBruto(aluno.notas, '3° Trim', false);
+          const nota3ER = getNotaValorBruto(aluno.notas, '3° Trim', true);
+          
+          let status = 'Sem Notas';
+          if (aluno.mediaFinal > 0) {
+            if (aluno.mediaFinal >= 7) status = 'Aprovado';
+            else if (aluno.mediaFinal >= 5) status = 'Recuperação';
+            else status = 'Reprovado';
+          }
+          
+          dados.push([
+            aluno.matricula || '',
+            aluno.nome || '',
+            nota1Trim,
+            nota1ER,
+            nota2Trim,
+            nota2ER,
+            nota3Trim,
+            nota3ER,
+            disc.disciplina || '',
+            aluno.mediaFinal > 0 ? aluno.mediaFinal.toFixed(1) : '--',
+            status
+          ]);
+        }
+      }
+      
+      // Se essa turma tem alunos, criar uma aba para ela
+      if (temAlunosTurma && dados.length > 1) {
+        const nomeAba = turma.nome.substring(0, 31); // Excel limita a 31 caracteres
+        const ws = XLSX.utils.aoa_to_sheet(dados);
+        
+        // Definir largura das colunas
+        ws['!cols'] = [
+          { wch: 12 }, // Matrícula
+          { wch: 25 }, // Nome
+          { wch: 10 }, // 1º Trim
+          { wch: 8 },  // ER1
+          { wch: 10 }, // 2º Trim
+          { wch: 8 },  // ER2
+          { wch: 10 }, // 3º Trim
+          { wch: 8 },  // ER3
+          { wch: 20 }, // Disciplina
+          { wch: 12 }, // Média Final
+          { wch: 15 }  // Status
+        ];
+        
+        XLSX.utils.book_append_sheet(wb, ws, nomeAba);
+      }
+    }
+  }
+  
+  // Se não houver dados, avisar
+  if (!temDados) {
+    alert('Nenhum dado para exportar com os filtros selecionados.');
+    return;
+  }
+  
+  // Fazer download
+  const nomeArquivo = `${dashboardData.professor.replace(' ', '_')}_notas_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`;
+  XLSX.writeFile(wb, nomeArquivo);
+}
+
+function getNotaValorBruto(lista, periodo, isER) {
+  if (!lista || lista.length === 0) return '--';
+  
+  const periodoLower = periodo.toLowerCase();
+  const numMatch = periodoLower.match(/\d/);
+  if (!numMatch) return '--';
+  
+  const numTrim = numMatch[0];
+  
+  for (const item of lista) {
+    const trimestre = (item.trimestre || '').toLowerCase();
+    if (isER) {
+      if (trimestre.includes('er') && trimestre.includes(numTrim)) {
+        return item.nota && item.nota !== '--' ? item.nota : '--';
+      }
+    } else {
+      if (trimestre.includes('trim') && trimestre.includes(numTrim) && !trimestre.includes('er')) {
+        return item.nota && item.nota !== '--' ? item.nota : '--';
+      }
+    }
+  }
+  
+  return '--';
 }
