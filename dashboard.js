@@ -417,30 +417,40 @@ function createStudentsTable(alunos) {
   const table = document.createElement('table');
   const thead = document.createElement('thead');
   const tbody = document.createElement('tbody');
-
-  thead.innerHTML = `
+  
+  // Detectar tipo de período (trimestre ou semestre)
+  const tipoAndPeriodos = detectarTipoEPeriodos(alunos);
+  const periodos = tipoAndPeriodos.periodos;
+  
+  // Montar cabeçalhos dinamicamente
+  let headerHTML = `
     <tr>
       <th>Matrícula</th>
-      <th>Nome</th>
-      <th>1º Tri</th>
-      <th>2º Tri</th>
-      <th>3º Tri</th>
+      <th>Nome</th>`;
+  
+  for (const periodo of periodos) {
+    headerHTML += `<th>${periodo}</th>`;
+  }
+  
+  headerHTML += `
       <th>Média Final</th>
       <th>Status</th>
     </tr>
   `;
+  
+  thead.innerHTML = headerHTML;
 
   for (const aluno of alunos) {
     const row = document.createElement('tr');
     
-    const nota1 = getNotaTexto(aluno.notas, '1° Trim');
-    const nota2 = getNotaTexto(aluno.notas, '2° Trim');
-    const nota3 = getNotaTexto(aluno.notas, '3° Trim');
+    // Obter notas para cada período dinamicamente
+    const notasPeriodos = periodos.map(periodo => getNotaTexto(aluno.notas, periodo));
+    const todasAsNotasPreenchidas = notasPeriodos.every(nota => nota !== '--');
 
     let statusTexto = '';
     let statusClass = '';
     
-    if(nota1 !== '--' && nota2 !== '--' && nota3 !== '--'){
+    if(todasAsNotasPreenchidas){
       statusTexto = 'Reprovado';
       statusClass = 'status-reprovado';
       if (aluno.mediaFinal >= 6) {
@@ -452,17 +462,21 @@ function createStudentsTable(alunos) {
       }
     }
     
-
-    row.innerHTML = `
+    // Montar células de notas dinamicamente
+    let rowHTML = `
       <td>${aluno.matricula}</td>
-      <td><strong>${aluno.nome}</strong></td>
-      <td>${nota1}</td>
-      <td>${nota2}</td>
-      <td>${nota3}</td>
+      <td><strong>${aluno.nome}</strong></td>`;
+    
+    for (const nota of notasPeriodos) {
+      rowHTML += `<td>${nota}</td>`;
+    }
+    
+    rowHTML += `
       <td><span class="nota-badge ${getClasseBadge(aluno.mediaFinal)}">${aluno.mediaFinal.toFixed(1)}</span></td>
       <td><span class="${statusClass}">${statusTexto}</span></td>
     `;
     
+    row.innerHTML = rowHTML;
     tbody.appendChild(row);
   }
 
@@ -477,34 +491,85 @@ function getClasseBadge(media) {
   return 'badge-ruim';
 }
 
+function detectarTipoEPeriodos(alunos) {
+  // Analisar todos os períodos disponíveis
+  const periodosSet = new Set();
+  let temTrimestre = false;
+  let temSemestre = false;
+  
+  for (const aluno of alunos) {
+    if (!aluno.notas) continue;
+    for (const item of aluno.notas) {
+      const nomePeriodo = (item.trimestre || item.nomePeriodo || '').toLowerCase();
+      if (!nomePeriodo) continue;
+      
+      if (nomePeriodo.includes('trim')) temTrimestre = true;
+      if (nomePeriodo.includes('sem')) temSemestre = true;
+      
+      // Extrair o número
+      const numMatch = nomePeriodo.match(/\d+/);
+      if (numMatch) {
+        periodosSet.add(numMatch[0]);
+      }
+    }
+  }
+  
+  // Determinar tipo e criar lista de períodos ordenados
+  const isSemestre = temSemestre && !temTrimestre;
+  const tipo = isSemestre ? 'Sem' : 'Trim';
+  const numeros = Array.from(periodosSet).map(Number).sort((a, b) => a - b);
+  
+  const periodos = numeros.map(num => {
+    if (isSemestre) {
+      return `${num}° Sem`;
+    } else {
+      return `${num}° Trim`;
+    }
+  });
+  
+  return { isSemestre, periodos };
+}
+
 function getNotaTexto(lista, periodo) {
   if (!lista || lista.length === 0) return '--';
   
   const periodoLower = periodo.toLowerCase();
   
-  // Extrai o número do trimestre (1, 2 ou 3)
-  const numMatch = periodoLower.match(/\d/);
+  // Extrai o número do período (1, 2, 3, etc.)
+  const numMatch = periodoLower.match(/\d+/);
   if (!numMatch) return '--';
   
-  const numTrim = numMatch[0];
+  const numPeriodo = numMatch[0];
+  const isSemestre = periodoLower.includes('sem');
+  const isTrimestre = periodoLower.includes('trim');
   
-  // Busca o valor do trimestre
-  let trimValor = null;
+  // Busca o valor do período principal
+  let periodoValor = null;
   for (const item of lista) {
-    const trimestre = (item.trimestre || '').toLowerCase();
-    if (trimestre.includes('trim') && trimestre.includes(numTrim) && !trimestre.includes('er')) {
+    const nomePeriodo = (item.trimestre || item.nomePeriodo || '').toLowerCase();
+    if (!nomePeriodo) continue;
+    
+    // Verifica se é o mesmo tipo de período
+    const itemEhSemestre = nomePeriodo.includes('sem');
+    const itemEhTrimestre = nomePeriodo.includes('trim');
+    
+    // Se procura semestre, deveria encontrar semestre (e vice-versa)
+    if ((isSemestre && itemEhSemestre || isTrimestre && itemEhTrimestre) && 
+        nomePeriodo.includes(numPeriodo) && !nomePeriodo.includes('er')) {
       if (item.nota && item.nota !== '--') {
-        trimValor = item.nota;
+        periodoValor = item.nota;
         break;
       }
     }
   }
   
-  // Busca o valor do ER
+  // Busca o valor do ER (se for trimestre) ou recuperação equivalente
   let erValor = null;
   for (const item of lista) {
-    const trimestre = (item.trimestre || '').toLowerCase();
-    if (trimestre.includes('er') && trimestre.includes(numTrim)) {
+    const nomePeriodo = (item.trimestre || item.nomePeriodo || '').toLowerCase();
+    if (!nomePeriodo) continue;
+    
+    if (nomePeriodo.includes('er') && nomePeriodo.includes(numPeriodo)) {
       if (item.nota && item.nota !== '--') {
         erValor = item.nota;
         break;
@@ -513,23 +578,23 @@ function getNotaTexto(lista, periodo) {
   }
   
   // Ambos nulos
-  if (trimValor === null && erValor === null) return '--';
+  if (periodoValor === null && erValor === null) return '--';
   
   // Apenas ER existe
-  if (trimValor === null) return `${erValor}*`;
+  if (periodoValor === null) return `${erValor}*`;
   
-  // Apenas trim existe
-  if (erValor === null) return trimValor;
+  // Apenas período existe
+  if (erValor === null) return periodoValor;
   
   // Ambos existem - retorna o máximo com indicação se for ER
-  const trimNum = parseFloat(String(trimValor).replace(',', '.'));
+  const periodoNum = parseFloat(String(periodoValor).replace(',', '.'));
   const erNum = parseFloat(String(erValor).replace(',', '.'));
   
-  if (erNum > trimNum) {
+  if (erNum > periodoNum) {
     return `${erValor}*`; // Asterisco indica que é ER
   }
   
-  return trimValor;
+  return periodoValor;
 }
 
 function exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro) {
@@ -543,9 +608,35 @@ function exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro) {
     for (const turma of escola.turmas) {
       if (turmaSelecionada && turma.nome !== turmaSelecionada) continue;
       
+      // Coletar todos os alunos da turma para detectar tipo de período
+      let todosOsAlunos = [];
+      for (const disc of turma.disciplinas) {
+        todosOsAlunos = todosOsAlunos.concat(disc.alunos || []);
+      }
+      
+      if (todosOsAlunos.length === 0) continue;
+      
+      // Detectar tipo e períodos
+      const tipoAndPeriodos = detectarTipoEPeriodos(todosOsAlunos);
+      const periodos = tipoAndPeriodos.periodos;
+      const isSemestre = tipoAndPeriodos.isSemestre;
+      
       const dados = [];
-      // Cabeçalhos
-      dados.push(['Matrícula', 'Nome', '1º Trim', 'ER1', '2º Trim', 'ER2', '3º Trim', 'ER3', 'Disciplina', 'Média Final', 'Status']);
+      
+      // Montar cabeçalho dinamicamente
+      const cabecalho = ['Matrícula', 'Nome'];
+      for (const periodo of periodos) {
+        cabecalho.push(periodo);
+        // Se não for semestre, adiciona coluna para ER
+        if (!isSemestre) {
+          const numMatch = periodo.match(/\d+/);
+          if (numMatch) {
+            cabecalho.push(`ER${numMatch[0]}`);
+          }
+        }
+      }
+      cabecalho.push('Disciplina', 'Média Final', 'Status');
+      dados.push(cabecalho);
       
       let temAlunosTurma = false;
       
@@ -557,33 +648,37 @@ function exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro) {
           temAlunosTurma = true;
           temDados = true;
           
-          const nota1Trim = getNotaValorBruto(aluno.notas, '1° Trim', false);
-          const nota1ER = getNotaValorBruto(aluno.notas, '1° Trim', true);
-          const nota2Trim = getNotaValorBruto(aluno.notas, '2° Trim', false);
-          const nota2ER = getNotaValorBruto(aluno.notas, '2° Trim', true);
-          const nota3Trim = getNotaValorBruto(aluno.notas, '3° Trim', false);
-          const nota3ER = getNotaValorBruto(aluno.notas, '3° Trim', true);
+          const linha = [
+            aluno.matricula || '',
+            aluno.nome || ''
+          ];
+          
+          // Adicionar notas para cada período
+          for (const periodo of periodos) {
+            const notaPeriodo = getNotaValorBruto(aluno.notas, periodo, false);
+            linha.push(notaPeriodo);
+            
+            // Se não for semestre, adiciona ER
+            if (!isSemestre) {
+              const notaER = getNotaValorBruto(aluno.notas, periodo, true);
+              linha.push(notaER);
+            }
+          }
           
           let status = 'Sem Notas';
           if (aluno.mediaFinal > 0) {
             if (aluno.mediaFinal >= 6) status = 'Aprovado';
-          else if (aluno.mediaFinal >= 5) status = 'Recuperação';
-          else status = 'Reprovado';
+            else if (aluno.mediaFinal >= 5) status = 'Recuperação';
+            else status = 'Reprovado';
           }
           
-          dados.push([
-            aluno.matricula || '',
-            aluno.nome || '',
-            nota1Trim,
-            nota1ER,
-            nota2Trim,
-            nota2ER,
-            nota3Trim,
-            nota3ER,
+          linha.push(
             disc.disciplina || '',
             aluno.mediaFinal > 0 ? aluno.mediaFinal.toFixed(1) : '--',
             status
-          ]);
+          );
+          
+          dados.push(linha);
         }
       }
       
@@ -592,21 +687,27 @@ function exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro) {
         const nomeAba = turma.nome.substring(0, 31); // Excel limita a 31 caracteres
         const ws = XLSX.utils.aoa_to_sheet(dados);
         
-        // Definir largura das colunas
-        ws['!cols'] = [
+        // Calcular largura das colunas dinamicamente
+        const colWidths = [
           { wch: 12 }, // Matrícula
-          { wch: 25 }, // Nome
-          { wch: 10 }, // 1º Trim
-          { wch: 8 },  // ER1
-          { wch: 10 }, // 2º Trim
-          { wch: 8 },  // ER2
-          { wch: 10 }, // 3º Trim
-          { wch: 8 },  // ER3
+          { wch: 25 }  // Nome
+        ];
+        
+        // Adicionar largura para períodos e ERs
+        for (const periodo of periodos) {
+          colWidths.push({ wch: 10 }); // Período
+          if (!isSemestre) {
+            colWidths.push({ wch: 8 }); // ER
+          }
+        }
+        
+        colWidths.push(
           { wch: 20 }, // Disciplina
           { wch: 12 }, // Média Final
           { wch: 15 }  // Status
-        ];
+        );
         
+        ws['!cols'] = colWidths;
         XLSX.utils.book_append_sheet(wb, ws, nomeAba);
       }
     }
@@ -627,19 +728,28 @@ function getNotaValorBruto(lista, periodo, isER) {
   if (!lista || lista.length === 0) return '--';
   
   const periodoLower = periodo.toLowerCase();
-  const numMatch = periodoLower.match(/\d/);
+  const numMatch = periodoLower.match(/\d+/);
   if (!numMatch) return '--';
   
-  const numTrim = numMatch[0];
+  const numPeriodo = numMatch[0];
+  const isSemestre = periodoLower.includes('sem');
+  const isTrimestre = periodoLower.includes('trim');
   
   for (const item of lista) {
-    const trimestre = (item.trimestre || '').toLowerCase();
+    const nomePeriodo = (item.trimestre || item.nomePeriodo || '').toLowerCase();
+    
+    // Verificar tipo de período (semestre ou trimestre)
+    const itemEhSemestre = nomePeriodo.includes('sem');
+    const itemEhTrimestre = nomePeriodo.includes('trim');
+    
     if (isER) {
-      if (trimestre.includes('er') && trimestre.includes(numTrim)) {
+      if (nomePeriodo.includes('er') && nomePeriodo.includes(numPeriodo)) {
         return item.nota && item.nota !== '--' ? item.nota : '--';
       }
     } else {
-      if (trimestre.includes('trim') && trimestre.includes(numTrim) && !trimestre.includes('er')) {
+      // Procurar período principal (sem ER)
+      if ((isSemestre && itemEhSemestre || isTrimestre && itemEhTrimestre) && 
+          nomePeriodo.includes(numPeriodo) && !nomePeriodo.includes('er')) {
         return item.nota && item.nota !== '--' ? item.nota : '--';
       }
     }

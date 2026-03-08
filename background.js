@@ -171,6 +171,8 @@ function getNotaValor(lista, periodo) {
 function calcularMediaFinal(listaResultados) {
   // Cria um mapa dos períodos encontrados para fácil acesso
   const periodos = {};
+  let temTrimestre = false;
+  let temSemestre = false;
   
   for (const resultado of listaResultados) {
     const nomePeriodo = (resultado.nomePeriodo || "").toLowerCase().trim();
@@ -179,10 +181,39 @@ function calcularMediaFinal(listaResultados) {
     // Armazena apenas se o valor não é "-"
     if (valor && valor !== "--" && valor !== "-") {
       periodos[nomePeriodo] = parseFloat(String(valor).replace(",", "."));
+      
+      // Detectar tipo de período
+      if (nomePeriodo.includes("trim")) temTrimestre = true;
+      if (nomePeriodo.includes("sem")) temSemestre = true;
     }
   }
   
-  // Encontra os trimestres e ERs
+  // Se for SEMESTRE (EJA)
+  if (temSemestre && !temTrimestre) {
+    let sem1 = -1, sem2 = -1;
+    
+    // Procura pelos semestres
+    for (const [chave, valor] of Object.entries(periodos)) {
+      if (chave.includes("sem") && chave.includes("1") && !chave.includes("er")) {
+        sem1 = Math.max(sem1, valor);
+      }
+      
+      if (chave.includes("sem") && chave.includes("2") && !chave.includes("er")) {
+        sem2 = Math.max(sem2, valor);
+      }
+    }
+    
+    // Se algum semestre não foi encontrado, retorna 0
+    if (sem1 < 0 || sem2 < 0) {
+      return 0;
+    }
+    
+    // Fórmula para semestres: média simples
+    const media = (sem1 + sem2) / 2;
+    return parseFloat(media.toFixed(1));
+  }
+  
+  // Se for TRIMESTRE (modalidade regular)
   let trim1 = -1, trim2 = -1, trim3 = -1;
   
   // Procura pelos padrões dos períodos (case-insensitive)
