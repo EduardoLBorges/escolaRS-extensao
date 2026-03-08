@@ -462,12 +462,52 @@ function getNotaTexto(lista, periodo) {
   
   const periodoLower = periodo.toLowerCase();
   
+  // Extrai o número do trimestre (1, 2 ou 3)
+  const numMatch = periodoLower.match(/\d/);
+  if (!numMatch) return '--';
+  
+  const numTrim = numMatch[0];
+  
+  // Busca o valor do trimestre
+  let trimValor = null;
   for (const item of lista) {
     const trimestre = (item.trimestre || '').toLowerCase();
-    if (trimestre.includes(periodoLower.split(' ')[0])) {
-      return item.nota && item.nota !== '--' ? item.nota : '--';
+    if (trimestre.includes('trim') && trimestre.includes(numTrim) && !trimestre.includes('er')) {
+      if (item.nota && item.nota !== '--') {
+        trimValor = item.nota;
+        break;
+      }
     }
   }
   
-  return '--';
+  // Busca o valor do ER
+  let erValor = null;
+  for (const item of lista) {
+    const trimestre = (item.trimestre || '').toLowerCase();
+    if (trimestre.includes('er') && trimestre.includes(numTrim)) {
+      if (item.nota && item.nota !== '--') {
+        erValor = item.nota;
+        break;
+      }
+    }
+  }
+  
+  // Ambos nulos
+  if (trimValor === null && erValor === null) return '--';
+  
+  // Apenas ER existe
+  if (trimValor === null) return `${erValor}*`;
+  
+  // Apenas trim existe
+  if (erValor === null) return trimValor;
+  
+  // Ambos existem - retorna o máximo com indicação se for ER
+  const trimNum = parseFloat(String(trimValor).replace(',', '.'));
+  const erNum = parseFloat(String(erValor).replace(',', '.'));
+  
+  if (erNum > trimNum) {
+    return `${erValor}*`; // Asterisco indica que é ER
+  }
+  
+  return trimValor;
 }
