@@ -93,9 +93,14 @@ function renderDashboard() {
         const turmaCard = document.createElement('div');
         turmaCard.className = 'turma-card';
         
-        const mediaTurma = (alunos.reduce((acc, a) => acc + (a.mediaFinal || 0), 0) / alunos.length).toFixed(1);
-        const aprovados = alunos.filter(a => a.mediaFinal >= 6).length;
-        const percentual = ((aprovados / alunos.length) * 100).toFixed(0);
+        // Calcular estatísticas apenas com alunos ativos
+        const alunosAtivos = getAlunosAtivos(alunos);
+        if (alunosAtivos.length === 0) continue; // Pular se não há alunos ativos
+        
+        const mediaTurma = (alunosAtivos.reduce((acc, a) => acc + (a.mediaFinal || 0), 0) / alunosAtivos.length).toFixed(1);
+        const aprovados = alunosAtivos.filter(a => a.mediaFinal >= 6).length;
+        const percentual = ((aprovados / alunosAtivos.length) * 100).toFixed(0);
+        const alunosInativos = alunos.length - alunosAtivos.length;
 
         const turmaHeader = document.createElement('div');
         turmaHeader.className = 'turma-header';
@@ -103,7 +108,7 @@ function renderDashboard() {
           <div style="flex: 1;">
             <div>${turma.nome} - ${disciplina}</div>
             <div class="turma-info">
-              ${alunos.length} alunos | Média: ${mediaTurma} | ${aprovados} aprovados (${percentual}%)
+              ${alunosAtivos.length} alunos${alunosInativos > 0 ? ` (+${alunosInativos} inativos)` : ''} | Média: ${mediaTurma} | ${aprovados} aprovados (${percentual}%)
             </div>
           </div>
         `;
@@ -124,6 +129,19 @@ function renderDashboard() {
   container.appendChild(footer);
 }
 
+function getAlunosAtivos(alunos) {
+  // Filtrar apenas alunos com situacao.ativo = true (ou sem situacao definida)
+  return alunos.filter(aluno => !aluno.situacao || aluno.situacao.ativo !== false);
+}
+
+function getNomeComSituacao(aluno) {
+  // Exibir nome normal se ativo, ou adicionar situação entre parênteses se inativo
+  if (aluno.situacao && aluno.situacao.ativo === false && aluno.situacao.descricao) {
+    return `${aluno.nome} <span class="aluno-inativo-descricao">(${aluno.situacao.descricao})</span>`;
+  }
+  return aluno.nome;
+}
+
 function calculateStats(data) {
   let totalAlunos = 0;
   let totalNotas = 0;
@@ -133,8 +151,10 @@ function calculateStats(data) {
   for (const escola of data.escolas) {
     for (const turma of escola.turmas) {
       for (const disc of turma.disciplinas) {
-        totalAlunos += disc.alunos.length;
-        for (const aluno of disc.alunos) {
+        // Contar e calcular apenas alunos ativos
+        const alunosAtivos = getAlunosAtivos(disc.alunos);
+        totalAlunos += alunosAtivos.length;
+        for (const aluno of alunosAtivos) {
           if (aluno.mediaFinal > 0) {
             totalNotas += aluno.mediaFinal;
             alunosComMedia++;
@@ -276,7 +296,18 @@ function updateTurmaFilter(escolaSelecionada, turmaSelect) {
   for (const escola of dashboardData.escolas) {
     if (!escolaSelecionada || escola.nome === escolaSelecionada) {
       for (const turma of escola.turmas) {
-        turmas.push(turma.nome);
+        // Verificar se a turma tem alunos ativos
+        let temAlunosAtivos = false;
+        for (const disc of turma.disciplinas) {
+          const alunosAtivos = getAlunosAtivos(disc.alunos);
+          if (alunosAtivos.length > 0) {
+            temAlunosAtivos = true;
+            break;
+          }
+        }
+        if (temAlunosAtivos) {
+          turmas.push(turma.nome);
+        }
       }
     }
   }
@@ -369,19 +400,25 @@ function applyFilters() {
       // Iterar sobre TODAS as disciplinas da turma
       for (const disc of turma.disciplinas) {
         const alunos = disc.alunos || [];
+        // Filtrar por nome (inclui ativos e inativos)
         const alunosFiltrados = alunos.filter(a => a.nome.toLowerCase().includes(alunoFiltro));
         
         if (alunosFiltrados.length === 0) continue;
+        
+        // Calcular estatísticas apenas com alunos ativos
+        const alunosAtivos = getAlunosAtivos(alunosFiltrados);
+        if (alunosAtivos.length === 0) continue;
         
         temTurmas = true;
         const turmaCard = document.createElement('div');
         turmaCard.className = 'turma-card';
 
-        const mediaTurma = alunosFiltrados.length > 0 
-          ? (alunosFiltrados.reduce((acc, a) => acc + (a.mediaFinal || 0), 0) / alunosFiltrados.length).toFixed(1)
+        const mediaTurma = alunosAtivos.length > 0 
+          ? (alunosAtivos.reduce((acc, a) => acc + (a.mediaFinal || 0), 0) / alunosAtivos.length).toFixed(1)
           : 0;
-        const aprovados = alunosFiltrados.filter(a => a.mediaFinal >= 6).length;
-        const percentual = alunosFiltrados.length > 0 ? ((aprovados / alunosFiltrados.length) * 100).toFixed(0) : 0;
+        const aprovados = alunosAtivos.filter(a => a.mediaFinal >= 6).length;
+        const percentual = alunosAtivos.length > 0 ? ((aprovados / alunosAtivos.length) * 100).toFixed(0) : 0;
+        const alunosInativos = alunosFiltrados.length - alunosAtivos.length;
 
         const turmaHeader = document.createElement('div');
         turmaHeader.className = 'turma-header';
@@ -389,7 +426,7 @@ function applyFilters() {
           <div style="flex: 1;">
             <div>${turma.nome} - ${disc.disciplina || 'Disciplina'}</div>
             <div class="turma-info">
-              ${alunosFiltrados.length} aluno(s) | Média: ${mediaTurma} | ${aprovados} aprovado(s) (${percentual}%)
+              ${alunosAtivos.length} alunos${alunosInativos > 0 ? ` (+${alunosInativos} inativos)` : ''} | Média: ${mediaTurma} | ${aprovados} aprovado(s) (${percentual}%)
             </div>
           </div>
         `;
@@ -425,7 +462,7 @@ function createStudentsTable(alunos) {
   // Montar cabeçalhos dinamicamente
   let headerHTML = `
     <tr>
-      <th>Matrícula</th>
+      <th>Nº</th>
       <th>Nome</th>`;
   
   for (const periodo of periodos) {
@@ -442,6 +479,11 @@ function createStudentsTable(alunos) {
 
   for (const aluno of alunos) {
     const row = document.createElement('tr');
+    
+    // Adicionar classe se aluno for inativo
+    if (aluno.situacao && aluno.situacao.ativo === false) {
+      row.classList.add('aluno-inativo');
+    }
     
     // Obter notas para cada período dinamicamente
     const notasPeriodos = periodos.map(periodo => getNotaTexto(aluno.notas, periodo));
@@ -464,17 +506,31 @@ function createStudentsTable(alunos) {
     
     // Montar células de notas dinamicamente
     let rowHTML = `
-      <td>${aluno.matricula}</td>
-      <td><strong>${aluno.nome}</strong></td>`;
+      <td>${aluno.nroNaTurma}</td>
+      <td><strong>${getNomeComSituacao(aluno)}</strong></td>`;
     
-    for (const nota of notasPeriodos) {
-      rowHTML += `<td>${nota}</td>`;
+    // Se aluno é inativo, não mostrar notas, média e status
+    const isInativo = aluno.situacao && aluno.situacao.ativo === false;
+    
+    if (isInativo) {
+      // Para alunos inativos, deixar as colunas vazias
+      for (const nota of notasPeriodos) {
+        rowHTML += `<td></td>`;
+      }
+      rowHTML += `
+        <td></td>
+        <td></td>
+      `;
+    } else {
+      // Para alunos ativos, mostrar valores
+      for (const nota of notasPeriodos) {
+        rowHTML += `<td>${nota}</td>`;
+      }
+      rowHTML += `
+        <td><span class="nota-badge ${getClasseBadge(aluno.mediaFinal)}">${aluno.mediaFinal.toFixed(1).replace('.', ',')}</span></td>
+        <td><span class="${statusClass}">${statusTexto}</span></td>
+      `;
     }
-    
-    rowHTML += `
-      <td><span class="nota-badge ${getClasseBadge(aluno.mediaFinal)}">${aluno.mediaFinal.toFixed(1)}</span></td>
-      <td><span class="${statusClass}">${statusTexto}</span></td>
-    `;
     
     row.innerHTML = rowHTML;
     tbody.appendChild(row);
@@ -530,6 +586,15 @@ function detectarTipoEPeriodos(alunos) {
   return { isSemestre, periodos };
 }
 
+function normalizarNota(valor) {
+  if (!valor || valor === '--') return '--';
+  
+  const numValor = parseFloat(String(valor).replace(',', '.'));
+  if (isNaN(numValor)) return '--';
+  
+  return numValor.toFixed(1).replace('.', ',');
+}
+
 function getNotaTexto(lista, periodo) {
   if (!lista || lista.length === 0) return '--';
   
@@ -581,20 +646,20 @@ function getNotaTexto(lista, periodo) {
   if (periodoValor === null && erValor === null) return '--';
   
   // Apenas ER existe
-  if (periodoValor === null) return `${erValor}*`;
+  if (periodoValor === null) return `${normalizarNota(erValor)}*`;
   
   // Apenas período existe
-  if (erValor === null) return periodoValor;
+  if (erValor === null) return normalizarNota(periodoValor);
   
   // Ambos existem - retorna o máximo com indicação se for ER
   const periodoNum = parseFloat(String(periodoValor).replace(',', '.'));
   const erNum = parseFloat(String(erValor).replace(',', '.'));
   
   if (erNum > periodoNum) {
-    return `${erValor}*`; // Asterisco indica que é ER
+    return `${normalizarNota(erValor)}*`; // Asterisco indica que é ER
   }
   
-  return periodoValor;
+  return normalizarNota(periodoValor);
 }
 
 function exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro) {
@@ -642,7 +707,9 @@ function exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro) {
       
       for (const disc of turma.disciplinas) {
         const alunos = disc.alunos || [];
-        const alunosFiltrados = alunos.filter(a => a.nome.toLowerCase().includes(alunoFiltro));
+        // Filtrar por ativo e por nome
+        const alunosAtivos = getAlunosAtivos(alunos);
+        const alunosFiltrados = alunosAtivos.filter(a => a.nome.toLowerCase().includes(alunoFiltro));
         
         for (const aluno of alunosFiltrados) {
           temAlunosTurma = true;
@@ -650,7 +717,7 @@ function exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro) {
           
           const linha = [
             aluno.matricula || '',
-            aluno.nome || ''
+            getNomeComSituacao(aluno)
           ];
           
           // Adicionar notas para cada período
@@ -674,7 +741,7 @@ function exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro) {
           
           linha.push(
             disc.disciplina || '',
-            aluno.mediaFinal > 0 ? aluno.mediaFinal.toFixed(1) : '--',
+            aluno.mediaFinal > 0 ? aluno.mediaFinal.toFixed(1).replace('.', ',') : '--',
             status
           );
           
@@ -744,13 +811,13 @@ function getNotaValorBruto(lista, periodo, isER) {
     
     if (isER) {
       if (nomePeriodo.includes('er') && nomePeriodo.includes(numPeriodo)) {
-        return item.nota && item.nota !== '--' ? item.nota : '--';
+        return item.nota && item.nota !== '--' ? normalizarNota(item.nota) : '--';
       }
     } else {
       // Procurar período principal (sem ER)
       if ((isSemestre && itemEhSemestre || isTrimestre && itemEhTrimestre) && 
           nomePeriodo.includes(numPeriodo) && !nomePeriodo.includes('er')) {
-        return item.nota && item.nota !== '--' ? item.nota : '--';
+        return item.nota && item.nota !== '--' ? normalizarNota(item.nota) : '--';
       }
     }
   }
