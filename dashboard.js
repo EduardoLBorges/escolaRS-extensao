@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function displayError(container, errorMessage) {
   container.innerHTML = `<div style="text-align: center; padding: 40px; color: #1b5e20; background-color: #c8e6c9; border-radius: 8px; margin: 20px;">
-    <h3>❌ Erro ao carregar dados</h3>
+    <h3>Erro ao carregar dados</h3>
     <p>${errorMessage}</p>
     <p><strong>Dica:</strong> Certifique-se de que você está logado no portal EscolaRS em outra aba e tente recarregar esta página.</p>
   </div>`;
@@ -50,20 +50,20 @@ function renderDashboard() {
   const statsHtml = `
     <div class="stats-row">
       <div class="stat-card">
-        <h3>📚 Total de Alunos</h3>
+        <h3>Total de Alunos</h3>
         <div class="value">${stats.totalAlunos}</div>
       </div>
       <div class="stat-card">
-        <h3>🏫 Escolas</h3>
+        <h3>Escolas</h3>
         <div class="value">${dashboardData.escolas.length}</div>
       </div>
       <div class="stat-card">
-        <h3>📊 Média Geral</h3>
+        <h3>Média Geral</h3>
         <div class="value">${stats.mediaGeral}</div>
         <div class="sublabel">de 0 a 10</div>
       </div>
       <div class="stat-card">
-        <h3>✅ Acima de 7.0</h3>
+        <h3>Acima de 6.0</h3>
         <div class="value">${stats.aprovados}</div>
         <div class="sublabel">${stats.percentualAprovados}%</div>
       </div>
@@ -79,7 +79,7 @@ function renderDashboard() {
     
     const escolaHeader = document.createElement('div');
     escolaHeader.className = 'escola-header';
-    escolaHeader.innerHTML = `<span>🏫 ${escola.nome}</span><span style="font-size: 13px; opacity: 0.9;">${escola.turmas.length} turma(s)</span>`;
+    escolaHeader.innerHTML = `<span>${escola.nome}</span><span style="font-size: 13px; opacity: 0.9;">${escola.turmas.length} turma(s)</span>`;
     escolaCard.appendChild(escolaHeader);
 
     for (const turma of escola.turmas) {
@@ -94,16 +94,16 @@ function renderDashboard() {
         turmaCard.className = 'turma-card';
         
         const mediaTurma = (alunos.reduce((acc, a) => acc + (a.mediaFinal || 0), 0) / alunos.length).toFixed(1);
-        const aprovados = alunos.filter(a => a.mediaFinal >= 7).length;
+        const aprovados = alunos.filter(a => a.mediaFinal >= 6).length;
         const percentual = ((aprovados / alunos.length) * 100).toFixed(0);
 
         const turmaHeader = document.createElement('div');
         turmaHeader.className = 'turma-header';
         turmaHeader.innerHTML = `
           <div style="flex: 1;">
-            <div>📖 ${turma.nome} - ${disciplina}</div>
+            <div>${turma.nome} - ${disciplina}</div>
             <div class="turma-info">
-              ${alunos.length} alunos | Média: ${mediaTurma} | ✅ ${aprovados} aprovados (${percentual}%)
+              ${alunos.length} alunos | Média: ${mediaTurma} | ${aprovados} aprovados (${percentual}%)
             </div>
           </div>
         `;
@@ -138,7 +138,7 @@ function calculateStats(data) {
           if (aluno.mediaFinal > 0) {
             totalNotas += aluno.mediaFinal;
             alunosComMedia++;
-            if (aluno.mediaFinal >= 7) aprovados++;
+            if (aluno.mediaFinal >= 6) aprovados++;
           }
         }
       }
@@ -174,7 +174,7 @@ function createControls() {
     escolaSelect.appendChild(option);
   });
   
-  escolaControl.innerHTML = '<label>🏫 Escola</label>';
+  escolaControl.innerHTML = '<label>Escola</label>';
   escolaControl.appendChild(escolaSelect);
   
   // Filtro de Turma
@@ -188,7 +188,7 @@ function createControls() {
   turmaOption.textContent = 'Todas as turmas';
   turmaSelect.appendChild(turmaOption);
   
-  turmaControl.innerHTML = '<label>📚 Turma</label>';
+  turmaControl.innerHTML = '<label>Turma</label>';
   turmaControl.appendChild(turmaSelect);
   
   // Busca por Aluno
@@ -199,7 +199,7 @@ function createControls() {
   alunoInput.id = 'filter-aluno';
   alunoInput.placeholder = 'Digite o nome...';
   
-  alunoControl.innerHTML = '<label>👤 Buscar Aluno</label>';
+  alunoControl.innerHTML = '<label>Buscar Aluno</label>';
   alunoControl.appendChild(alunoInput);
   
   // Botão de limpar filtros
@@ -208,7 +208,7 @@ function createControls() {
   const clearBtn = document.createElement('button');
   clearBtn.id = 'clear-filters';
   clearBtn.className = 'clearfilters';
-  clearBtn.textContent = '🔄 Limpar Filtros';
+  clearBtn.textContent = 'Limpar Filtros';
   
   clearControl.innerHTML = '<label>&nbsp;</label>';
   clearControl.appendChild(clearBtn);
@@ -219,7 +219,7 @@ function createControls() {
   const exportBtn = document.createElement('button');
   exportBtn.id = 'export-xlsx';
   exportBtn.className = 'clearfilters';
-  exportBtn.textContent = '📥 Exportar XLSX';
+  exportBtn.textContent = 'Exportar XLSX';
   exportBtn.style.background = '#4caf50';
   
   exportControl.innerHTML = '<label>&nbsp;</label>';
@@ -328,20 +328,20 @@ function applyFilters() {
   const statsHtml = `
     <div class="stats-row">
       <div class="stat-card">
-        <h3>📚 Total de Alunos</h3>
+        <h3>Total de Alunos</h3>
         <div class="value">${stats.totalAlunos}</div>
       </div>
       <div class="stat-card">
-        <h3>🏫 Escolas</h3>
+        <h3>Escolas</h3>
         <div class="value">${dashboardData.escolas.length}</div>
       </div>
       <div class="stat-card">
-        <h3>📊 Média Geral</h3>
+        <h3>Média Geral</h3>
         <div class="value">${stats.mediaGeral}</div>
         <div class="sublabel">de 0 a 10</div>
       </div>
       <div class="stat-card">
-        <h3>✅ Acima de 7.0</h3>
+        <h3>Acima de 6.0</h3>
         <div class="value">${stats.aprovados}</div>
         <div class="sublabel">${stats.percentualAprovados}%</div>
       </div>
@@ -358,7 +358,7 @@ function applyFilters() {
     
     const escolaHeader = document.createElement('div');
     escolaHeader.className = 'escola-header';
-    escolaHeader.innerHTML = `<span>🏫 ${escola.nome}</span>`;
+    escolaHeader.innerHTML = `<span>${escola.nome}</span>`;
     escolaCard.appendChild(escolaHeader);
 
     let temTurmas = false;
@@ -380,16 +380,16 @@ function applyFilters() {
         const mediaTurma = alunosFiltrados.length > 0 
           ? (alunosFiltrados.reduce((acc, a) => acc + (a.mediaFinal || 0), 0) / alunosFiltrados.length).toFixed(1)
           : 0;
-        const aprovados = alunosFiltrados.filter(a => a.mediaFinal >= 7).length;
+        const aprovados = alunosFiltrados.filter(a => a.mediaFinal >= 6).length;
         const percentual = alunosFiltrados.length > 0 ? ((aprovados / alunosFiltrados.length) * 100).toFixed(0) : 0;
 
         const turmaHeader = document.createElement('div');
         turmaHeader.className = 'turma-header';
         turmaHeader.innerHTML = `
           <div style="flex: 1;">
-            <div>📖 ${turma.nome} - ${disc.disciplina || 'Disciplina'}</div>
+            <div>${turma.nome} - ${disc.disciplina || 'Disciplina'}</div>
             <div class="turma-info">
-              ${alunosFiltrados.length} aluno(s) | Média: ${mediaTurma} | ✅ ${aprovados} aprovado(s) (${percentual}%)
+              ${alunosFiltrados.length} aluno(s) | Média: ${mediaTurma} | ${aprovados} aprovado(s) (${percentual}%)
             </div>
           </div>
         `;
@@ -441,13 +441,13 @@ function createStudentsTable(alunos) {
     let statusClass = '';
     
     if(nota1 !== '--' && nota2 !== '--' && nota3 !== '--'){
-      statusTexto = '❌ Reprovado';
+      statusTexto = 'Reprovado';
       statusClass = 'status-reprovado';
-      if (aluno.mediaFinal >= 7) {
-        statusTexto = '✅ Aprovado';
+      if (aluno.mediaFinal >= 6) {
+        statusTexto = 'Aprovado';
         statusClass = 'status-excellente';
       } else if (aluno.mediaFinal >= 5) {
-        statusTexto = '⚠️ Recuperação';
+        statusTexto = 'Recuperação';
         statusClass = 'status-recuperacao';
       }
     }
@@ -472,7 +472,7 @@ function createStudentsTable(alunos) {
 }
 
 function getClasseBadge(media) {
-  if (media >= 7) return 'badge-excelente';
+  if (media >= 6) return 'badge-excelente';
   if (media >= 5) return 'badge-bom';
   return 'badge-ruim';
 }
@@ -566,9 +566,9 @@ function exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro) {
           
           let status = 'Sem Notas';
           if (aluno.mediaFinal > 0) {
-            if (aluno.mediaFinal >= 7) status = 'Aprovado';
-            else if (aluno.mediaFinal >= 5) status = 'Recuperação';
-            else status = 'Reprovado';
+            if (aluno.mediaFinal >= 6) status = 'Aprovado';
+          else if (aluno.mediaFinal >= 5) status = 'Recuperação';
+          else status = 'Reprovado';
           }
           
           dados.push([

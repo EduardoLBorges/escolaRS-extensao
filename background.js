@@ -4,7 +4,6 @@
  * Busca todos os dados do professor, calcula as médias e retorna um único objeto.
  */
 async function getDashboardData() {
-  console.log('[Background] getDashboardData foi chamada.');
 
   // 1. Obter token e nrDoc do storage
   const authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc"]);
@@ -61,7 +60,6 @@ async function getDashboardData() {
     dashboardPayload.escolas.push(escolaObj);
   }
 
-  console.log('[Background] Payload do dashboard montado:', dashboardPayload);
   return dashboardPayload;
 }
 

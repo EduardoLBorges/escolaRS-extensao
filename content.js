@@ -1,4 +1,3 @@
-console.log('[EscolaRS Ext] Content script injetado.');
 
 /**
  * Captura dados de autenticação (token, nrDoc, idRecHumano) do IndexedDB do site
@@ -36,8 +35,6 @@ function captureAuthData() {
             cursor.continue();
           } else {
             // O cursor terminou de iterar
-            console.log('[EscolaRS Ext] Keys found in IndexedDB:', Object.keys(storeData));
-
             const authData = {};
             const tokenValue = storeData['jwt'] || storeData['token'];
             const nrDocValue = storeData['nrDoc'];
@@ -51,7 +48,6 @@ function captureAuthData() {
 
             if (authData.escolaRsToken && authData.nrDoc) {
               chrome.storage.local.set(authData, () => {
-                console.log('[EscolaRS Ext] Dados de autenticação (Token e CPF) salvos no storage.');
                 resolve(true);
               });
             } else {
@@ -82,10 +78,8 @@ async function initializeAuthCapture() {
   const delay = 2000; // ms
 
   while (attempts < maxAttempts) {
-    console.log(`[EscolaRS Ext] Tentativa ${attempts + 1} de capturar autenticação...`);
     const captured = await captureAuthData().catch(() => false);
     if (captured) {
-      console.log("[EscolaRS Ext] Captura de autenticação bem-sucedida.");
       return;
     }
     attempts++;
