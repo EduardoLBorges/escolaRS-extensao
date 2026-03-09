@@ -15,12 +15,22 @@ async function getDashboardData() {
   const infoInicial = await fetchEscolaRS(`listarEscolasDoProfessorEChamadas/${authData.nrDoc}`, authData.escolaRsToken);
   const idRecHumano = infoInicial.idRecHumano;
 
+  // Calcular total de disciplinas para progresso
+  let totalDisc = 0;
+  for (let escola of infoInicial.escolas) {
+    for (let turma of escola.turmas) {
+      totalDisc += turma.disciplinas.length;
+    }
+  }
+
   const dashboardPayload = {
     professor: infoInicial.nome,
     cpf: authData.nrDoc,
     data_exportacao: new Date().toISOString(),
     escolas: []
   };
+
+  let discAtual = 0;
 
   // 3. Iterar e buscar os detalhes de cada turma
   for (let escola of infoInicial.escolas) {
@@ -34,6 +44,18 @@ async function getDashboardData() {
       };
       
       for (let disc of turma.disciplinas) {
+        discAtual++;
+        const percentage = Math.round((discAtual / totalDisc) * 100);
+        
+        // Enviar mensagem de progresso para o dashboard
+        chrome.runtime.sendMessage({
+          action: 'updateProgress',
+          percentage: percentage,
+          status: `Carregando ${turma.nome} - ${disc.nome} (${discAtual}/${totalDisc})`
+        }).catch(() => {
+          // Ignorar erros se não há listener (dashboard não aberto)
+        });
+
         const resultados = await fetchEscolaRS(
           `listarAulasDaTurmaComResultado/${turma.id}/${disc.id}/${idRecHumano}/false`, 
           authData.escolaRsToken

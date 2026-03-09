@@ -2,10 +2,25 @@ let dashboardData = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   const loadingDiv = document.getElementById('loading');
+  const progressContainer = document.getElementById('progress-container');
   const container = document.getElementById('dashboard-container');
+
+  // Listener para mensagens de progresso do background.js
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === 'updateProgress') {
+      const progressFill = document.getElementById('progress-fill');
+      const progressText = document.getElementById('progress-text');
+      const progressStatus = document.getElementById('progress-status');
+      
+      progressFill.style.width = request.percentage + '%';
+      progressText.textContent = request.percentage + '%';
+      progressStatus.textContent = request.status;
+    }
+  });
 
   chrome.runtime.sendMessage({ action: 'getDashboardData' }, (response) => {
     loadingDiv.style.display = 'none';
+    progressContainer.style.display = 'none';
 
     if (!response || !response.success) {
       displayError(container, response?.error || 'Ocorreu um erro desconhecido.');
@@ -21,6 +36,14 @@ document.addEventListener('DOMContentLoaded', () => {
     
     renderDashboard();
   });
+
+  // Mostrar progress container após 300ms se ainda estiver carregando
+  setTimeout(() => {
+    if (loadingDiv.style.display !== 'none') {
+      loadingDiv.style.display = 'none';
+      progressContainer.style.display = 'block';
+    }
+  }, 300);
 });
 
 function displayError(container, errorMessage) {
