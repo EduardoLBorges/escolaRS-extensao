@@ -16,8 +16,8 @@
   "content_scripts": [
     {
       "matches": ["https://professor.escola.rs.gov.br/*"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
+      "js": ["autenticacao.js", "content.js"],
+      "run_at": "document_start"
     }
   ],
   "action": {

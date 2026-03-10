@@ -136,6 +136,34 @@ chrome.action.onClicked.addListener(async (tab) => {
 
 // Ouve por pedidos de dados vindos do dashboard
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // Listener para tokens capturados via interceptação de requisições
+  if (request.action === "salvarTokenAutenticacao") {
+    (async () => {
+      if (!request.token) {
+        sendResponse({ success: false, error: "Token vazio" });
+        return;
+      }
+
+      try {
+        // Obter token anterior
+        const authData = await chrome.storage.local.get(["escolaRsToken"]);
+        const tokenAnterior = authData.escolaRsToken;
+
+        // Só salvar se o token mudou
+        if (tokenAnterior !== request.token) {
+          await chrome.storage.local.set({ escolaRsToken: request.token });
+          console.log('[Background] Token de autenticação capturado e atualizado via interceptação');
+        }
+
+        sendResponse({ success: true, mensagem: "Token salvo com sucesso" });
+      } catch (error) {
+        console.error('[Background] Erro ao salvar token:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true; // Indica resposta assíncrona
+  }
+
   if (request.action === "getDashboardData") {
     (async () => {
       try {
