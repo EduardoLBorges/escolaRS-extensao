@@ -3,9 +3,9 @@
   "name": "EscolaRS Export",
   "version": "0.2.4",
   "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
+    "16": "images/icons/icon16.png",
+    "48": "images/icons/icon48.png",
+    "128": "images/icons/icon128.png"
   },
   "description": "Exporta notas do EscolaRS para Excel.",
   "permissions": ["storage", "tabs", "notifications"],
@@ -28,7 +28,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["dashboard.html"],
+      "resources": ["ui/dashboard/dashboard.html"],
       "matches": ["<all_urls>"]
     }
   ]

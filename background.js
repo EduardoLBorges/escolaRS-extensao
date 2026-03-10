@@ -1,90 +1,7 @@
-// --- FUNÇÕES DE LÓGICA CENTRAL ---
-
-/**
- * Busca todos os dados do professor, calcula as médias e retorna um único objeto.
- * OTIMIZAÇÃO: Requisições por turma executadas em PARALELO usando Promise.all
- */
-async function getDashboardData() {
-
-  // 1. Obter token e nrDoc do storage
-  const authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc"]);
-  if (!authData.escolaRsToken || !authData.nrDoc) {
-    throw new Error("Dados de autenticação não encontrados. Por favor, acesse o portal EscolaRS primeiro.");
-  }
-
-  // 2. Buscar dados iniciais (escolas, turmas, etc.)
-  const infoInicial = await fetchEscolaRS(`listarEscolasDoProfessorEChamadas/${authData.nrDoc}`, authData.escolaRsToken);
-  const idRecHumano = infoInicial.idRecHumano;
-
-  // Calcular total de turmas para rastreamento de progresso
-  const totalTurmas = infoInicial.escolas.reduce((acc, escola) => acc + escola.turmas.length, 0);
-
-  const dashboardPayload = {
-    professor: infoInicial.nome,
-    cpf: authData.nrDoc,
-    data_exportacao: new Date().toISOString(),
-    escolas: []
-  };
-
-  let turmaAtual = 0;
-
-  // 3. Processar escolas mantendo ordem
-  const escolas = await Promise.all(infoInicial.escolas.map(async (escola) => {
-    const turmas = await Promise.all(escola.turmas.map(async (turma) => {
-      turmaAtual++;
-      const percentage = Math.round((turmaAtual / totalTurmas) * 100);
-
-      // Enviar mensagem de progresso para o dashboard
-      chrome.runtime.sendMessage({
-        action: 'updateProgress',
-        percentage: percentage,
-        status: `Processando ${turma.nome} (${turmaAtual}/${totalTurmas})`
-      }).catch(() => {
-        // Ignorar erros se não há listener (dashboard não aberto)
-      });
-
-      // *** PARALELIZAÇÃO: Todas as disciplinas desta turma em paralelo ***
-      const disciplinas = await Promise.all(
-        turma.disciplinas.map(async (disc) => {
-          const resultados = await fetchEscolaRS(
-            `listarAulasDaTurmaComResultado/${turma.id}/${disc.id}/${idRecHumano}/false`, 
-            authData.escolaRsToken
-          );
-          
-          const alunosComMedia = resultados.alunos.map(aluno => ({
-            ...aluno,
-            mediaFinal: calcularMediaFinal(aluno.listaResultados || []),
-            // Mapeia as notas para o formato esperado pelo dashboard.js
-            notas: (aluno.listaResultados || []).map(res => ({
-              trimestre: res.nomePeriodo,
-              nota: res.resultado
-            }))
-          }));
-
-          return {
-            disciplina: disc.nome,
-            carga_horaria: disc.qtAulasPrevistas,
-            alunos: alunosComMedia
-          };
-        })
-      );
-
-      return {
-        nome: turma.nome,
-        serie: turma.idSerie,
-        disciplinas: disciplinas
-      };
-    }));
-
-    return {
-      nome: escola.nome,
-      turmas: turmas
-    };
-  }));
-
-  dashboardPayload.escolas = escolas;
-  return dashboardPayload;
-}
+// --- IMPORTAÇÃO DE MÓDULOS ---
+// Nota: Em Manifest V3, utilizamos importScripts para Worker scripts
+// Os módulos são carregados antes deste arquivo
+importScripts('api/escolaRS.js', 'utils/notas.js', 'services/dashboardService.js');
 
 
 // --- OUVINTES DE EVENTOS DA EXTENSÃO ---
@@ -92,7 +9,7 @@ async function getDashboardData() {
 // Abre o dashboard ou guia o usuário se a autenticação não for encontrada
 chrome.action.onClicked.addListener(async (tab) => {
   const authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc"]);
-  const dashboardUrl = chrome.runtime.getURL('dashboard.html');
+  const dashboardUrl = chrome.runtime.getURL('ui/dashboard/dashboard.html');
 
   // Se temos autenticação, abre o dashboard
   if (authData.escolaRsToken && authData.nrDoc) {
@@ -119,7 +36,7 @@ chrome.action.onClicked.addListener(async (tab) => {
     // Notifica o usuário para tentar de novo
     chrome.notifications.create({
       type: 'basic',
-      iconUrl: 'icons/icon128.png',
+      iconUrl: 'images/icons/icon128.png',
       title: 'EscolaRS Export',
       message: 'Verificando sua autenticação. Por favor, aguarde alguns segundos e clique no ícone da extensão novamente.'
     });
@@ -128,7 +45,7 @@ chrome.action.onClicked.addListener(async (tab) => {
     chrome.tabs.create({ url: "https://professor.escola.rs.gov.br/" });
     chrome.notifications.create({
       type: 'basic',
-      iconUrl: 'icons/icon128.png',
+      iconUrl: 'images/icons/icon128.png',
       title: 'EscolaRS Export',
       message: 'Por favor, faça o login no portal EscolaRS. Depois de logado, clique no ícone da extensão novamente.'
     });
@@ -168,7 +85,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "getDashboardData") {
     (async () => {
       try {
-        const data = await getDashboardData();
+        // Delega para o serviço de dashboard
+        const data = await buildDashboardFromStorage();
         sendResponse({ success: true, data: data });
       } catch (error) {
         console.error('[Background] Erro ao construir dados do dashboard:', error);
@@ -178,121 +96,3 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // Indica resposta assíncrona
   }
 });
-
-
-// --- FUNÇÕES DE CÁLCULO E API ---
-
-async function fetchEscolaRS(endpoint, token) {
-  const url = `https://secweb.procergs.com.br/ise-escolars-professor/rest/professor/${endpoint}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: { "Authorization": token, "Content-Type": "application/json" }
-  });
-  if (!response.ok) {
-    throw new Error(`Erro na API (${response.status}): ${response.statusText}`);
-  }
-  return response.json();
-}
-
-function getNotaValor(lista, periodo) {
-  // Normaliza string removendo todos os diacríticos e símbolos especiais
-  const normalizarString = (str) => {
-    return String(str)
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9\s]/g, "")
-      .replace(/\s+/g, " ");
-  };
-  
-  const periodoNormalizado = normalizarString(periodo);
-  
-  const item = lista.find(r => {
-    const nomeNormalizado = normalizarString(r.nomePeriodo || r.trimestre || "");
-    return nomeNormalizado === periodoNormalizado;
-  });
-  
-  if (!item || item.resultado === "--" || item.resultado == null || item.nota === "--" || item.nota == null) {
-    return -1;
-  }
-  
-  const valor = item.resultado ?? item.nota;
-  return parseFloat(String(valor).replace(",", "."));
-}
-
-function calcularMediaFinal(listaResultados) {
-  // Cria um mapa dos períodos encontrados para fácil acesso
-  const periodos = {};
-  let temTrimestre = false;
-  let temSemestre = false;
-  
-  for (const resultado of listaResultados) {
-    const nomePeriodo = (resultado.nomePeriodo || "").toLowerCase().trim();
-    const valor = resultado.resultado;
-    
-    // Armazena apenas se o valor não é "-"
-    if (valor && valor !== "--" && valor !== "-") {
-      periodos[nomePeriodo] = parseFloat(String(valor).replace(",", "."));
-      
-      // Detectar tipo de período
-      if (nomePeriodo.includes("trim")) temTrimestre = true;
-      if (nomePeriodo.includes("sem")) temSemestre = true;
-    }
-  }
-  
-  // Se for SEMESTRE (EJA)
-  if (temSemestre && !temTrimestre) {
-    let sem1 = -1, sem2 = -1;
-    
-    // Procura pelos semestres
-    for (const [chave, valor] of Object.entries(periodos)) {
-      if (chave.includes("sem") && chave.includes("1") && !chave.includes("er")) {
-        sem1 = Math.max(sem1, valor);
-      }
-      
-      if (chave.includes("sem") && chave.includes("2") && !chave.includes("er")) {
-        sem2 = Math.max(sem2, valor);
-      }
-    }
-    
-    // Se algum semestre não foi encontrado, retorna 0
-    if (sem1 < 0 || sem2 < 0) {
-      return 0;
-    }
-    
-    // Fórmula para semestres: média simples
-    const media = (sem1 + sem2) / 2;
-    return parseFloat(media.toFixed(1));
-  }
-  
-  // Se for TRIMESTRE (modalidade regular)
-  let trim1 = -1, trim2 = -1, trim3 = -1;
-  
-  // Procura pelos padrões dos períodos (case-insensitive)
-  for (const [chave, valor] of Object.entries(periodos)) {
-    if (chave.includes("trim") && chave.includes("1") && !chave.includes("er")) {
-      trim1 = Math.max(trim1, valor);
-    } else if (chave.includes("1") && chave.includes("tri")) {
-      trim1 = Math.max(trim1, valor);
-    }
-    
-    if (chave.includes("trim") && chave.includes("2") && !chave.includes("er")) {
-      trim2 = Math.max(trim2, valor);
-    } else if (chave.includes("2") && chave.includes("tri")) {
-      trim2 = Math.max(trim2, valor);
-    }
-    
-    if (chave.includes("trim") && chave.includes("3") && !chave.includes("er")) {
-      trim3 = Math.max(trim3, valor);
-    } else if (chave.includes("3") && chave.includes("tri")) {
-      trim3 = Math.max(trim3, valor);
-    }
-  }
-  
-  // Se algum trimestre não foi encontrado, retorna 0
-  if (trim1 < 0 || trim2 < 0 || trim3 < 0) {
-    return 0;
-  }
-
-  const media = ((trim1 * 3) + (trim2 * 3) + (trim3 * 4)) / 10;
-  return parseFloat(media.toFixed(1));
-}

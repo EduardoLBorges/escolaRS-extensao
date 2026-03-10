@@ -115,7 +115,7 @@ escolaRS-extensao/
 ├── dashboard.html       # Interface principal do dashboard
 ├── dashboard.js         # Lógica da aplicação e filtros
 ├── xlsx.mini.min.js     # Biblioteca para exportação XLSX
-└── icons/               # Ícones da extensão
+└── images/icons/               # Ícones da extensão
 
 ```
 
