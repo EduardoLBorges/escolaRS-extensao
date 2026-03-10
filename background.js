@@ -2,6 +2,7 @@
 
 /**
  * Busca todos os dados do professor, calcula as médias e retorna um único objeto.
+ * OTIMIZAÇÃO: Requisições por turma executadas em PARALELO usando Promise.all
  */
 async function getDashboardData() {
 
@@ -15,13 +16,8 @@ async function getDashboardData() {
   const infoInicial = await fetchEscolaRS(`listarEscolasDoProfessorEChamadas/${authData.nrDoc}`, authData.escolaRsToken);
   const idRecHumano = infoInicial.idRecHumano;
 
-  // Calcular total de disciplinas para progresso
-  let totalDisc = 0;
-  for (let escola of infoInicial.escolas) {
-    for (let turma of escola.turmas) {
-      totalDisc += turma.disciplinas.length;
-    }
-  }
+  // Calcular total de turmas para rastreamento de progresso
+  const totalTurmas = infoInicial.escolas.reduce((acc, escola) => acc + escola.turmas.length, 0);
 
   const dashboardPayload = {
     professor: infoInicial.nome,
@@ -30,58 +26,63 @@ async function getDashboardData() {
     escolas: []
   };
 
-  let discAtual = 0;
+  let turmaAtual = 0;
 
-  // 3. Iterar e buscar os detalhes de cada turma
-  for (let escola of infoInicial.escolas) {
-    const escolaObj = { nome: escola.nome, turmas: [] };
-    
-    for (let turma of escola.turmas) {
-      const turmaObj = { 
-        nome: turma.nome, 
-        serie: turma.idSerie, 
-        disciplinas: [] 
+  // 3. Processar escolas mantendo ordem
+  const escolas = await Promise.all(infoInicial.escolas.map(async (escola) => {
+    const turmas = await Promise.all(escola.turmas.map(async (turma) => {
+      turmaAtual++;
+      const percentage = Math.round((turmaAtual / totalTurmas) * 100);
+
+      // Enviar mensagem de progresso para o dashboard
+      chrome.runtime.sendMessage({
+        action: 'updateProgress',
+        percentage: percentage,
+        status: `Processando ${turma.nome} (${turmaAtual}/${totalTurmas})`
+      }).catch(() => {
+        // Ignorar erros se não há listener (dashboard não aberto)
+      });
+
+      // *** PARALELIZAÇÃO: Todas as disciplinas desta turma em paralelo ***
+      const disciplinas = await Promise.all(
+        turma.disciplinas.map(async (disc) => {
+          const resultados = await fetchEscolaRS(
+            `listarAulasDaTurmaComResultado/${turma.id}/${disc.id}/${idRecHumano}/false`, 
+            authData.escolaRsToken
+          );
+          
+          const alunosComMedia = resultados.alunos.map(aluno => ({
+            ...aluno,
+            mediaFinal: calcularMediaFinal(aluno.listaResultados || []),
+            // Mapeia as notas para o formato esperado pelo dashboard.js
+            notas: (aluno.listaResultados || []).map(res => ({
+              trimestre: res.nomePeriodo,
+              nota: res.resultado
+            }))
+          }));
+
+          return {
+            disciplina: disc.nome,
+            carga_horaria: disc.qtAulasPrevistas,
+            alunos: alunosComMedia
+          };
+        })
+      );
+
+      return {
+        nome: turma.nome,
+        serie: turma.idSerie,
+        disciplinas: disciplinas
       };
-      
-      for (let disc of turma.disciplinas) {
-        discAtual++;
-        const percentage = Math.round((discAtual / totalDisc) * 100);
-        
-        // Enviar mensagem de progresso para o dashboard
-        chrome.runtime.sendMessage({
-          action: 'updateProgress',
-          percentage: percentage,
-          status: `Carregando ${turma.nome} - ${disc.nome} (${discAtual}/${totalDisc})`
-        }).catch(() => {
-          // Ignorar erros se não há listener (dashboard não aberto)
-        });
+    }));
 
-        const resultados = await fetchEscolaRS(
-          `listarAulasDaTurmaComResultado/${turma.id}/${disc.id}/${idRecHumano}/false`, 
-          authData.escolaRsToken
-        );
-        
-        const alunosComMedia = resultados.alunos.map(aluno => ({
-          ...aluno,
-          mediaFinal: calcularMediaFinal(aluno.listaResultados || []),
-          // Mapeia as notas para o formato esperado pelo dashboard.js
-          notas: (aluno.listaResultados || []).map(res => ({
-             trimestre: res.nomePeriodo,
-             nota: res.resultado
-          }))
-        }));
+    return {
+      nome: escola.nome,
+      turmas: turmas
+    };
+  }));
 
-        turmaObj.disciplinas.push({
-          disciplina: disc.nome,
-          carga_horaria: disc.qtAulasPrevistas,
-          alunos: alunosComMedia
-        });
-      }
-      escolaObj.turmas.push(turmaObj);
-    }
-    dashboardPayload.escolas.push(escolaObj);
-  }
-
+  dashboardPayload.escolas = escolas;
   return dashboardPayload;
 }
 
