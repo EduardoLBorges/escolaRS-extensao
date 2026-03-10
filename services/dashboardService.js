@@ -49,7 +49,8 @@ async function getDashboardData(token, nrDoc, onProgress = null) {
       }
 
       // *** PARALELIZAÇÃO: Todas as disciplinas desta turma em paralelo ***
-      const disciplinas = await Promise.all(
+      // Usar allSettled para capturar erros sem parar o carregamento
+      const disciplinasResultados = await Promise.allSettled(
         turma.disciplinas.map(async (disc) => {
           const resultados = await listarResultadosTurma(
             turma.id,
@@ -64,10 +65,31 @@ async function getDashboardData(token, nrDoc, onProgress = null) {
           return {
             disciplina: disc.nome,
             carga_horaria: disc.qtAulasPrevistas,
-            alunos: alunosComMedia
+            alunos: alunosComMedia,
+            erro: null // Sucesso
           };
         })
       );
+
+      // Processar resultados de allSettled
+      const disciplinas = disciplinasResultados.map((resultado, idx) => {
+        if (resultado.status === 'fulfilled') {
+          return resultado.value;
+        } else {
+          // Capturar erro
+          const disc = turma.disciplinas[idx];
+          const mensagemErro = resultado.reason?.message || 'Erro desconhecido ao carregar disciplina';
+          
+          console.warn(`[Dashboard] Erro ao carregar ${turma.nome} - ${disc.nome}:`, mensagemErro);
+          
+          return {
+            disciplina: disc.nome,
+            carga_horaria: disc.qtAulasPrevistas,
+            alunos: [],
+            erro: mensagemErro
+          };
+        }
+      });
 
       return {
         nome: turma.nome,

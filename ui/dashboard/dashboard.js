@@ -110,6 +110,40 @@ function renderDashboard() {
       for (const disc of turma.disciplinas) {
         const alunos = disc.alunos || [];
         const disciplina = disc.disciplina || 'Disciplina';
+        const temErro = disc.erro ? true : false;
+        
+        // Se tem erro mas sem alunos, mostrar aviso
+        if (temErro && alunos.length === 0) {
+          const turmaCard = document.createElement('div');
+          turmaCard.className = 'turma-card';
+          
+          const erroHeader = document.createElement('div');
+          erroHeader.className = 'turma-header';
+          erroHeader.innerHTML = `
+            <div style="flex: 1;">
+              <div>${turma.nome} - ${disciplina}</div>
+              <div class="turma-info">Erro ao carregar turma</div>
+            </div>
+          `;
+          turmaCard.appendChild(erroHeader);
+
+          const erroDiv = document.createElement('div');
+          erroDiv.className = 'erro-turma';
+          erroDiv.innerHTML = `
+            <div style="padding: 20px; background-color: #ffebee; border-left: 4px solid #c62828; border-radius: 4px; margin: 15px 0;">
+              <strong style="color: #c62828;">⚠️ Erro ao carregar turma</strong>
+              <p style="margin: 8px 0 0 0; font-size: 13px; color: #b71c1c;">
+                ${disc.erro}
+              </p>
+              <p style="margin: 8px 0 0 0; font-size: 12px; color: #d32f2f;">
+                A turma pode estar indisponível no servidor. Tente recarregar em alguns momentos.
+              </p>
+            </div>
+          `;
+          turmaCard.appendChild(erroDiv);
+          escolaCard.appendChild(turmaCard);
+          continue; // Pular para próxima disciplina
+        }
         
         if (alunos.length === 0) continue;
         
@@ -148,7 +182,8 @@ function renderDashboard() {
   // Rodapé
   const footer = document.createElement('div');
   footer.className = 'footer';
-  footer.innerHTML = `<p>Dashboard atualizado em ${new Date().toLocaleTimeString('pt-BR')}</p>`;
+  footer.innerHTML = `<p>© 2026 Eduardo L. Borges · MIT License<br>
+                        Projeto independente. Não afiliado ao sistema EscolaRS.</p>`;
   container.appendChild(footer);
 }
 
@@ -423,6 +458,43 @@ function applyFilters() {
       // Iterar sobre TODAS as disciplinas da turma
       for (const disc of turma.disciplinas) {
         const alunos = disc.alunos || [];
+        const temErro = disc.erro ? true : false;
+        
+        // Se tem erro mas sem alunos, mostrar aviso
+        if (temErro && alunos.length === 0) {
+          const turmaCard = document.createElement('div');
+          turmaCard.className = 'turma-card';
+          
+          const erroHeader = document.createElement('div');
+          erroHeader.className = 'turma-header';
+          erroHeader.innerHTML = `
+            <div style="flex: 1;">
+              <div>${turma.nome} - ${disc.disciplina || 'Disciplina'}</div>
+              <div class="turma-info">Erro ao carregar turma</div>
+            </div>
+          `;
+          erroHeader.appendChild(erroHeader);
+
+          const erroDiv = document.createElement('div');
+          erroDiv.className = 'erro-turma';
+          erroDiv.innerHTML = `
+            <div style="padding: 20px; background-color: #ffebee; border-left: 4px solid #c62828; border-radius: 4px; margin: 15px 0;">
+              <strong style="color: #c62828;">⚠️ Erro ao carregar turma</strong>
+              <p style="margin: 8px 0 0 0; font-size: 13px; color: #b71c1c;">
+                ${disc.erro}
+              </p>
+              <p style="margin: 8px 0 0 0; font-size: 12px; color: #d32f2f;">
+                A turma pode estar indisponível no servidor. Tente recarregar em alguns momentos.
+              </p>
+            </div>
+          `;
+          turmaCard.appendChild(erroDiv);
+          escolaCard.appendChild(turmaCard);
+          
+          temTurmas = true;
+          continue; // Pular para próxima disciplina
+        }
+        
         // Filtrar por nome (inclui ativos e inativos)
         const alunosFiltrados = alunos.filter(a => a.nome.toLowerCase().includes(alunoFiltro));
         
@@ -469,7 +541,8 @@ function applyFilters() {
   // Rodapé
   const footer = document.createElement('div');
   footer.className = 'footer';
-  footer.innerHTML = `<p>Dashboard atualizado em ${new Date().toLocaleTimeString('pt-BR')}</p>`;
+  footer.innerHTML = `<p>© 2026 Eduardo L. Borges · MIT License<br>
+                        Projeto independente. Não afiliado ao sistema EscolaRS.</p>`;
   container.appendChild(footer);
 }
 

@@ -4,29 +4,46 @@
  */
 
 const API_BASE_URL = 'https://secweb.procergs.com.br/ise-escolars-professor/rest/professor';
+const API_TIMEOUT = 30000; // 30 segundos de timeout
 
 /**
- * Faz uma chamada genérica à API do EscolaRS
+ * Faz uma chamada genérica à API do EscolaRS com timeout
  * @param {string} endpoint - Endpoint relativo (ex: "listarEscolasDoProfessor/123")
  * @param {string} token - Token de autenticação (Bearer token)
+ * @param {number} timeout - Timeout em ms (padrão: 30s)
  * @returns {Promise<Object>} Resposta JSON da API
- * @throws {Error} Se a requisição falhar
+ * @throws {Error} Se a requisição falhar ou expirar timeout
  */
-async function fetchEscolaRS(endpoint, token) {
+async function fetchEscolaRS(endpoint, token, timeout = API_TIMEOUT) {
   const url = `${API_BASE_URL}/${endpoint}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: { 
-      "Authorization": token, 
-      "Content-Type": "application/json" 
+  
+  // Criar AbortController para timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 
+        "Authorization": token, 
+        "Content-Type": "application/json" 
+      },
+      signal: controller.signal
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Erro na API (${response.status}): ${response.statusText}`);
     }
-  });
-  
-  if (!response.ok) {
-    throw new Error(`Erro na API (${response.status}): ${response.statusText}`);
+    
+    return response.json();
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error(`Timeout na requisição (${timeout}ms) para: ${endpoint}`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  
-  return response.json();
 }
 
 /**

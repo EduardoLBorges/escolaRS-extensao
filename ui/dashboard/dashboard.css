@@ -250,6 +250,14 @@ tr.aluno-inativo td { color: #999999; }
 
 .aluno-inativo-descricao { font-size: 11px; font-style: italic; color: #888888; }
 
+.erro-turma {
+  padding: 20px;
+  background-color: #ffebee;
+  border-left: 4px solid #c62828;
+  border-radius: 4px;
+  margin: 15px 0;
+}
+
 button {
   padding: 10px 18px;
   background: #4caf50;
