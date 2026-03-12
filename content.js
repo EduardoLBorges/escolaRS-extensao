@@ -1,12 +1,15 @@
 
 /**
- * Captura dados de autenticação (token, nrDoc, idRecHumano) do IndexedDB do site
- * e os salva no chrome.storage.local para o background script usar.
- * @returns {Promise<boolean>} Resolve `true` se os dados foram encontrados e salvos, `false` caso contrário.
+ * Captura o nrDoc (número de documento do professor) do IndexedDB do site
+ * e salva no chrome.storage.local para o background script usar.
+ * 
+ * O token de autenticação é capturado separadamente pelo webRequest listener
+ * no background.js, dispensando a leitura do JWT aqui.
+ * 
+ * @returns {Promise<boolean>} Resolve `true` se o nrDoc foi encontrado e salvo.
  */
 function captureAuthData() {
   return new Promise((resolve, reject) => {
-    // Acessa o banco de dados do site
     const request = indexedDB.open("ise_professor");
 
     request.onerror = (event) => {
@@ -34,32 +37,23 @@ function captureAuthData() {
             storeData[cursor.key] = cursor.value;
             cursor.continue();
           } else {
-            // O cursor terminou de iterar
-            const authData = {};
-            const tokenValue = storeData['jwt'] || storeData['token'];
-            const nrDocValue = storeData['nrDoc'];
+            const nrDoc = storeData['nrDoc'];
 
-            if (tokenValue) {
-              authData.escolaRsToken = `Bearer ${tokenValue}`;
-            }
-            if (nrDocValue) {
-              authData.nrDoc = nrDocValue;
-            }
-
-            if (authData.escolaRsToken && authData.nrDoc) {
-              chrome.storage.local.set(authData, () => {
+            if (nrDoc) {
+              chrome.storage.local.set({ nrDoc }, () => {
+                console.log("[EscolaRS Ext] nrDoc capturado e salvo.");
                 resolve(true);
               });
             } else {
-              console.warn("[EscolaRS Ext] Token ou nrDoc não encontrados no IndexedDB.");
+              console.warn("[EscolaRS Ext] nrDoc não encontrado no IndexedDB.");
               resolve(false);
             }
           }
         };
 
         cursorRequest.onerror = (event) => {
-            console.error("[EscolaRS Ext] Erro ao ler dados do object store com cursor:", event.target.error);
-            reject(event.target.error);
+          console.error("[EscolaRS Ext] Erro ao ler IndexedDB:", event.target.error);
+          reject(event.target.error);
         };
       } catch (error) {
         reject(error);
@@ -69,8 +63,8 @@ function captureAuthData() {
 }
 
 /**
- * Tenta capturar os dados repetidamente até ter sucesso ou atingir um limite.
- * O site (SPA) pode demorar para popular o IndexedDB.
+ * Tenta capturar o nrDoc repetidamente até ter sucesso ou atingir o limite.
+ * O SPA pode demorar para popular o IndexedDB após o login.
  */
 async function initializeAuthCapture() {
   let attempts = 0;
@@ -79,17 +73,15 @@ async function initializeAuthCapture() {
 
   while (attempts < maxAttempts) {
     const captured = await captureAuthData().catch(() => false);
-    if (captured) {
-      return;
-    }
+    if (captured) return;
+
     attempts++;
     if (attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
 
-  console.error("[EscolaRS Ext] Falha ao capturar dados de autenticação após várias tentativas.");
+  console.error("[EscolaRS Ext] Falha ao capturar nrDoc após várias tentativas.");
 }
 
-// Inicia o processo de captura assim que o script é injetado.
 initializeAuthCapture();

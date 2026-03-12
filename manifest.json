@@ -1,14 +1,14 @@
 {
   "manifest_version": 3,
   "name": "EscolaRS Export",
-  "version": "0.2.4",
+  "version": "0.3.1",
   "icons": {
     "16": "images/icons/icon16.png",
     "48": "images/icons/icon48.png",
     "128": "images/icons/icon128.png"
   },
   "description": "Exporta notas do EscolaRS para Excel.",
-  "permissions": ["storage", "tabs", "notifications"],
+  "permissions": ["storage", "tabs", "notifications", "webRequest"],
   "host_permissions": [
     "https://*.procergs.com.br/*",
     "https://professor.escola.rs.gov.br/*"
@@ -16,7 +16,7 @@
   "content_scripts": [
     {
       "matches": ["https://professor.escola.rs.gov.br/*"],
-      "js": ["autenticacao.js", "content.js"],
+      "js": ["content.js"],
       "run_at": "document_start"
     }
   ],

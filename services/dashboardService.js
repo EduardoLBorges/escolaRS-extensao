@@ -4,9 +4,10 @@
  */
 
 /**
- * Constrói o objeto completo do dashboard com todos os dados do professor
- * OTIMIZAÇÃO: Requisições por turma executadas em PARALELO usando Promise.all
- * 
+ * Constrói o objeto completo do dashboard com todos os dados do professor.
+ * O token é lido uma vez do storage no início e passado para todas as chamadas.
+ * Em caso de 401, o fetchEscolaRS automaticamente busca o token mais recente.
+ *
  * @param {string} token - Token de autenticação
  * @param {string} nrDoc - Número de documento do professor
  * @param {Function} onProgress - Callback para atualizar progresso (opcional)
@@ -22,7 +23,6 @@ async function getDashboardData(token, nrDoc, onProgress = null) {
   const infoInicial = await listarEscolasProfessor(nrDoc, token);
   const idRecHumano = infoInicial.idRecHumano;
 
-  // Calcular total de turmas para rastreamento de progresso
   const totalTurmas = infoInicial.escolas.reduce((acc, escola) => acc + escola.turmas.length, 0);
 
   const dashboardPayload = {
@@ -34,13 +34,12 @@ async function getDashboardData(token, nrDoc, onProgress = null) {
 
   let turmaAtual = 0;
 
-  // 2. Processar escolas mantendo ordem
+  // 2. Processar escolas em paralelo mantendo ordem
   const escolas = await Promise.all(infoInicial.escolas.map(async (escola) => {
     const turmas = await Promise.all(escola.turmas.map(async (turma) => {
       turmaAtual++;
       const percentage = Math.round((turmaAtual / totalTurmas) * 100);
 
-      // Chamar callback de progresso
       if (onProgress) {
         onProgress({
           percentage,
@@ -48,8 +47,12 @@ async function getDashboardData(token, nrDoc, onProgress = null) {
         });
       }
 
-      // *** PARALELIZAÇÃO: Todas as disciplinas desta turma em paralelo ***
-      // Usar allSettled para capturar erros sem parar o carregamento
+      onProgress({
+        percentage,
+        status: `Gerando tabela com as notas`
+      })
+
+      // Todas as disciplinas desta turma em paralelo
       const disciplinasResultados = await Promise.allSettled(
         turma.disciplinas.map(async (disc) => {
           const resultados = await listarResultadosTurma(
@@ -58,30 +61,25 @@ async function getDashboardData(token, nrDoc, onProgress = null) {
             idRecHumano,
             token
           );
-          
-          // Processa alunos adicionando médias e notas
+
           const alunosComMedia = resultados.alunos.map(processarAluno);
 
           return {
             disciplina: disc.nome,
             carga_horaria: disc.qtAulasPrevistas,
             alunos: alunosComMedia,
-            erro: null // Sucesso
+            erro: null
           };
         })
       );
 
-      // Processar resultados de allSettled
       const disciplinas = disciplinasResultados.map((resultado, idx) => {
         if (resultado.status === 'fulfilled') {
           return resultado.value;
         } else {
-          // Capturar erro
           const disc = turma.disciplinas[idx];
           const mensagemErro = resultado.reason?.message || 'Erro desconhecido ao carregar disciplina';
-          
           console.warn(`[Dashboard] Erro ao carregar ${turma.nome} - ${disc.nome}:`, mensagemErro);
-          
           return {
             disciplina: disc.nome,
             carga_horaria: disc.qtAulasPrevistas,
@@ -109,25 +107,21 @@ async function getDashboardData(token, nrDoc, onProgress = null) {
 }
 
 /**
- * Wrapper assíncrono para getDashboardData que integra com chrome.storage
+ * Wrapper que lê autenticação do storage e constrói o dashboard
  * @returns {Promise<Object>} Dados do dashboard
- * @throws {Error} Se falhar
  */
 async function buildDashboardFromStorage() {
   const authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc"]);
-  
+
   if (!authData.escolaRsToken || !authData.nrDoc) {
     throw new Error("Dados de autenticação não encontrados. Por favor, acesse o portal EscolaRS primeiro.");
   }
 
   return getDashboardData(authData.escolaRsToken, authData.nrDoc, (progress) => {
-    // Enviar mensagem de progresso para o dashboard
     chrome.runtime.sendMessage({
       action: 'updateProgress',
       percentage: progress.percentage,
       status: progress.status
-    }).catch(() => {
-      // Ignorar erros se não há listener (dashboard não aberto)
-    });
+    }).catch(() => {});
   });
 }
