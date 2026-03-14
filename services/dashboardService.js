@@ -3,10 +3,43 @@
  * Responsável por coordenar chamadas à API e lógica de negócio
  */
 
+const CONCURRENCY_LIMIT = 5; // Limite de requisições simultâneas
+
+/**
+ * Processa uma lista de itens em lotes para controlar a concorrência.
+ * @param {Array} items - Lista de itens para processar.
+ * @param {Function} task - Função que retorna uma Promise para cada item.
+ * @param {number} batchSize - Tamanho de cada lote.
+ * @returns {Promise<Array>} Retorna os resultados no formato de Promise.allSettled.
+ */
+async function processInBatches(items, task, batchSize, onProgress = null) {
+  let position = 0;
+  let allResults = [];
+  while (position < items.length) {
+    const itemsForBatch = items.slice(position, position + batchSize);
+    
+    // O mapeamento para a task deve ocorrer dentro do allSettled
+    const batchPromises = itemsForBatch.map(item => task(item));
+    const batchResults = await Promise.allSettled(batchPromises);
+
+    allResults = [...allResults, ...batchResults];
+    position += batchSize;
+
+    if (onProgress) {
+      const percentage = Math.round((position / items.length) * 100);
+      onProgress({
+        percentage: Math.min(100, percentage), // Garante que não passe de 100%
+        status: `Processando turmas... (${position > items.length ? items.length : position}/${items.length})`
+      });
+    }
+  }
+  return allResults;
+}
+
+
 /**
  * Constrói o objeto completo do dashboard com todos os dados do professor.
- * O token é lido uma vez do storage no início e passado para todas as chamadas.
- * Em caso de 401, o fetchEscolaRS automaticamente busca o token mais recente.
+ * Aplica um limite de concorrência global para todas as chamadas de API.
  *
  * @param {string} token - Token de autenticação
  * @param {string} nrDoc - Número de documento do professor
@@ -23,87 +56,107 @@ async function getDashboardData(token, nrDoc, onProgress = null) {
   const infoInicial = await listarEscolasProfessor(nrDoc, token);
   const idRecHumano = infoInicial.idRecHumano;
 
-  const totalTurmas = infoInicial.escolas.reduce((acc, escola) => acc + escola.turmas.length, 0);
+  if (onProgress) onProgress({ percentage: 0, status: 'Iniciando busca de turmas...' });
 
-  const dashboardPayload = {
+  // 2. Criar uma lista plana de todas as disciplinas a serem buscadas
+  const allDisciplineTasks = [];
+  infoInicial.escolas.forEach(escola => {
+    escola.turmas.forEach(turma => {
+      turma.disciplinas.forEach(disc => {
+        allDisciplineTasks.push({
+          escolaId: escola.id,
+          escolaNome: escola.nome,
+          turmaId: turma.id,
+          turmaNome: turma.nome,
+          turmaSerie: turma.idSerie,
+          discId: disc.id,
+          discNome: disc.nome,
+          discCargaHoraria: disc.qtAulasPrevistas
+        });
+      });
+    });
+  });
+
+  // 3. Processar a lista plana com limite de concorrência
+  const allResults = await processInBatches(
+    allDisciplineTasks,
+    async (task) => {
+      const resultados = await listarResultadosTurma(
+        task.turmaId,
+        task.discId,
+        idRecHumano,
+        token
+      );
+      const alunosComMedia = resultados.alunos.map(processarAluno);
+      return {
+        ...task, // Passar os dados da tarefa para a próxima fase
+        alunos: alunosComMedia,
+        erro: null
+      };
+    },
+    CONCURRENCY_LIMIT,
+    onProgress
+  );
+
+  // 4. Reconstruir a estrutura de dados aninhada
+  const escolasMap = new Map();
+
+  allResults.forEach((resultado, idx) => {
+    const taskOriginal = allDisciplineTasks[idx];
+
+    // Garantir que a escola exista no Map
+    if (!escolasMap.has(taskOriginal.escolaNome)) {
+      escolasMap.set(taskOriginal.escolaNome, {
+        nome: taskOriginal.escolaNome,
+        turmas: new Map()
+      });
+    }
+    const escolaNoMapa = escolasMap.get(taskOriginal.escolaNome);
+
+    // Garantir que a turma exista no Map da escola
+    if (!escolaNoMapa.turmas.has(taskOriginal.turmaNome)) {
+      escolaNoMapa.turmas.set(taskOriginal.turmaNome, {
+        nome: taskOriginal.turmaNome,
+        serie: taskOriginal.turmaSerie,
+        disciplinas: []
+      });
+    }
+    const turmaNoMapa = escolaNoMapa.turmas.get(taskOriginal.turmaNome);
+    
+    // Adicionar a disciplina (com sucesso ou com erro)
+    if (resultado.status === 'fulfilled') {
+      turmaNoMapa.disciplinas.push({
+        disciplina: resultado.value.discNome,
+        carga_horaria: resultado.value.discCargaHoraria,
+        alunos: resultado.value.alunos,
+        erro: null
+      });
+    } else {
+      const mensagemErro = resultado.reason?.message || 'Erro desconhecido ao carregar disciplina';
+      console.warn(`[Dashboard] Erro ao carregar ${taskOriginal.turmaNome} - ${taskOriginal.discNome}:`, mensagemErro);
+      turmaNoMapa.disciplinas.push({
+        disciplina: taskOriginal.discNome,
+        carga_horaria: taskOriginal.discCargaHoraria,
+        alunos: [],
+        erro: mensagemErro
+      });
+    }
+  });
+
+  // 5. Converter os Maps para arrays para o payload final
+  const escolasFinal = Array.from(escolasMap.values()).map(escola => ({
+    ...escola,
+    turmas: Array.from(escola.turmas.values())
+  }));
+
+  if (onProgress) onProgress({ percentage: 100, status: 'Finalizado!' });
+
+  return {
     professor: infoInicial.nome,
     cpf: nrDoc,
     data_exportacao: new Date().toISOString(),
-    escolas: []
+    escolas: escolasFinal
   };
-
-  let turmaAtual = 0;
-
-  // 2. Processar escolas em paralelo mantendo ordem
-  const escolas = await Promise.all(infoInicial.escolas.map(async (escola) => {
-    const turmas = await Promise.all(escola.turmas.map(async (turma) => {
-      turmaAtual++;
-      const percentage = Math.round((turmaAtual / totalTurmas) * 100);
-
-      if (onProgress) {
-        onProgress({
-          percentage,
-          status: `Processando ${turma.nome} (${turmaAtual}/${totalTurmas})`
-        });
-      }
-
-      onProgress({
-        percentage,
-        status: `Gerando tabela com as notas`
-      })
-
-      // Todas as disciplinas desta turma em paralelo
-      const disciplinasResultados = await Promise.allSettled(
-        turma.disciplinas.map(async (disc) => {
-          const resultados = await listarResultadosTurma(
-            turma.id,
-            disc.id,
-            idRecHumano,
-            token
-          );
-
-          const alunosComMedia = resultados.alunos.map(processarAluno);
-
-          return {
-            disciplina: disc.nome,
-            carga_horaria: disc.qtAulasPrevistas,
-            alunos: alunosComMedia,
-            erro: null
-          };
-        })
-      );
-
-      const disciplinas = disciplinasResultados.map((resultado, idx) => {
-        if (resultado.status === 'fulfilled') {
-          return resultado.value;
-        } else {
-          const disc = turma.disciplinas[idx];
-          const mensagemErro = resultado.reason?.message || 'Erro desconhecido ao carregar disciplina';
-          console.warn(`[Dashboard] Erro ao carregar ${turma.nome} - ${disc.nome}:`, mensagemErro);
-          return {
-            disciplina: disc.nome,
-            carga_horaria: disc.qtAulasPrevistas,
-            alunos: [],
-            erro: mensagemErro
-          };
-        }
-      });
-
-      return {
-        nome: turma.nome,
-        serie: turma.idSerie,
-        disciplinas: disciplinas
-      };
-    }));
-
-    return {
-      nome: escola.nome,
-      turmas: turmas
-    };
-  }));
-
-  dashboardPayload.escolas = escolas;
-  return dashboardPayload;
 }
 
 /**
