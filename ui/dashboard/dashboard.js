@@ -345,12 +345,18 @@ function renderFooter() {
 // =================================================================================
 
 function attachControlEvents() {
-  document.querySelector(SELECTORS.filterEscola)?.addEventListener('change', applyFilters);
+  // Quando a escola mudar, atualiza as opções de turma e depois filtra a tela
+  document.querySelector(SELECTORS.filterEscola)?.addEventListener('change', () => {
+    updateTurmaDropdown();
+    applyFilters();
+  });
+  
   document.querySelector(SELECTORS.filterTurma)?.addEventListener('change', applyFilters);
   document.querySelector(SELECTORS.filterAluno)?.addEventListener('input', applyFilters);
 
   document.querySelector(SELECTORS.clearFilters)?.addEventListener('click', () => {
     document.querySelector(SELECTORS.filterEscola).value = '';
+    updateTurmaDropdown(); // Restaura todas as turmas no select
     document.querySelector(SELECTORS.filterTurma).value = '';
     document.querySelector(SELECTORS.filterAluno).value = '';
     applyFilters();
@@ -362,6 +368,45 @@ function attachControlEvents() {
     const aluno = document.querySelector(SELECTORS.filterAluno).value.toLowerCase();
     exportarXLSX(escola, turma, aluno);
   });
+}
+
+/**
+ * Atualiza o dropdown de turmas com base na escola selecionada.
+ */
+function updateTurmaDropdown() {
+    const escolaSelecionada = document.querySelector(SELECTORS.filterEscola).value;
+    const turmaSelect = document.querySelector(SELECTORS.filterTurma);
+    const turmaAtual = turmaSelect.value; // Salva a seleção atual para tentar mantê-la
+
+    let turmas = [];
+
+    if (escolaSelecionada === '') {
+        // Se nenhuma escola estiver selecionada, pega todas as turmas de todas as escolas
+        turmas = [...new Set(dashboardData.escolas.flatMap(e => e.turmas.map(t => t.nome)))];
+    } else {
+        // Pega apenas as turmas da escola selecionada
+        const escola = dashboardData.escolas.find(e => e.nome === escolaSelecionada);
+        if (escola) {
+            turmas = [...new Set(escola.turmas.map(t => t.nome))];
+        }
+    }
+
+    // Limpa as opções atuais
+    turmaSelect.innerHTML = '';
+    
+    // Recria a opção padrão e as novas opções filtradas
+    turmaSelect.appendChild(createEl('option', { value: '' }, ['Todas as turmas']));
+    turmas.forEach(t => {
+        turmaSelect.appendChild(createEl('option', { value: t }, [t]));
+    });
+
+    // Se a turma que estava selecionada antes ainda existir na nova lista, mantém ela.
+    // Se não existir, volta para "Todas as turmas".
+    if (turmas.includes(turmaAtual)) {
+        turmaSelect.value = turmaAtual;
+    } else {
+        turmaSelect.value = '';
+    }
 }
 
 /**
