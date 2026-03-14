@@ -44,6 +44,21 @@ function loadDashboard(forceRefresh = false) {
       return;
     }
 
+    // Se os dados vieram do cache e não foram atualizados hoje, refazemos a chamada
+    if (!forceRefresh && response.cached && response.cachedAt) {
+      const cachedAt = new Date(response.cachedAt);
+      const today = new Date();
+      if (
+        cachedAt.getFullYear() !== today.getFullYear() ||
+        cachedAt.getMonth() !== today.getMonth() ||
+        cachedAt.getDate() !== today.getDate()
+      ) {
+        console.info('Cache desatualizado (última atualização:', cachedAt.toISOString(), '). Recarregando...');
+        loadDashboard(true);
+        return;
+      }
+    }
+
     dashboardData = response.data;
 
     document.getElementById('professor-info').textContent = `Professor: ${dashboardData.professor}`;
