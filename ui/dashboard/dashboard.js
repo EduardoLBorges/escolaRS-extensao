@@ -1,250 +1,419 @@
+// =================================================================================
+// STATE & CONSTANTS
+// =================================================================================
+
 let dashboardData = null;
 
-function loadDashboard(forceRefresh = false) {
-  const loadingDiv = document.getElementById('loading');
-  const progressContainer = document.getElementById('progress-container');
-  const progressFill = document.getElementById('progress-fill');
-  const progressText = document.getElementById('progress-text');
-  const cacheInfo = document.getElementById('cache-info');
+const SELECTORS = {
+  // Containers
+  mainContainer: '#dashboard-container',
+  loading: '#loading',
+  progressContainer: '#progress-container',
 
-  if (progressFill) progressFill.style.width = '0%';
-  if (progressText) progressText.textContent = '0%';
-  if (cacheInfo) cacheInfo.textContent = '';
+  // Header
+  professorInfo: '#professor-info',
+  exportDate: '#export-date',
+  headerRefresh: '#header-refresh',
 
-  // Exibir feedback visual (progress bar) apenas se demorar mais que 300ms,
-  // exceto quando for uma atualização forçada.
-  let showProgressTimeout = null;
-  if (forceRefresh) {
-    if (loadingDiv) loadingDiv.style.display = 'none';
-    if (progressContainer) progressContainer.style.display = 'block';
-  } else {
-    if (loadingDiv) loadingDiv.style.display = 'block';
-    if (progressContainer) progressContainer.style.display = 'none';
+  // Progress Bar
+  progressFill: '#progress-fill',
+  progressText: '#progress-text',
+  progressStatus: '#progress-status',
+  
+  // Filters
+  filterEscola: '#filter-escola',
+  filterTurma: '#filter-turma',
+  filterAluno: '#filter-aluno',
+  clearFilters: '#clear-filters',
+  exportXlsx: '#export-xlsx',
+  
+  // Data cards
+  escolaCard: '.escola-card',
+  turmaCard: '.turma-card',
+  alunoRow: 'tbody tr'
+};
 
-    showProgressTimeout = setTimeout(() => {
-      if (loadingDiv && loadingDiv.style.display !== 'none') {
-        loadingDiv.style.display = 'none';
-        if (progressContainer) progressContainer.style.display = 'block';
+// =================================================================================
+// UTILITY FUNCTIONS
+// =================================================================================
+
+/**
+ * Cria um elemento HTML com atributos e filhos.
+ * @param {string} tag - A tag do elemento (ex: 'div').
+ * @param {object} [attributes={}] - Objeto de atributos (ex: { className, id, dataset }).
+ * @param {Array<Node|string>} [children=[]] - Array de nós filhos ou strings.
+ * @returns {HTMLElement}
+ */
+function createEl(tag, attributes = {}, children = []) {
+  const element = document.createElement(tag);
+  for (const key in attributes) {
+    if (key === 'dataset') {
+      for (const dataKey in attributes.dataset) {
+        element.dataset[dataKey] = attributes.dataset[dataKey];
       }
-    }, 300);
+    } else {
+      element[key] = attributes[key];
+    }
   }
-
-  const action = forceRefresh ? 'refreshDashboardData' : 'getDashboardData';
-
-  chrome.runtime.sendMessage({ action }, (response) => {
-    if (showProgressTimeout) clearTimeout(showProgressTimeout);
-    if (loadingDiv) loadingDiv.style.display = 'none';
-    if (progressContainer) progressContainer.style.display = 'none';
-
-    const container = document.getElementById('dashboard-container');
-
-    if (!response || !response.success) {
-      if (container) displayError(container, response?.error || 'Ocorreu um erro desconhecido.');
-      console.error('Falha ao obter dados do dashboard:', response?.error);
-      return;
-    }
-
-    // Se os dados vieram do cache e não foram atualizados hoje, refazemos a chamada
-    if (!forceRefresh && response.cached && response.cachedAt) {
-      const cachedAt = new Date(response.cachedAt);
-      const today = new Date();
-      if (
-        cachedAt.getFullYear() !== today.getFullYear() ||
-        cachedAt.getMonth() !== today.getMonth() ||
-        cachedAt.getDate() !== today.getDate()
-      ) {
-        console.info('Cache desatualizado (última atualização:', cachedAt.toISOString(), '). Recarregando...');
-        loadDashboard(true);
-        return;
-      }
-    }
-
-    dashboardData = response.data;
-
-    document.getElementById('professor-info').textContent = `Professor: ${dashboardData.professor}`;
-    const dataExport = new Date(dashboardData.data_exportacao);
-    document.getElementById('export-date').textContent = `Exportado em: ${dataExport.toLocaleString('pt-BR')}`;
-
-    renderDashboard();
-  });
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  // Listener para mensagens de progresso do background.js
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'updateProgress') {
-      const progressFill = document.getElementById('progress-fill');
-      const progressText = document.getElementById('progress-text');
-      const progressStatus = document.getElementById('progress-status');
-      
-      progressFill.style.width = request.percentage + '%';
-      progressText.textContent = request.percentage + '%';
-      progressStatus.textContent = request.status;
-    }
-  });
-
-  // Botão de atualização no header (força nova chamada à API)
-  document.getElementById('header-refresh')?.addEventListener('click', () => {
-    loadDashboard(true);
-  });
-
-  // Carregar dados (usa cache por padrão)
-  loadDashboard(false);
-});
-
-function displayError(container, errorMessage) {
-  container.innerHTML = `<div style="text-align: center; padding: 40px; color: #1b5e20; background-color: #c8e6c9; border-radius: 8px; margin: 20px;">
-    <h3>Erro ao carregar dados</h3>
-    <p>${errorMessage}</p>
-    <p><strong>Dica:</strong> Certifique-se de que você está logado no portal EscolaRS em outra aba e tente recarregar esta página.</p>
-  </div>`;
-}
-
-function renderDashboard() {
-  const container = document.getElementById('dashboard-container');
-  
-  if (!dashboardData.escolas || dashboardData.escolas.length === 0) {
-    container.innerHTML = '<p>Nenhuma escola ou turma encontrada para este professor.</p>';
-    return;
+  for (const child of children) {
+    element.append(child);
   }
-
-  container.innerHTML = '';
-  
-  const controls = createControls();
-  container.appendChild(controls);
-  
-  const stats = calculateStats(dashboardData);
-  
-  // Adicionar estatísticas
-  const statsHtml = `
-    <div class="stats-row">
-      <div class="stat-card">
-        <h3>Total de Alunos</h3>
-        <div class="value">${stats.totalAlunos}</div>
-      </div>
-      <div class="stat-card">
-        <h3>Escolas</h3>
-        <div class="value">${dashboardData.escolas.length}</div>
-      </div>
-      <div class="stat-card">
-        <h3>Média Geral</h3>
-        <div class="value">${stats.mediaGeral}</div>
-        <div class="sublabel">de 0 a 10</div>
-      </div>
-      <div class="stat-card">
-        <h3>Acima de 6.0</h3>
-        <div class="value">${stats.aprovados}</div>
-        <div class="sublabel">${stats.percentualAprovados}%</div>
-      </div>
-    </div>
-  `;
-  
-  container.insertAdjacentHTML('afterbegin', statsHtml);
-
-  // Renderizar escolas, turmas e disciplinas
-  for (const escola of dashboardData.escolas) {
-    const escolaCard = document.createElement('div');
-    escolaCard.className = 'escola-card';
-    
-    const escolaHeader = document.createElement('div');
-    escolaHeader.className = 'escola-header';
-    escolaHeader.innerHTML = `<span>${escola.nome}</span><span style="font-size: 13px; opacity: 0.9;">${escola.turmas.length} turma(s)</span>`;
-    escolaCard.appendChild(escolaHeader);
-
-    for (const turma of escola.turmas) {
-      // Iterar sobre TODAS as disciplinas da turma
-      for (const disc of turma.disciplinas) {
-        const alunos = disc.alunos || [];
-        const disciplina = disc.disciplina || 'Disciplina';
-        const temErro = disc.erro ? true : false;
-        
-        // Se tem erro mas sem alunos, mostrar aviso
-        if (temErro && alunos.length === 0) {
-          const turmaCard = document.createElement('div');
-          turmaCard.className = 'turma-card';
-          
-          const erroHeader = document.createElement('div');
-          erroHeader.className = 'turma-header';
-          erroHeader.innerHTML = `
-            <div style="flex: 1;">
-              <div>${turma.nome} - ${disciplina}</div>
-              <div class="turma-info">Erro ao carregar turma</div>
-            </div>
-          `;
-          turmaCard.appendChild(erroHeader);
-
-          const erroDiv = document.createElement('div');
-          erroDiv.className = 'erro-turma';
-          erroDiv.innerHTML = `
-            <div style="padding: 20px; background-color: #ffebee; border-left: 4px solid #c62828; border-radius: 4px; margin: 15px 0;">
-              <strong style="color: #c62828;">⚠️ Erro ao carregar turma</strong>
-              <p style="margin: 8px 0 0 0; font-size: 13px; color: #b71c1c;">
-                ${disc.erro}
-              </p>
-              <p style="margin: 8px 0 0 0; font-size: 12px; color: #d32f2f;">
-                A turma pode estar indisponível no servidor. Tente recarregar em alguns momentos.
-              </p>
-            </div>
-          `;
-          turmaCard.appendChild(erroDiv);
-          escolaCard.appendChild(turmaCard);
-          continue; // Pular para próxima disciplina
-        }
-        
-        if (alunos.length === 0) continue;
-        
-        const turmaCard = document.createElement('div');
-        turmaCard.className = 'turma-card';
-        
-        // Calcular estatísticas apenas com alunos ativos
-        const alunosAtivos = getAlunosAtivos(alunos);
-        if (alunosAtivos.length === 0) continue; // Pular se não há alunos ativos
-        
-        const mediaTurma = (alunosAtivos.reduce((acc, a) => acc + (a.mediaFinal || 0), 0) / alunosAtivos.length).toFixed(1);
-        const aprovados = alunosAtivos.filter(a => a.mediaFinal >= 6).length;
-        const percentual = ((aprovados / alunosAtivos.length) * 100).toFixed(0);
-        const alunosInativos = alunos.length - alunosAtivos.length;
-
-        const turmaHeader = document.createElement('div');
-        turmaHeader.className = 'turma-header';
-        turmaHeader.innerHTML = `
-          <div style="flex: 1;">
-            <div>${turma.nome} - ${disciplina}</div>
-            <div class="turma-info">
-              ${alunosAtivos.length} alunos${alunosInativos > 0 ? ` (+${alunosInativos} inativos)` : ''} | Média: ${mediaTurma} | ${aprovados} aprovados (${percentual}%)
-            </div>
-          </div>
-        `;
-        turmaCard.appendChild(turmaHeader);
-
-        const table = createStudentsTable(alunos);
-        turmaCard.appendChild(table);
-        escolaCard.appendChild(turmaCard);
-      }
-    }
-    container.appendChild(escolaCard);
-  }
-  
-  // Rodapé
-  const footer = document.createElement('div');
-  footer.className = 'footer';
-  footer.innerHTML = `<p>© 2026 Eduardo L. Borges · MIT License<br>
-                        Projeto independente. Não afiliado ao sistema EscolaRS.</p>`;
-  container.appendChild(footer);
+  return element;
 }
 
 function getAlunosAtivos(alunos) {
-  // Filtrar apenas alunos com situacao.ativo = true (ou sem situacao definida)
   return alunos.filter(aluno => !aluno.situacao || aluno.situacao.ativo !== false);
 }
 
 function getNomeComSituacao(aluno) {
-  // Exibir nome normal se ativo, ou adicionar situação entre parênteses se inativo
   if (aluno.situacao && aluno.situacao.ativo === false && aluno.situacao.descricao) {
     return `${aluno.nome} <span class="aluno-inativo-descricao">(${aluno.situacao.descricao})</span>`;
   }
   return aluno.nome;
 }
+
+function getClasseBadge(media) {
+  if (media >= 6) return 'badge-excelente';
+  if (media >= 5) return 'badge-bom';
+  return 'badge-ruim';
+}
+
+// =================================================================================
+// DATA LOADING & MAIN FLOW
+// =================================================================================
+
+/**
+ * Carrega e renderiza os dados do dashboard, usando cache se disponível.
+ * @param {boolean} forceRefresh - Força a busca de novos dados.
+ */
+function loadDashboard(forceRefresh = false) {
+  const loadingDiv = document.querySelector(SELECTORS.loading);
+  const progressContainer = document.querySelector(SELECTORS.progressContainer);
+  
+  let showProgressTimeout = null;
+
+  if (forceRefresh) {
+    loadingDiv.style.display = 'none';
+    progressContainer.style.display = 'block';
+    document.querySelector(SELECTORS.progressFill).style.width = '0%';
+    document.querySelector(SELECTORS.progressText).textContent = '0%';
+  } else {
+    loadingDiv.style.display = 'block';
+    progressContainer.style.display = 'none';
+    showProgressTimeout = setTimeout(() => {
+      if (loadingDiv.style.display !== 'none') {
+        loadingDiv.style.display = 'none';
+        progressContainer.style.display = 'block';
+      }
+    }, 300);
+  }
+
+  chrome.runtime.sendMessage({ action: forceRefresh ? 'refreshDashboardData' : 'getDashboardData' }, (response) => {
+    if (showProgressTimeout) clearTimeout(showProgressTimeout);
+    loadingDiv.style.display = 'none';
+    progressContainer.style.display = 'none';
+    
+    if (!response || !response.success) {
+      displayError(response?.error || 'Ocorreu um erro desconhecido.');
+      return;
+    }
+
+    if (!forceRefresh && response.cached && new Date().toDateString() !== new Date(response.cachedAt).toDateString()) {
+      console.info('Cache desatualizado, recarregando...');
+      loadDashboard(true);
+      return;
+    }
+
+    dashboardData = response.data;
+    renderApp();
+  });
+}
+
+/**
+ * Renderiza a aplicação inteira na página.
+ */
+function renderApp() {
+  const container = document.querySelector(SELECTORS.mainContainer);
+  container.innerHTML = ''; // Limpa o container principal
+
+  if (!dashboardData || !dashboardData.escolas || dashboardData.escolas.length === 0) {
+    container.appendChild(createEl('p', {}, ['Nenhuma escola ou turma encontrada para este professor.']));
+    return;
+  }
+  
+  // Renderiza Header
+  document.querySelector(SELECTORS.professorInfo).textContent = `Professor: ${dashboardData.professor}`;
+  document.querySelector(SELECTORS.exportDate).textContent = `Exportado em: ${new Date(dashboardData.data_exportacao).toLocaleString('pt-BR')}`;
+
+  // Renderiza Componentes
+  const stats = calculateStats(dashboardData);
+  
+  container.appendChild(renderStats(stats));
+  container.appendChild(renderControls(dashboardData));
+  
+  dashboardData.escolas.forEach(escola => {
+    container.appendChild(renderEscola(escola));
+  });
+
+  container.appendChild(renderFooter());
+  
+  // Associa eventos aos controles recém-criados
+  attachControlEvents();
+}
+
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Listener para mensagens de progresso
+  chrome.runtime.onMessage.addListener((request) => {
+    if (request.action === 'updateProgress') {
+      document.querySelector(SELECTORS.progressFill).style.width = request.percentage + '%';
+      document.querySelector(SELECTORS.progressText).textContent = request.percentage + '%';
+      document.querySelector(SELECTORS.progressStatus).textContent = request.status;
+    }
+  });
+
+  // Botão de atualização no header
+  document.querySelector(SELECTORS.headerRefresh)?.addEventListener('click', () => loadDashboard(true));
+
+  // Carga inicial
+  loadDashboard(false);
+});
+
+// =================================================================================
+// COMPONENT RENDERING FUNCTIONS
+// =================================================================================
+
+function displayError(errorMessage) {
+  const container = document.querySelector(SELECTORS.mainContainer);
+  container.innerHTML = '';
+  container.appendChild(createEl('div', { 
+    style: 'text-align: center; padding: 40px; color: #1b5e20; background-color: #c8e6c9; border-radius: 8px; margin: 20px;',
+    innerHTML: `<h3>Erro ao carregar dados</h3><p>${errorMessage}</p><p><strong>Dica:</strong> Certifique-se de que você está logado no portal EscolaRS em outra aba e tente recarregar esta página.</p>`
+  }));
+}
+
+function renderStats(stats) {
+  return createEl('div', { className: 'stats-row' }, [
+    createEl('div', { className: 'stat-card' }, [
+      createEl('h3', {}, ['Total de Alunos']),
+      createEl('div', { className: 'value' }, [`${stats.totalAlunos}`])
+    ]),
+    createEl('div', { className: 'stat-card' }, [
+      createEl('h3', {}, ['Escolas']),
+      createEl('div', { className: 'value' }, [`${dashboardData.escolas.length}`])
+    ]),
+    createEl('div', { className: 'stat-card' }, [
+      createEl('h3', {}, ['Média Geral']),
+      createEl('div', { className: 'value' }, [`${stats.mediaGeral}`]),
+      createEl('div', { className: 'sublabel' }, ['de 0 a 10'])
+    ]),
+    createEl('div', { className: 'stat-card' }, [
+      createEl('h3', {}, ['Acima de 6.0']),
+      createEl('div', { className: 'value' }, [`${stats.aprovados}`]),
+      createEl('div', { className: 'sublabel' }, [`${stats.percentualAprovados}%`])
+    ]),
+  ]);
+}
+
+function renderControls(data) {
+  const escolas = [...new Set(data.escolas.map(e => e.nome))];
+  const turmas = [...new Set(data.escolas.flatMap(e => e.turmas.map(t => t.nome)))];
+
+  const escolaOptions = [createEl('option', { value: '' }, ['Todas as escolas']), ...escolas.map(e => createEl('option', { value: e }, [e]))];
+  const turmaOptions = [createEl('option', { value: '' }, ['Todas as turmas']), ...turmas.map(t => createEl('option', { value: t }, [t]))];
+
+  return createEl('div', { className: 'controls' }, [
+    createEl('div', { className: 'control-group' }, [createEl('label', {}, ['Escola']), createEl('select', { id: SELECTORS.filterEscola.slice(1) }, escolaOptions)]),
+    createEl('div', { className: 'control-group' }, [createEl('label', {}, ['Turma']), createEl('select', { id: SELECTORS.filterTurma.slice(1) }, turmaOptions)]),
+    createEl('div', { className: 'control-group' }, [createEl('label', {}, ['Buscar Aluno']), createEl('input', { type: 'text', id: SELECTORS.filterAluno.slice(1), placeholder: 'Digite o nome...' })]),
+    createEl('div', { className: 'control-group' }, [createEl('label', {}, ['\u00A0']), createEl('button', { id: SELECTORS.clearFilters.slice(1), className: 'clearfilters' }, ['Limpar Filtros'])]),
+    createEl('div', { className: 'control-group' }, [createEl('label', {}, ['\u00A0']), createEl('button', { id: SELECTORS.exportXlsx.slice(1), className: 'clearfilters', style: 'background: #4caf50' }, ['Exportar XLSX'])])
+  ]);
+}
+
+function renderEscola(escola) {
+  const turmaCards = escola.turmas.map(turma => renderTurma(turma, escola.nome));
+
+  return createEl('div', { className: 'escola-card', dataset: { escolaNome: escola.nome } }, [
+    createEl('div', { className: 'escola-header', innerHTML: `<span>${escola.nome}</span><span style="font-size: 13px; opacity: 0.9;">${escola.turmas.length} turma(s)</span>` }),
+    ...turmaCards
+  ]);
+}
+
+function renderTurma(turma, escolaNome) {
+  const disciplinaCards = turma.disciplinas.map(disc => renderDisciplina(disc, turma.nome));
+  
+  return createEl('div', { className: 'turma-card', dataset: { turmaNome: turma.nome, escolaNome: escolaNome } }, disciplinaCards);
+}
+
+function renderDisciplina(disc, turmaNome) {
+    const alunos = disc.alunos || [];
+    const disciplina = disc.disciplina || 'Disciplina';
+
+    if (disc.erro) {
+        return createEl('div', { className: 'turma-card-content', dataset: { disciplinaNome: disciplina, turmaNome: turmaNome }}, [
+            createEl('div', { className: 'turma-header', innerHTML: `<div style="flex: 1;"><div>${turmaNome} - ${disciplina}</div><div class="turma-info">Erro ao carregar turma</div></div>` }),
+            createEl('div', { className: 'erro-turma', innerHTML: `<div style="padding: 20px; background-color: #ffebee; border-left: 4px solid #c62828; border-radius: 4px; margin: 15px 0;"><strong style="color: #c62828;">⚠️ Erro ao carregar turma</strong><p style="margin: 8px 0 0 0; font-size: 13px; color: #b71c1c;">${disc.erro}</p></div>`})
+        ]);
+    }
+
+    if (alunos.length === 0) return createEl('div'); // Retorna um elemento vazio se não há alunos
+    
+    const alunosAtivos = getAlunosAtivos(alunos);
+    if (alunosAtivos.length === 0) return createEl('div');
+
+    const mediaTurma = (alunosAtivos.reduce((acc, a) => acc + (a.mediaFinal || 0), 0) / alunosAtivos.length).toFixed(1);
+    const aprovados = alunosAtivos.filter(a => a.mediaFinal >= 6).length;
+    const percentual = ((aprovados / alunosAtivos.length) * 100).toFixed(0);
+    const alunosInativos = alunos.length - alunosAtivos.length;
+
+    const headerHTML = `
+      <div style="flex: 1;">
+        <div>${turmaNome} - ${disciplina}</div>
+        <div class="turma-info">
+          ${alunosAtivos.length} alunos${alunosInativos > 0 ? ` (+${alunosInativos} inativos)` : ''} | Média: ${mediaTurma} | ${aprovados} aprovados (${percentual}%)
+        </div>
+      </div>
+    `;
+
+    return createEl('div', { className: 'turma-card-content', dataset: { disciplinaNome: disciplina, turmaNome: turmaNome }}, [
+        createEl('div', { className: 'turma-header', innerHTML: headerHTML }),
+        createStudentsTable(alunos, disciplina)
+    ]);
+}
+
+
+function createStudentsTable(alunos, disciplina) {
+  const periodos = detectarTipoEPeriodos(alunos).periodos;
+
+  const headerRow = createEl('tr', {}, [
+    createEl('th', {}, ['Nº']),
+    createEl('th', {}, ['Nome']),
+    ...periodos.map(p => createEl('th', {}, [p])),
+    createEl('th', {}, ['Média Final']),
+    createEl('th', {}, ['Status']),
+  ]);
+
+  const studentRows = alunos.map(aluno => {
+    const notasPeriodos = periodos.map(p => getNotaTexto(aluno.notas, p));
+    const todasAsNotasPreenchidas = notasPeriodos.every(nota => nota !== '--');
+
+    let statusTexto = '', statusClass = '';
+    if(todasAsNotasPreenchidas){
+      statusTexto = 'Reprovado'; statusClass = 'status-reprovado';
+      if (aluno.mediaFinal >= 6) { statusTexto = 'Aprovado'; statusClass = 'status-excellente'; } 
+      else if (aluno.mediaFinal >= 5) { statusTexto = 'Recuperação'; statusClass = 'status-recuperacao'; }
+    }
+    
+    const isInativo = aluno.situacao && aluno.situacao.ativo === false;
+    
+    let cells = [
+      createEl('td', {}, [`${aluno.nroNaTurma}`]),
+      createEl('td', { innerHTML: `<strong>${getNomeComSituacao(aluno)}</strong>` }),
+    ];
+
+    if (isInativo) {
+      cells.push(...periodos.map(() => createEl('td', {}, [''])));
+      cells.push(createEl('td', {}, ['']), createEl('td', {}, ['']));
+    } else {
+      cells.push(...notasPeriodos.map(nota => createEl('td', { innerHTML: nota })));
+      cells.push(
+        createEl('td', {}, [createEl('span', { className: `nota-badge ${getClasseBadge(aluno.mediaFinal)}` }, [aluno.mediaFinal.toFixed(1).replace('.', ',')])]),
+        createEl('td', {}, [createEl('span', { className: statusClass }, [statusTexto])])
+      );
+    }
+    
+    return createEl('tr', { 
+        className: isInativo ? 'aluno-inativo' : '', 
+        dataset: { alunoNome: aluno.nome.toLowerCase(), disciplinaNome: disciplina }
+    }, cells);
+  });
+
+  return createEl('table', {}, [
+    createEl('thead', {}, [headerRow]),
+    createEl('tbody', {}, studentRows)
+  ]);
+}
+
+function renderFooter() {
+    return createEl('div', { className: 'footer', innerHTML: `<p>© 2026 Eduardo L. Borges · MIT License<br>Projeto independente. Não afiliado ao sistema EscolaRS.</p>` });
+}
+
+
+// =================================================================================
+// EVENT HANDLING & FILTERING
+// =================================================================================
+
+function attachControlEvents() {
+  document.querySelector(SELECTORS.filterEscola)?.addEventListener('change', applyFilters);
+  document.querySelector(SELECTORS.filterTurma)?.addEventListener('change', applyFilters);
+  document.querySelector(SELECTORS.filterAluno)?.addEventListener('input', applyFilters);
+
+  document.querySelector(SELECTORS.clearFilters)?.addEventListener('click', () => {
+    document.querySelector(SELECTORS.filterEscola).value = '';
+    document.querySelector(SELECTORS.filterTurma).value = '';
+    document.querySelector(SELECTORS.filterAluno).value = '';
+    applyFilters();
+  });
+  
+  document.querySelector(SELECTORS.exportXlsx)?.addEventListener('click', () => {
+    const escola = document.querySelector(SELECTORS.filterEscola).value;
+    const turma = document.querySelector(SELECTORS.filterTurma).value;
+    const aluno = document.querySelector(SELECTORS.filterAluno).value.toLowerCase();
+    exportarXLSX(escola, turma, aluno);
+  });
+}
+
+/**
+ * Aplica filtros de visibilidade aos elementos do DOM sem recriá-los.
+ */
+function applyFilters() {
+    const escolaFiltro = document.querySelector(SELECTORS.filterEscola).value;
+    const turmaFiltro = document.querySelector(SELECTORS.filterTurma).value;
+    const alunoFiltro = document.querySelector(SELECTORS.filterAluno).value.toLowerCase();
+
+    document.querySelectorAll(SELECTORS.escolaCard).forEach(escolaCard => {
+        const escolaNome = escolaCard.dataset.escolaNome;
+        const escolaMatch = !escolaFiltro || escolaNome === escolaFiltro;
+        
+        let algumaTurmaVisivelNaEscola = false;
+        
+        escolaCard.querySelectorAll('.turma-card-content').forEach(disciplinaCard => {
+            const turmaNome = disciplinaCard.dataset.turmaNome;
+            const disciplinaTurmaMatch = !turmaFiltro || turmaNome === turmaFiltro;
+
+            let algumAlunoVisivelNaDisciplina = false;
+            disciplinaCard.querySelectorAll(SELECTORS.alunoRow).forEach(alunoRow => {
+                const alunoNome = alunoRow.dataset.alunoNome || '';
+                const alunoMatch = !alunoFiltro || alunoNome.includes(alunoFiltro);
+                
+                alunoRow.style.display = alunoMatch ? '' : 'none';
+                if (alunoMatch) {
+                    algumAlunoVisivelNaDisciplina = true;
+                }
+            });
+            
+            // Uma disciplina é visível se ela pertence a uma turma que bate com o filtro E tem algum aluno visível
+            const disciplinaVisivel = disciplinaTurmaMatch && algumAlunoVisivelNaDisciplina;
+            disciplinaCard.style.display = disciplinaVisivel ? '' : 'none';
+            
+            if (disciplinaVisivel) {
+                 algumaTurmaVisivelNaEscola = true;
+            }
+        });
+
+        escolaCard.style.display = escolaMatch && algumaTurmaVisivelNaEscola ? '' : 'none';
+    });
+}
+
+
+// =================================================================================
+// DATA CALCULATION & EXPORT (can be moved to utils)
+// =================================================================================
+
+// Funções que permanecem em grande parte as mesmas:
+// calculateStats, detectarTipoEPeriodos, getNotaTexto, exportarXLSX, etc.
+// Cole o conteúdo dessas funções do arquivo original aqui.
 
 function calculateStats(data) {
   let totalAlunos = 0;
@@ -255,7 +424,6 @@ function calculateStats(data) {
   for (const escola of data.escolas) {
     for (const turma of escola.turmas) {
       for (const disc of turma.disciplinas) {
-        // Contar e calcular apenas alunos ativos
         const alunosAtivos = getAlunosAtivos(disc.alunos);
         totalAlunos += alunosAtivos.length;
         for (const aluno of alunosAtivos) {
@@ -275,422 +443,8 @@ function calculateStats(data) {
   return { totalAlunos, mediaGeral, aprovados, percentualAprovados };
 }
 
-function createControls() {
-  const controlsDiv = document.createElement('div');
-  controlsDiv.className = 'controls';
-  
-  // Filtro de Escola
-  const escolas = [...new Set(dashboardData.escolas.map(e => e.nome))];
-  const escolaControl = document.createElement('div');
-  escolaControl.className = 'control-group';
-  const escolaSelect = document.createElement('select');
-  escolaSelect.id = 'filter-escola';
-  
-  const escolaOption = document.createElement('option');
-  escolaOption.value = '';
-  escolaOption.textContent = 'Todas as escolas';
-  escolaSelect.appendChild(escolaOption);
-  
-  escolas.forEach(e => {
-    const option = document.createElement('option');
-    option.value = e;
-    option.textContent = e;
-    escolaSelect.appendChild(option);
-  });
-  
-  escolaControl.innerHTML = '<label>Escola</label>';
-  escolaControl.appendChild(escolaSelect);
-  
-  // Filtro de Turma
-  const turmaControl = document.createElement('div');
-  turmaControl.className = 'control-group';
-  const turmaSelect = document.createElement('select');
-  turmaSelect.id = 'filter-turma';
-  
-  const turmaOption = document.createElement('option');
-  turmaOption.value = '';
-  turmaOption.textContent = 'Todas as turmas';
-  turmaSelect.appendChild(turmaOption);
-  
-  turmaControl.innerHTML = '<label>Turma</label>';
-  turmaControl.appendChild(turmaSelect);
-  
-  // Busca por Aluno
-  const alunoControl = document.createElement('div');
-  alunoControl.className = 'control-group';
-  const alunoInput = document.createElement('input');
-  alunoInput.type = 'text';
-  alunoInput.id = 'filter-aluno';
-  alunoInput.placeholder = 'Digite o nome...';
-  
-  alunoControl.innerHTML = '<label>Buscar Aluno</label>';
-  alunoControl.appendChild(alunoInput);
-  
-  // Botão de limpar filtros
-  const clearControl = document.createElement('div');
-  clearControl.className = 'control-group';
-  const clearBtn = document.createElement('button');
-  clearBtn.id = 'clear-filters';
-  clearBtn.className = 'clearfilters';
-  clearBtn.textContent = 'Limpar Filtros';
-  
-  clearControl.innerHTML = '<label>&nbsp;</label>';
-  clearControl.appendChild(clearBtn);
-  
-  // Botão de exportar XLSX
-  const exportControl = document.createElement('div');
-  exportControl.className = 'control-group';
-  const exportBtn = document.createElement('button');
-  exportBtn.id = 'export-xlsx';
-  exportBtn.className = 'clearfilters';
-  exportBtn.textContent = 'Exportar XLSX';
-  exportBtn.style.background = '#4caf50';
-  
-  exportControl.innerHTML = '<label>&nbsp;</label>';
-  exportControl.appendChild(exportBtn);
-
-  controlsDiv.appendChild(escolaControl);
-  controlsDiv.appendChild(turmaControl);
-  controlsDiv.appendChild(alunoControl);
-  controlsDiv.appendChild(clearControl);
-  controlsDiv.appendChild(exportControl);
-  
-  // Event listeners - agora os elementos já existem
-  escolaSelect.addEventListener('change', () => {
-    updateTurmaFilter(escolaSelect.value, turmaSelect);
-    applyFilters();
-  });
-  
-  turmaSelect.addEventListener('change', applyFilters);
-  alunoInput.addEventListener('input', applyFilters);
-  clearBtn.addEventListener('click', () => {
-    escolaSelect.value = '';
-    turmaSelect.value = '';
-    alunoInput.value = '';
-    updateTurmaFilter('', turmaSelect);
-    applyFilters();
-  });
-  
-  exportBtn.addEventListener('click', () => {
-    const escolaSelecionada = document.getElementById('filter-escola')?.value || '';
-    const turmaSelecionada = document.getElementById('filter-turma')?.value || '';
-    const alunoFiltro = document.getElementById('filter-aluno')?.value?.toLowerCase() || '';
-    exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro);
-  });
-  
-  // Inicializar turmas
-  updateTurmaFilter('', turmaSelect);
-  
-  return controlsDiv;
-}
-
-function updateTurmaFilter(escolaSelecionada, turmaSelect) {
-  if (!turmaSelect) turmaSelect = document.getElementById('filter-turma');
-  if (!turmaSelect) return;
-  
-  // Limpar opções existentes
-  turmaSelect.innerHTML = '';
-  
-  const turmaOption = document.createElement('option');
-  turmaOption.value = '';
-  turmaOption.textContent = 'Todas as turmas';
-  turmaSelect.appendChild(turmaOption);
-  
-  let turmas = [];
-  for (const escola of dashboardData.escolas) {
-    if (!escolaSelecionada || escola.nome === escolaSelecionada) {
-      for (const turma of escola.turmas) {
-        // Verificar se a turma tem alunos ativos
-        let temAlunosAtivos = false;
-        for (const disc of turma.disciplinas) {
-          const alunosAtivos = getAlunosAtivos(disc.alunos);
-          if (alunosAtivos.length > 0) {
-            temAlunosAtivos = true;
-            break;
-          }
-        }
-        if (temAlunosAtivos) {
-          turmas.push(turma.nome);
-        }
-      }
-    }
-  }
-  
-  turmas = [...new Set(turmas)];
-  turmas.forEach(turma => {
-    const option = document.createElement('option');
-    option.value = turma;
-    option.textContent = turma;
-    turmaSelect.appendChild(option);
-  });
-}
-
-function applyFilters() {
-  const container = document.getElementById('dashboard-container');
-  if (!container) return;
-  
-  // SALVAR valores dos filtros ANTES de limpar
-  const escolaSelecionada = document.getElementById('filter-escola')?.value || '';
-  const turmaSelecionada = document.getElementById('filter-turma')?.value || '';
-  const alunoFiltro = document.getElementById('filter-aluno')?.value?.toLowerCase() || '';
-  
-  // LIMPAR container
-  container.innerHTML = '';
-  
-  // RECRIAR controles
-  const controls = createControls();
-  container.appendChild(controls);
-  
-  // RESTAURAR valores nos elementos recém-criados
-  const escolaSelect = document.getElementById('filter-escola');
-  const turmaSelect = document.getElementById('filter-turma');
-  const alunoInput = document.getElementById('filter-aluno');
-  
-  if (escolaSelect) escolaSelect.value = escolaSelecionada;
-  if (turmaSelect) {
-    // Atualizar opções de turma baseado na escola selecionada
-    updateTurmaFilter(escolaSelecionada, turmaSelect);
-    turmaSelect.value = turmaSelecionada;
-  }
-  if (alunoInput) {
-    alunoInput.value = alunoFiltro;
-    // Manter o cursor no campo de busca
-    alunoInput.focus();
-  }
-  
-  // Recriar stats
-  const stats = calculateStats(dashboardData);
-  const statsHtml = `
-    <div class="stats-row">
-      <div class="stat-card">
-        <h3>Total de Alunos</h3>
-        <div class="value">${stats.totalAlunos}</div>
-      </div>
-      <div class="stat-card">
-        <h3>Escolas</h3>
-        <div class="value">${dashboardData.escolas.length}</div>
-      </div>
-      <div class="stat-card">
-        <h3>Média Geral</h3>
-        <div class="value">${stats.mediaGeral}</div>
-        <div class="sublabel">de 0 a 10</div>
-      </div>
-      <div class="stat-card">
-        <h3>Acima de 6.0</h3>
-        <div class="value">${stats.aprovados}</div>
-        <div class="sublabel">${stats.percentualAprovados}%</div>
-      </div>
-    </div>
-  `;
-  container.insertAdjacentHTML('afterbegin', statsHtml);
-
-  // Renderizar com filtros
-  for (const escola of dashboardData.escolas) {
-    if (escolaSelecionada && escola.nome !== escolaSelecionada) continue;
-
-    const escolaCard = document.createElement('div');
-    escolaCard.className = 'escola-card';
-    
-    const escolaHeader = document.createElement('div');
-    escolaHeader.className = 'escola-header';
-    escolaHeader.innerHTML = `<span>${escola.nome}</span>`;
-    escolaCard.appendChild(escolaHeader);
-
-    let temTurmas = false;
-
-    for (const turma of escola.turmas) {
-      if (turmaSelecionada && turma.nome !== turmaSelecionada) continue;
-
-      // Iterar sobre TODAS as disciplinas da turma
-      for (const disc of turma.disciplinas) {
-        const alunos = disc.alunos || [];
-        const temErro = disc.erro ? true : false;
-        
-        // Se tem erro mas sem alunos, mostrar aviso
-        if (temErro && alunos.length === 0) {
-          const turmaCard = document.createElement('div');
-          turmaCard.className = 'turma-card';
-          
-          const erroHeader = document.createElement('div');
-          erroHeader.className = 'turma-header';
-          erroHeader.innerHTML = `
-            <div style="flex: 1;">
-              <div>${turma.nome} - ${disc.disciplina || 'Disciplina'}</div>
-              <div class="turma-info">Erro ao carregar turma</div>
-            </div>
-          `;
-          erroHeader.appendChild(erroHeader);
-
-          const erroDiv = document.createElement('div');
-          erroDiv.className = 'erro-turma';
-          erroDiv.innerHTML = `
-            <div style="padding: 20px; background-color: #ffebee; border-left: 4px solid #c62828; border-radius: 4px; margin: 15px 0;">
-              <strong style="color: #c62828;">⚠️ Erro ao carregar turma</strong>
-              <p style="margin: 8px 0 0 0; font-size: 13px; color: #b71c1c;">
-                ${disc.erro}
-              </p>
-              <p style="margin: 8px 0 0 0; font-size: 12px; color: #d32f2f;">
-                A turma pode estar indisponível no servidor. Tente recarregar em alguns momentos.
-              </p>
-            </div>
-          `;
-          turmaCard.appendChild(erroDiv);
-          escolaCard.appendChild(turmaCard);
-          
-          temTurmas = true;
-          continue; // Pular para próxima disciplina
-        }
-        
-        // Filtrar por nome (inclui ativos e inativos)
-        const alunosFiltrados = alunos.filter(a => a.nome.toLowerCase().includes(alunoFiltro));
-        
-        if (alunosFiltrados.length === 0) continue;
-        
-        // Calcular estatísticas apenas com alunos ativos
-        const alunosAtivos = getAlunosAtivos(alunosFiltrados);
-        if (alunosAtivos.length === 0) continue;
-        
-        temTurmas = true;
-        const turmaCard = document.createElement('div');
-        turmaCard.className = 'turma-card';
-
-        const mediaTurma = alunosAtivos.length > 0 
-          ? (alunosAtivos.reduce((acc, a) => acc + (a.mediaFinal || 0), 0) / alunosAtivos.length).toFixed(1)
-          : 0;
-        const aprovados = alunosAtivos.filter(a => a.mediaFinal >= 6).length;
-        const percentual = alunosAtivos.length > 0 ? ((aprovados / alunosAtivos.length) * 100).toFixed(0) : 0;
-        const alunosInativos = alunosFiltrados.length - alunosAtivos.length;
-
-        const turmaHeader = document.createElement('div');
-        turmaHeader.className = 'turma-header';
-        turmaHeader.innerHTML = `
-          <div style="flex: 1;">
-            <div>${turma.nome} - ${disc.disciplina || 'Disciplina'}</div>
-            <div class="turma-info">
-              ${alunosAtivos.length} alunos${alunosInativos > 0 ? ` (+${alunosInativos} inativos)` : ''} | Média: ${mediaTurma} | ${aprovados} aprovado(s) (${percentual}%)
-            </div>
-          </div>
-        `;
-        turmaCard.appendChild(turmaHeader);
-
-        const table = createStudentsTable(alunosFiltrados);
-        turmaCard.appendChild(table);
-        escolaCard.appendChild(turmaCard);
-      }
-    }
-    
-    if (temTurmas) {
-      container.appendChild(escolaCard);
-    }
-  }
-  
-  // Rodapé
-  const footer = document.createElement('div');
-  footer.className = 'footer';
-  footer.innerHTML = `<p>© 2026 Eduardo L. Borges · MIT License<br>
-                        Projeto independente. Não afiliado ao sistema EscolaRS.</p>`;
-  container.appendChild(footer);
-}
-
-function createStudentsTable(alunos) {
-  const table = document.createElement('table');
-  const thead = document.createElement('thead');
-  const tbody = document.createElement('tbody');
-  
-  // Detectar tipo de período (trimestre ou semestre)
-  const tipoAndPeriodos = detectarTipoEPeriodos(alunos);
-  const periodos = tipoAndPeriodos.periodos;
-  
-  // Montar cabeçalhos dinamicamente
-  let headerHTML = `
-    <tr>
-      <th>Nº</th>
-      <th>Nome</th>`;
-  
-  for (const periodo of periodos) {
-    headerHTML += `<th>${periodo}</th>`;
-  }
-  
-  headerHTML += `
-      <th>Média Final</th>
-      <th>Status</th>
-    </tr>
-  `;
-  
-  thead.innerHTML = headerHTML;
-
-  for (const aluno of alunos) {
-    const row = document.createElement('tr');
-    
-    // Adicionar classe se aluno for inativo
-    if (aluno.situacao && aluno.situacao.ativo === false) {
-      row.classList.add('aluno-inativo');
-    }
-    
-    // Obter notas para cada período dinamicamente
-    const notasPeriodos = periodos.map(periodo => getNotaTexto(aluno.notas, periodo));
-    const todasAsNotasPreenchidas = notasPeriodos.every(nota => nota !== '--');
-
-    let statusTexto = '';
-    let statusClass = '';
-    
-    if(todasAsNotasPreenchidas){
-      statusTexto = 'Reprovado';
-      statusClass = 'status-reprovado';
-      if (aluno.mediaFinal >= 6) {
-        statusTexto = 'Aprovado';
-        statusClass = 'status-excellente';
-      } else if (aluno.mediaFinal >= 5) {
-        statusTexto = 'Recuperação';
-        statusClass = 'status-recuperacao';
-      }
-    }
-    
-    // Montar células de notas dinamicamente
-    let rowHTML = `
-      <td>${aluno.nroNaTurma}</td>
-      <td><strong>${getNomeComSituacao(aluno)}</strong></td>`;
-    
-    // Se aluno é inativo, não mostrar notas, média e status
-    const isInativo = aluno.situacao && aluno.situacao.ativo === false;
-    
-    if (isInativo) {
-      // Para alunos inativos, deixar as colunas vazias
-      for (const nota of notasPeriodos) {
-        rowHTML += `<td></td>`;
-      }
-      rowHTML += `
-        <td></td>
-        <td></td>
-      `;
-    } else {
-      // Para alunos ativos, mostrar valores
-      for (const nota of notasPeriodos) {
-        rowHTML += `<td>${nota}</td>`;
-      }
-      rowHTML += `
-        <td><span class="nota-badge ${getClasseBadge(aluno.mediaFinal)}">${aluno.mediaFinal.toFixed(1).replace('.', ',')}</span></td>
-        <td><span class="${statusClass}">${statusTexto}</span></td>
-      `;
-    }
-    
-    row.innerHTML = rowHTML;
-    tbody.appendChild(row);
-  }
-
-  table.appendChild(thead);
-  table.appendChild(tbody);
-  return table;
-}
-
-function getClasseBadge(media) {
-  if (media >= 6) return 'badge-excelente';
-  if (media >= 5) return 'badge-bom';
-  return 'badge-ruim';
-}
 
 function detectarTipoEPeriodos(alunos) {
-  // Analisar todos os períodos disponíveis
   const periodosSet = new Set();
   let temTrimestre = false;
   let temSemestre = false;
@@ -704,7 +458,6 @@ function detectarTipoEPeriodos(alunos) {
       if (nomePeriodo.includes('trim')) temTrimestre = true;
       if (nomePeriodo.includes('sem')) temSemestre = true;
       
-      // Extrair o número
       const numMatch = nomePeriodo.match(/\d+/);
       if (numMatch) {
         periodosSet.add(numMatch[0]);
@@ -712,17 +465,12 @@ function detectarTipoEPeriodos(alunos) {
     }
   }
   
-  // Determinar tipo e criar lista de períodos ordenados
   const isSemestre = temSemestre && !temTrimestre;
-  const tipo = isSemestre ? 'Sem' : 'Trim';
   const numeros = Array.from(periodosSet).map(Number).sort((a, b) => a - b);
   
   const periodos = numeros.map(num => {
-    if (isSemestre) {
-      return `${num}° Sem`;
-    } else {
-      return `${num}° Trim`;
-    }
+    if (isSemestre) return `${num}° Sem`;
+    return `${num}° Trim`;
   });
   
   return { isSemestre, periodos };
@@ -730,10 +478,8 @@ function detectarTipoEPeriodos(alunos) {
 
 function normalizarNota(valor) {
   if (!valor || valor === '--') return '--';
-  
   const numValor = parseFloat(String(valor).replace(',', '.'));
   if (isNaN(numValor)) return '--';
-  
   return numValor.toFixed(1).replace('.', ',');
 }
 
@@ -741,8 +487,6 @@ function getNotaTexto(lista, periodo) {
   if (!lista || lista.length === 0) return '--';
   
   const periodoLower = periodo.toLowerCase();
-  
-  // Extrai o número do período (1, 2, 3, etc.)
   const numMatch = periodoLower.match(/\d+/);
   if (!numMatch) return '--';
   
@@ -750,17 +494,14 @@ function getNotaTexto(lista, periodo) {
   const isSemestre = periodoLower.includes('sem');
   const isTrimestre = periodoLower.includes('trim');
   
-  // Busca o valor do período principal
   let periodoValor = null;
   for (const item of lista) {
     const nomePeriodo = (item.trimestre || item.nomePeriodo || '').toLowerCase();
     if (!nomePeriodo) continue;
     
-    // Verifica se é o mesmo tipo de período
     const itemEhSemestre = nomePeriodo.includes('sem');
     const itemEhTrimestre = nomePeriodo.includes('trim');
     
-    // Se procura semestre, deveria encontrar semestre (e vice-versa)
     if ((isSemestre && itemEhSemestre || isTrimestre && itemEhTrimestre) && 
         nomePeriodo.includes(numPeriodo) && !nomePeriodo.includes('er')) {
       if (item.nota && item.nota !== '--') {
@@ -770,7 +511,6 @@ function getNotaTexto(lista, periodo) {
     }
   }
   
-  // Busca o valor do ER (se for trimestre) ou recuperação equivalente
   let erValor = null;
   for (const item of lista) {
     const nomePeriodo = (item.trimestre || item.nomePeriodo || '').toLowerCase();
@@ -784,153 +524,14 @@ function getNotaTexto(lista, periodo) {
     }
   }
   
-  // Ambos nulos
   if (periodoValor === null && erValor === null) return '--';
-  
-  // Apenas ER existe
   if (periodoValor === null) return `${normalizarNota(erValor)}*`;
-  
-  // Apenas período existe
   if (erValor === null) return normalizarNota(periodoValor);
   
-  // Ambos existem - retorna o máximo com indicação se for ER
   const periodoNum = parseFloat(String(periodoValor).replace(',', '.'));
   const erNum = parseFloat(String(erValor).replace(',', '.'));
   
-  if (erNum > periodoNum) {
-    return `${normalizarNota(erValor)}*`; // Asterisco indica que é ER
-  }
-  
-  return normalizarNota(periodoValor);
-}
-
-function exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro) {
-  const wb = XLSX.utils.book_new();
-  let temDados = false;
-  
-  // Coletar dados por turma e criar uma aba para cada
-  for (const escola of dashboardData.escolas) {
-    if (escolaSelecionada && escola.nome !== escolaSelecionada) continue;
-    
-    for (const turma of escola.turmas) {
-      if (turmaSelecionada && turma.nome !== turmaSelecionada) continue;
-      
-      // Coletar todos os alunos da turma para detectar tipo de período
-      let todosOsAlunos = [];
-      for (const disc of turma.disciplinas) {
-        todosOsAlunos = todosOsAlunos.concat(disc.alunos || []);
-      }
-      
-      if (todosOsAlunos.length === 0) continue;
-      
-      // Detectar tipo e períodos
-      const tipoAndPeriodos = detectarTipoEPeriodos(todosOsAlunos);
-      const periodos = tipoAndPeriodos.periodos;
-      const isSemestre = tipoAndPeriodos.isSemestre;
-      
-      const dados = [];
-      
-      // Montar cabeçalho dinamicamente
-      const cabecalho = ['Matrícula', 'Nome'];
-      for (const periodo of periodos) {
-        cabecalho.push(periodo);
-        // Se não for semestre, adiciona coluna para ER
-        if (!isSemestre) {
-          const numMatch = periodo.match(/\d+/);
-          if (numMatch) {
-            cabecalho.push(`ER${numMatch[0]}`);
-          }
-        }
-      }
-      cabecalho.push('Disciplina', 'Média Final', 'Status');
-      dados.push(cabecalho);
-      
-      let temAlunosTurma = false;
-      
-      for (const disc of turma.disciplinas) {
-        const alunos = disc.alunos || [];
-        // Filtrar por ativo e por nome
-        const alunosAtivos = getAlunosAtivos(alunos);
-        const alunosFiltrados = alunosAtivos.filter(a => a.nome.toLowerCase().includes(alunoFiltro));
-        
-        for (const aluno of alunosFiltrados) {
-          temAlunosTurma = true;
-          temDados = true;
-          
-          const linha = [
-            aluno.matricula || '',
-            getNomeComSituacao(aluno)
-          ];
-          
-          // Adicionar notas para cada período
-          for (const periodo of periodos) {
-            const notaPeriodo = getNotaValorBruto(aluno.notas, periodo, false);
-            linha.push(notaPeriodo);
-            
-            // Se não for semestre, adiciona ER
-            if (!isSemestre) {
-              const notaER = getNotaValorBruto(aluno.notas, periodo, true);
-              linha.push(notaER);
-            }
-          }
-          
-          let status = 'Sem Notas';
-          if (aluno.mediaFinal > 0) {
-            if (aluno.mediaFinal >= 6) status = 'Aprovado';
-            else if (aluno.mediaFinal >= 5) status = 'Recuperação';
-            else status = 'Reprovado';
-          }
-          
-          linha.push(
-            disc.disciplina || '',
-            aluno.mediaFinal > 0 ? aluno.mediaFinal.toFixed(1).replace('.', ',') : '--',
-            status
-          );
-          
-          dados.push(linha);
-        }
-      }
-      
-      // Se essa turma tem alunos, criar uma aba para ela
-      if (temAlunosTurma && dados.length > 1) {
-        const nomeAba = turma.nome.substring(0, 31); // Excel limita a 31 caracteres
-        const ws = XLSX.utils.aoa_to_sheet(dados);
-        
-        // Calcular largura das colunas dinamicamente
-        const colWidths = [
-          { wch: 12 }, // Matrícula
-          { wch: 25 }  // Nome
-        ];
-        
-        // Adicionar largura para períodos e ERs
-        for (const periodo of periodos) {
-          colWidths.push({ wch: 10 }); // Período
-          if (!isSemestre) {
-            colWidths.push({ wch: 8 }); // ER
-          }
-        }
-        
-        colWidths.push(
-          { wch: 20 }, // Disciplina
-          { wch: 12 }, // Média Final
-          { wch: 15 }  // Status
-        );
-        
-        ws['!cols'] = colWidths;
-        XLSX.utils.book_append_sheet(wb, ws, nomeAba);
-      }
-    }
-  }
-  
-  // Se não houver dados, avisar
-  if (!temDados) {
-    alert('Nenhum dado para exportar com os filtros selecionados.');
-    return;
-  }
-  
-  // Fazer download
-  const nomeArquivo = `${dashboardData.professor.replace(' ', '_')}_notas_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`;
-  XLSX.writeFile(wb, nomeArquivo);
+  return (erNum > periodoNum) ? `${normalizarNota(erValor)}*` : normalizarNota(periodoValor);
 }
 
 function getNotaValorBruto(lista, periodo, isER) {
@@ -946,8 +547,6 @@ function getNotaValorBruto(lista, periodo, isER) {
   
   for (const item of lista) {
     const nomePeriodo = (item.trimestre || item.nomePeriodo || '').toLowerCase();
-    
-    // Verificar tipo de período (semestre ou trimestre)
     const itemEhSemestre = nomePeriodo.includes('sem');
     const itemEhTrimestre = nomePeriodo.includes('trim');
     
@@ -956,13 +555,100 @@ function getNotaValorBruto(lista, periodo, isER) {
         return item.nota && item.nota !== '--' ? normalizarNota(item.nota) : '--';
       }
     } else {
-      // Procurar período principal (sem ER)
       if ((isSemestre && itemEhSemestre || isTrimestre && itemEhTrimestre) && 
           nomePeriodo.includes(numPeriodo) && !nomePeriodo.includes('er')) {
         return item.nota && item.nota !== '--' ? normalizarNota(item.nota) : '--';
       }
     }
   }
-  
   return '--';
+}
+
+function exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro) {
+  const wb = XLSX.utils.book_new();
+  let temDados = false;
+  
+  for (const escola of dashboardData.escolas) {
+    if (escolaSelecionada && escola.nome !== escolaSelecionada) continue;
+    
+    for (const turma of escola.turmas) {
+      if (turmaSelecionada && turma.nome !== turmaSelecionada) continue;
+      
+      let todosOsAlunos = [];
+      for (const disc of turma.disciplinas) {
+        todosOsAlunos = todosOsAlunos.concat(disc.alunos || []);
+      }
+      if (todosOsAlunos.length === 0) continue;
+      
+      const { periodos, isSemestre } = detectarTipoEPeriodos(todosOsAlunos);
+      const dados = [];
+      
+      const cabecalho = ['Matrícula', 'Nome'];
+      for (const periodo of periodos) {
+        cabecalho.push(periodo);
+        if (!isSemestre) {
+          const numMatch = periodo.match(/\d+/);
+          if (numMatch) cabecalho.push(`ER${numMatch[0]}`);
+        }
+      }
+      cabecalho.push('Disciplina', 'Média Final', 'Status');
+      dados.push(cabecalho);
+      
+      let temAlunosTurma = false;
+      
+      for (const disc of turma.disciplinas) {
+        const alunosFiltrados = getAlunosAtivos(disc.alunos || []).filter(a => a.nome.toLowerCase().includes(alunoFiltro));
+        
+        for (const aluno of alunosFiltrados) {
+          temAlunosTurma = true;
+          temDados = true;
+          
+          const linha = [aluno.matricula || '', getNomeComSituacao(aluno)];
+          
+          for (const periodo of periodos) {
+            linha.push(getNotaValorBruto(aluno.notas, periodo, false));
+            if (!isSemestre) {
+              linha.push(getNotaValorBruto(aluno.notas, periodo, true));
+            }
+          }
+          
+          let status = 'Sem Notas';
+          if (aluno.mediaFinal > 0) {
+            if (aluno.mediaFinal >= 6) status = 'Aprovado';
+            else if (aluno.mediaFinal >= 5) status = 'Recuperação';
+            else status = 'Reprovado';
+          }
+          
+          linha.push(
+            disc.disciplina || '',
+            aluno.mediaFinal > 0 ? aluno.mediaFinal.toFixed(1).replace('.', ',') : '--',
+            status
+          );
+          dados.push(linha);
+        }
+      }
+      
+      if (temAlunosTurma && dados.length > 1) {
+        const nomeAba = turma.nome.substring(0, 31);
+        const ws = XLSX.utils.aoa_to_sheet(dados);
+        
+        const colWidths = [{ wch: 12 }, { wch: 25 }];
+        for (const _ of periodos) {
+          colWidths.push({ wch: 10 });
+          if (!isSemestre) colWidths.push({ wch: 8 });
+        }
+        colWidths.push({ wch: 20 }, { wch: 12 }, { wch: 15 });
+        ws['!cols'] = colWidths;
+        XLSX.utils.book_append_sheet(wb, ws, nomeAba);
+      }
+    }
+  }
+  
+  if (!temDados) {
+    alert('Nenhum dado para exportar com os filtros selecionados.');
+    return;
+  }
+  
+  const nomeArquivo = `${dashboardData.professor.replace(' ', '_')}_notas_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`;
+  XLSX.writeFile(wb, nomeArquivo);
 }

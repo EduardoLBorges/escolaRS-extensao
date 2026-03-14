@@ -4,51 +4,17 @@
  */
 
 /**
- * Normaliza uma string removendo diacríticos e símbolos especiais
- * @param {string} str - String a normalizar
- * @returns {string} String normalizada
- */
-function normalizarString(str) {
-  return String(str)
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s]/g, "")
-    .replace(/\s+/g, " ");
-}
-
-/**
- * Obtém o valor de uma nota de uma lista de resultados
- * @param {Array} lista - Lista de resultados/notas
- * @param {string} periodo - Nome do período (trimestre, semestre, etc)
- * @returns {number} Valor da nota, ou -1 se não encontrado/inválido
- */
-function getNotaValor(lista, periodo) {
-  const periodoNormalizado = normalizarString(periodo);
-  
-  const item = lista.find(r => {
-    const nomeNormalizado = normalizarString(r.nomePeriodo || r.trimestre || "");
-    return nomeNormalizado === periodoNormalizado;
-  });
-  
-  if (!item || item.resultado === "--" || item.resultado == null || item.nota === "--" || item.nota == null) {
-    return -1;
-  }
-  
-  const valor = item.resultado ?? item.nota;
-  return parseFloat(String(valor).replace(",", "."));
-}
-
-/**
  * Calcula a média final de um aluno baseado em sua lista de resultados
  * Suporta tanto sistema trimestral (3 trimestres) quanto semestral (EJA - 2 semestres)
- * 
- * Fórmula trimestral: (T1*3 + T2*3 + T3*4) / 10
- * Fórmula semestral: (S1 + S2) / 2
  * 
  * @param {Array} listaResultados - Lista de resultados do aluno
  * @returns {number} Média final (1 casa decimal) ou 0 se incompleto
  */
 function calcularMediaFinal(listaResultados) {
+  // --- Constantes para os Cálculos ---
+  const PESOS_TRIMESTRE = [3, 3, 4];
+  const SOMA_PESOS_TRIMESTRE = PESOS_TRIMESTRE.reduce((a, b) => a + b, 0);
+
   // Cria um mapa dos períodos encontrados para fácil acesso
   const periodos = {};
   let temTrimestre = false;
@@ -122,8 +88,8 @@ function calcularMediaFinal(listaResultados) {
     return 0;
   }
 
-  // Fórmula para trimestres: (T1*3 + T2*3 + T3*4) / 10
-  const media = ((trim1 * 3) + (trim2 * 3) + (trim3 * 4)) / 10;
+  // Fórmula para trimestres: (T1*P1 + T2*P2 + T3*P3) / Soma dos Pesos
+  const media = ((trim1 * PESOS_TRIMESTRE[0]) + (trim2 * PESOS_TRIMESTRE[1]) + (trim3 * PESOS_TRIMESTRE[2])) / SOMA_PESOS_TRIMESTRE;
   return parseFloat(media.toFixed(1));
 }
 
