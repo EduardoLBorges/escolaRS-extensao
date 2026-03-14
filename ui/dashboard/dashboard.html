@@ -9,9 +9,14 @@
 <body>
 
   <header>
-    <h1>Dashboard de Notas</h1>
+    <div class="header-top">
+      <h1>Dashboard de Notas</h1>
+      <button id="header-refresh" title="Atualizar dados" aria-label="Atualizar dados" type="button">⟳</button>
+    </div>
+
     <p id="professor-info"></p>
     <p id="export-date"></p>
+    <p id="cache-info" style="font-size: 12px; color: #555; margin: 0;"></p>
   </header>
 
   <main id="dashboard-container">

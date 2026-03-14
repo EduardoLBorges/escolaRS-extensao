@@ -8,6 +8,30 @@ importScripts('api/escolaRS.js', 'utils/notas.js', 'services/dashboardService.js
 
 let ultimoToken = null;
 
+const DASHBOARD_CACHE_KEY = 'dashboardCache';
+
+function getCachedDashboardData() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([DASHBOARD_CACHE_KEY], (result) => {
+      const cached = result[DASHBOARD_CACHE_KEY] || null;
+      resolve(cached);
+    });
+  });
+}
+
+function setCachedDashboardData(data) {
+  chrome.storage.local.set({
+    [DASHBOARD_CACHE_KEY]: {
+      data,
+      fetchedAt: new Date().toISOString()
+    }
+  });
+}
+
+function clearCachedDashboardData() {
+  chrome.storage.local.remove([DASHBOARD_CACHE_KEY]);
+}
+
 chrome.webRequest.onBeforeSendHeaders.addListener(
   (details) => {
     const authHeader = details.requestHeaders.find(
@@ -79,11 +103,33 @@ chrome.action.onClicked.addListener(async (tab) => {
 });
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "getDashboardData") {
+  if (request.action === "getDashboardData" || request.action === "refreshDashboardData") {
     (async () => {
       try {
+        if (request.action === "refreshDashboardData" || request.forceRefresh) {
+          clearCachedDashboardData();
+        }
+
+        const cached = await getCachedDashboardData();
+        if (cached && request.action !== "refreshDashboardData" && !request.forceRefresh) {
+          sendResponse({
+            success: true,
+            data: cached.data,
+            cached: true,
+            cachedAt: cached.fetchedAt
+          });
+          return;
+        }
+
         const data = await buildDashboardFromStorage();
-        sendResponse({ success: true, data: data });
+        setCachedDashboardData(data);
+
+        sendResponse({
+          success: true,
+          data,
+          cached: false,
+          cachedAt: new Date().toISOString()
+        });
       } catch (error) {
         console.error('[Background] Erro ao construir dados do dashboard:', error);
         sendResponse({ success: false, error: error.message });

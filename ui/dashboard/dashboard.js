@@ -1,10 +1,60 @@
 let dashboardData = null;
 
-document.addEventListener('DOMContentLoaded', () => {
+function loadDashboard(forceRefresh = false) {
   const loadingDiv = document.getElementById('loading');
   const progressContainer = document.getElementById('progress-container');
-  const container = document.getElementById('dashboard-container');
+  const progressFill = document.getElementById('progress-fill');
+  const progressText = document.getElementById('progress-text');
+  const cacheInfo = document.getElementById('cache-info');
 
+  if (progressFill) progressFill.style.width = '0%';
+  if (progressText) progressText.textContent = '0%';
+  if (cacheInfo) cacheInfo.textContent = '';
+
+  // Exibir feedback visual (progress bar) apenas se demorar mais que 300ms,
+  // exceto quando for uma atualização forçada.
+  let showProgressTimeout = null;
+  if (forceRefresh) {
+    if (loadingDiv) loadingDiv.style.display = 'none';
+    if (progressContainer) progressContainer.style.display = 'block';
+  } else {
+    if (loadingDiv) loadingDiv.style.display = 'block';
+    if (progressContainer) progressContainer.style.display = 'none';
+
+    showProgressTimeout = setTimeout(() => {
+      if (loadingDiv && loadingDiv.style.display !== 'none') {
+        loadingDiv.style.display = 'none';
+        if (progressContainer) progressContainer.style.display = 'block';
+      }
+    }, 300);
+  }
+
+  const action = forceRefresh ? 'refreshDashboardData' : 'getDashboardData';
+
+  chrome.runtime.sendMessage({ action }, (response) => {
+    if (showProgressTimeout) clearTimeout(showProgressTimeout);
+    if (loadingDiv) loadingDiv.style.display = 'none';
+    if (progressContainer) progressContainer.style.display = 'none';
+
+    const container = document.getElementById('dashboard-container');
+
+    if (!response || !response.success) {
+      if (container) displayError(container, response?.error || 'Ocorreu um erro desconhecido.');
+      console.error('Falha ao obter dados do dashboard:', response?.error);
+      return;
+    }
+
+    dashboardData = response.data;
+
+    document.getElementById('professor-info').textContent = `Professor: ${dashboardData.professor}`;
+    const dataExport = new Date(dashboardData.data_exportacao);
+    document.getElementById('export-date').textContent = `Exportado em: ${dataExport.toLocaleString('pt-BR')}`;
+
+    renderDashboard();
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
   // Listener para mensagens de progresso do background.js
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'updateProgress') {
@@ -18,32 +68,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  chrome.runtime.sendMessage({ action: 'getDashboardData' }, (response) => {
-    loadingDiv.style.display = 'none';
-    progressContainer.style.display = 'none';
-
-    if (!response || !response.success) {
-      displayError(container, response?.error || 'Ocorreu um erro desconhecido.');
-      console.error('Falha ao obter dados do dashboard:', response?.error);
-      return;
-    }
-
-    dashboardData = response.data;
-    
-    document.getElementById('professor-info').textContent = `Professor: ${dashboardData.professor}`;
-    const dataExport = new Date(dashboardData.data_exportacao);
-    document.getElementById('export-date').textContent = `Exportado em: ${dataExport.toLocaleString('pt-BR')}`;
-    
-    renderDashboard();
+  // Botão de atualização no header (força nova chamada à API)
+  document.getElementById('header-refresh')?.addEventListener('click', () => {
+    loadDashboard(true);
   });
 
-  // Mostrar progress container após 300ms se ainda estiver carregando
-  setTimeout(() => {
-    if (loadingDiv.style.display !== 'none') {
-      loadingDiv.style.display = 'none';
-      progressContainer.style.display = 'block';
-    }
-  }, 300);
+  // Carregar dados (usa cache por padrão)
+  loadDashboard(false);
 });
 
 function displayError(container, errorMessage) {
@@ -302,7 +333,7 @@ function createControls() {
   
   exportControl.innerHTML = '<label>&nbsp;</label>';
   exportControl.appendChild(exportBtn);
-  
+
   controlsDiv.appendChild(escolaControl);
   controlsDiv.appendChild(turmaControl);
   controlsDiv.appendChild(alunoControl);

@@ -11,9 +11,15 @@ body {
 header { 
   background: linear-gradient(135deg, #2e7d32 0%, #1b5e20 100%);
   color: white; 
-  text-align: center;
   padding: 25px; 
   box-shadow: 0 4px 6px rgba(0,0,0,0.15);
+}
+
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 header h1 { 
@@ -21,6 +27,30 @@ header h1 {
   font-size: 28px; 
   align-items: center;
   gap: 10px;
+}
+
+#header-refresh {
+  border: none;
+  background: rgba(255,255,255,0.15);
+  color: white;
+  padding: 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 18px;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+#header-refresh:hover {
+  background: rgba(255,255,255,0.25);
+  transform: translateY(-1px);
+}
+
+#header-refresh:active {
+  transform: translateY(0);
 }
 
 header p { margin: 5px 0; font-size: 14px; opacity: 0.95; }
