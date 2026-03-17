@@ -77,9 +77,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const progressText = document.getElementById('progress-text');
       const progressStatus = document.getElementById('progress-status');
       
-      progressFill.style.width = request.percentage + '%';
-      progressText.textContent = request.percentage + '%';
-      progressStatus.textContent = request.status;
+      if (progressFill) progressFill.style.width = request.percentage + '%';
+      if (progressText) progressText.textContent = request.percentage + '%';
+      if (progressStatus) progressStatus.textContent = request.status;
     }
   });
 
