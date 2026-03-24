@@ -314,10 +314,34 @@ button:hover { background: #2e7d32; }
 
 .clearfilters:hover { background: #0d3b1a; }
 
+.refresh-progress-container {
+  height: 4px;
+  background-color: #e8f5e9;
+  width: 100%;
+  display: none;
+}
+
+.refresh-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #4caf50 0%, #2e7d32 100%);
+  width: 0%;
+  transition: width 0.3s ease;
+}
+
 @media (max-width: 768px) {
   .controls { grid-template-columns: 1fr; }
   .stats-row { grid-template-columns: 1fr; }
   header h1 { font-size: 20px; }
   table { font-size: 12px; }
   th, td { padding: 8px; }
+}
+
+@keyframes blink-error-anim {
+  0%, 100% { opacity: 1; background-color: #f44336; }
+  50% { opacity: 0.3; background-color: #f44336; }
+}
+
+.blink-error {
+  background: #f44336 !important;
+  animation: blink-error-anim 0.5s ease-in-out 6;
 }

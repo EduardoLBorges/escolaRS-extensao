@@ -94,9 +94,9 @@ function loadDashboard(forceRefresh = false) {
 
   if (forceRefresh) {
     loadingDiv.style.display = 'none';
-    progressContainer.style.display = 'block';
-    document.querySelector(SELECTORS.progressFill).style.width = '0%';
-    document.querySelector(SELECTORS.progressText).textContent = '0%';
+    progressContainer.style.display = 'none';
+    document.querySelector('#refresh-progress').style.display = 'block';
+    document.querySelector('#refresh-progress-bar').style.width = '0%';
   } else {
     loadingDiv.style.display = 'block';
     progressContainer.style.display = 'none';
@@ -112,8 +112,27 @@ function loadDashboard(forceRefresh = false) {
     if (showProgressTimeout) clearTimeout(showProgressTimeout);
     loadingDiv.style.display = 'none';
     progressContainer.style.display = 'none';
+    document.querySelector('#refresh-progress').style.display = 'none';
     
     if (!response || !response.success) {
+      if (dashboardData && forceRefresh) {
+        const pCont = document.querySelector('#refresh-progress');
+        const pBar = document.querySelector('#refresh-progress-bar');
+        
+        pCont.style.display = 'block';
+        pBar.style.width = '100%';
+        pBar.classList.add('blink-error');
+        
+        setTimeout(() => {
+          pCont.style.display = 'none';
+          pBar.classList.remove('blink-error');
+          pBar.style.width = '0%';
+        }, 3000);
+        
+        console.error('Falha ao atualizar dados:', response?.error);
+        return;
+      }
+      
       displayError(response?.error || 'Ocorreu um erro desconhecido.');
       return;
     }
@@ -169,6 +188,11 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelector(SELECTORS.progressFill).style.width = request.percentage + '%';
       document.querySelector(SELECTORS.progressText).textContent = request.percentage + '%';
       document.querySelector(SELECTORS.progressStatus).textContent = request.status;
+      
+      const refreshProgressBar = document.querySelector('#refresh-progress-bar');
+      if (refreshProgressBar) {
+        refreshProgressBar.style.width = request.percentage + '%';
+      }
     }
   });
 
