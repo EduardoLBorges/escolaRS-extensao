@@ -121,10 +121,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "getDashboardData" || request.action === "refreshDashboardData") {
     (async () => {
       try {
-        if (request.action === "refreshDashboardData" || request.forceRefresh) {
-          clearCachedDashboardData();
-        }
-
         const cached = await getCachedDashboardData();
         if (cached && request.action !== "refreshDashboardData" && !request.forceRefresh) {
           sendResponse({

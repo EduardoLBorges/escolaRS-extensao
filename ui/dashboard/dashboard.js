@@ -153,6 +153,18 @@ function loadDashboard(forceRefresh = false) {
  */
 function renderApp() {
   const container = document.querySelector(SELECTORS.mainContainer);
+  
+  // Salva estado atual (filtros e scroll)
+  const escolaInput = document.querySelector(SELECTORS.filterEscola);
+  const turmaInput = document.querySelector(SELECTORS.filterTurma);
+  const alunoInput = document.querySelector(SELECTORS.filterAluno);
+  
+  const currentEscola = escolaInput ? escolaInput.value : '';
+  const currentTurma = turmaInput ? turmaInput.value : '';
+  const currentAluno = alunoInput ? alunoInput.value : '';
+  
+  const currentScrollY = window.scrollY;
+
   container.innerHTML = ''; // Limpa o container principal
 
   if (!dashboardData || !dashboardData.escolas || dashboardData.escolas.length === 0) {
@@ -178,6 +190,46 @@ function renderApp() {
   
   // Associa eventos aos controles recém-criados
   attachControlEvents();
+
+  // Restaura estado anterior (filtros)
+  const novoEscolaInput = document.querySelector(SELECTORS.filterEscola);
+  const novoTurmaInput = document.querySelector(SELECTORS.filterTurma);
+  const novoAlunoInput = document.querySelector(SELECTORS.filterAluno);
+  
+  let filtrosAplicados = false;
+  
+  if (novoEscolaInput && currentEscola) {
+    const optionExiste = Array.from(novoEscolaInput.options).some(opt => opt.value === currentEscola);
+    if (optionExiste) {
+       novoEscolaInput.value = currentEscola;
+       updateTurmaDropdown();
+       filtrosAplicados = true;
+    }
+  }
+  
+  if (novoTurmaInput && currentTurma) {
+    const optionExiste = Array.from(novoTurmaInput.options).some(opt => opt.value === currentTurma);
+    if (optionExiste) {
+       novoTurmaInput.value = currentTurma;
+       filtrosAplicados = true;
+    }
+  }
+  
+  if (novoAlunoInput && currentAluno) {
+    novoAlunoInput.value = currentAluno;
+    if (currentAluno.trim() !== '') {
+        filtrosAplicados = true;
+    }
+  }
+  
+  if (filtrosAplicados) {
+    applyFilters();
+  }
+
+  // Restaura o scroll
+  setTimeout(() => {
+    window.scrollTo(0, currentScrollY);
+  }, 0);
 }
 
 
@@ -447,26 +499,38 @@ function applyFilters() {
         
         let algumaTurmaVisivelNaEscola = false;
         
-        escolaCard.querySelectorAll('.turma-card-content').forEach(disciplinaCard => {
-            const turmaNome = disciplinaCard.dataset.turmaNome;
-            const disciplinaTurmaMatch = !turmaFiltro || turmaNome === turmaFiltro;
+        escolaCard.querySelectorAll('.turma-card').forEach(turmaCard => {
+            const turmaNome = turmaCard.dataset.turmaNome;
+            const turmaMatch = !turmaFiltro || turmaNome === turmaFiltro;
 
-            let algumAlunoVisivelNaDisciplina = false;
-            disciplinaCard.querySelectorAll(SELECTORS.alunoRow).forEach(alunoRow => {
-                const alunoNome = alunoRow.dataset.alunoNome || '';
-                const alunoMatch = !alunoFiltro || alunoNome.includes(alunoFiltro);
+            let algumaDisciplinaVisivelNaTurma = false;
+
+            turmaCard.querySelectorAll('.turma-card-content').forEach(disciplinaCard => {
+                let algumAlunoVisivelNaDisciplina = false;
                 
-                alunoRow.style.display = alunoMatch ? '' : 'none';
-                if (alunoMatch) {
-                    algumAlunoVisivelNaDisciplina = true;
+                disciplinaCard.querySelectorAll(SELECTORS.alunoRow).forEach(alunoRow => {
+                    const alunoNome = alunoRow.dataset.alunoNome || '';
+                    const alunoMatch = !alunoFiltro || alunoNome.includes(alunoFiltro);
+                    
+                    alunoRow.style.display = alunoMatch ? '' : 'none';
+                    if (alunoMatch) {
+                        algumAlunoVisivelNaDisciplina = true;
+                    }
+                });
+                
+                // Uma disciplina é visível se ela pertence a uma turma que bate com o filtro E tem algum aluno visível
+                const disciplinaVisivel = turmaMatch && algumAlunoVisivelNaDisciplina;
+                disciplinaCard.style.display = disciplinaVisivel ? '' : 'none';
+                
+                if (disciplinaVisivel) {
+                     algumaDisciplinaVisivelNaTurma = true;
                 }
             });
-            
-            // Uma disciplina é visível se ela pertence a uma turma que bate com o filtro E tem algum aluno visível
-            const disciplinaVisivel = disciplinaTurmaMatch && algumAlunoVisivelNaDisciplina;
-            disciplinaCard.style.display = disciplinaVisivel ? '' : 'none';
-            
-            if (disciplinaVisivel) {
+
+            // Oculta a turma inteira caso nenhuma disciplina dela deva aparecer
+            turmaCard.style.display = algumaDisciplinaVisivelNaTurma ? '' : 'none';
+
+            if (algumaDisciplinaVisivelNaTurma) {
                  algumaTurmaVisivelNaEscola = true;
             }
         });

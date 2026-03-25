@@ -98,6 +98,14 @@ async function getDashboardData(token, nrDoc, onProgress = null) {
     onProgress
   );
 
+  // Se todas as requisições falharem (ex: sem conexão), aborta tudo para não sobrescrever o cache com erros
+  if (allResults.length > 0) {
+    const allRejected = allResults.every(r => r.status === 'rejected');
+    if (allRejected) {
+      throw new Error("Sem conexão com a internet ou portal indisponível. A atualização foi cancelada para preservar seus dados salvos.");
+    }
+  }
+
   // 4. Reconstruir a estrutura de dados aninhada
   const escolasMap = new Map();
 
