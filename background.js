@@ -2,11 +2,12 @@
 importScripts('api/escolaRS.js', 'utils/notas.js', 'services/dashboardService.js');
 
 
-// --- INTERCEPTAÇÃO DE TOKEN VIA webRequest ---
-// Captura o token Bearer de qualquer requisição feita pelo navegador
+// --- INTERCEPTAÇÃO DE AUTENTICAÇÃO VIA webRequest ---
+// Captura o token Bearer e o nrDoc de requisições feitas pelo navegador
 // às URLs do EscolaRS — funciona independente de contexto ou framework do SPA
 
 let ultimoToken = null;
+let ultimoNrDoc = null;
 
 const DASHBOARD_CACHE_KEY = 'dashboardCache';
 
@@ -34,23 +35,37 @@ function clearCachedDashboardData() {
 
 chrome.webRequest.onBeforeSendHeaders.addListener(
   (details) => {
+    // 1. Capturar Token de Autenticação
     const authHeader = details.requestHeaders.find(
       (h) => h.name.toLowerCase() === 'authorization'
     );
 
-    if (!authHeader || !authHeader.value) return;
+    if (authHeader && authHeader.value) {
+      const match = authHeader.value.match(/^Bearer\s+(.+)$/i);
+      if (match) {
+        const tokenCapturado = authHeader.value;
+        if (tokenCapturado !== ultimoToken) {
+          ultimoToken = tokenCapturado;
+          chrome.storage.local.set({ escolaRsToken: tokenCapturado }, () => {
+            console.log('[Background] Token atualizado via webRequest.');
+          });
+        }
+      }
+    }
 
-    const match = authHeader.value.match(/^Bearer\s+(.+)$/i);
-    if (!match) return;
+    // 2. Capturar nrDoc da URL
+    const nrDocRegex = /listarEscolasDoProfessorEChamadas\/(\d+)/;
+    const urlMatch = details.url.match(nrDocRegex);
 
-    const tokenCapturado = authHeader.value;
-
-    if (tokenCapturado === ultimoToken) return;
-    ultimoToken = tokenCapturado;
-
-    chrome.storage.local.set({ escolaRsToken: tokenCapturado }, () => {
-      console.log('[Background] Token atualizado via webRequest.');
-    });
+    if (urlMatch && urlMatch[1]) {
+      const nrDocCapturado = urlMatch[1];
+      if (nrDocCapturado !== ultimoNrDoc) {
+        ultimoNrDoc = nrDocCapturado;
+        chrome.storage.local.set({ nrDoc: nrDocCapturado }, () => {
+          console.log('[Background] nrDoc atualizado via webRequest.');
+        });
+      }
+    }
   },
   {
     urls: [
