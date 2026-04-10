@@ -114,17 +114,18 @@ function setupEventListeners() {
   document.getElementById('settingsModal').addEventListener('click', (e) => {
     if (e.target.classList.contains('form-action-btn')) {
       const action = e.target.dataset.action;
-      if (action === 'fillWithApiSchedule') window.fillWithApiSchedule();
-      else if (action === 'addScheduleRow') window.addScheduleRow();
+      if (action === 'switchShiftTab') {
+         window.switchShiftTab(e.target);
+      }
       else if (action === 'saveNewSchedule') window.saveNewSchedule();
       else if (action === 'renderSchedulesList') renderSchedulesList();
-      else if (action === 'removeTempRow') {
-        const idx = parseInt(e.target.dataset.index);
-        window.removeTempRow(idx);
-      }
       else if (action === 'deleteSchedule') {
         const idx = parseInt(e.target.dataset.index);
         window.deleteSchedule(idx);
+      }
+      else if (action === 'duplicateSchedule') {
+        const idx = parseInt(e.target.dataset.index);
+        window.duplicateSchedule(idx);
       }
       else if (action === 'editSchedule') {
         const idx = parseInt(e.target.dataset.index);
@@ -803,6 +804,27 @@ window.submitAttendance = async (formIndex, idTurma, idDisciplina, qtPeriodos, d
       state.token
     );
 
+    // Salvar localmente no state para persistir durante a mesma sessão sem F5
+    const discToUpdate = turmaDados.disciplinas.find(d => d.id === idDisciplina);
+    if (discToUpdate) {
+        if (!discToUpdate.chamadas) discToUpdate.chamadas = [];
+        
+        let existing = discToUpdate.chamadas.find(c => c.data === isoDate);
+        if (existing) {
+            existing.alunoFaltas = alunoFaltas;
+            existing.registroConteudo = conteudo;
+        } else {
+            discToUpdate.chamadas.push({
+                data: isoDate,
+                alunoFaltas: alunoFaltas,
+                registroConteudo: conteudo,
+                qtPeriodos: payload.periodos ? payload.periodos.length : payload.qtPeriodos
+            });
+        }
+        
+        mapearAulasDaSemana(); // Reconstrói os mapas do calendário e histórico com os novos dados
+    }
+
     showToast('Chamada registrada com sucesso!', 'success');
 
     // Atualiza imediatamente a visualização do Card para estado completo
@@ -930,37 +952,23 @@ function renderSchedulesList() {
     return;
   }
 
+  // Ordena por vigência (do mais recente para o mais antigo)
+  state.horariosCustomizados.sort((a, b) => new Date(b.dataInicio) - new Date(a.dataInicio));
+  chrome.storage.local.set({ escolaRsHorariosCustomizados: state.horariosCustomizados });
+
   state.horariosCustomizados.forEach((h, index) => {
     const div = document.createElement('div');
     div.className = 'schedule-item';
 
-    let htmlGrid = '<div class="schedule-item-grid">';
-    const daysStr = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-    htmlGrid += '<table class="grid-table"><thead><tr><th>Dia</th><th>Turma/Disc</th><th>Períodos</th></tr></thead><tbody>';
-
-    // Sort array by day
-    h.aulas.sort((a, b) => a.diaSemana - b.diaSemana).forEach(a => {
-      const conf = buildAulaConfigFromIds(a.idTurma, a.idDisciplina);
-      if (conf) {
-        htmlGrid += `<tr>
-            <td>${daysStr[a.diaSemana]}</td>
-            <td>${conf.turma.nome} - ${conf.disciplina.nome}</td>
-            <td>${a.periodos.join(', ')}</td>
-          </tr>`;
-      }
-    });
-
-    htmlGrid += '</tbody></table></div>';
-
     div.innerHTML = `
-      <div class="schedule-item-header">
-        <span>${h.nome} (Vigente a partir de ${h.dataInicio.split('-').reverse().join('/')})</span>
-        <div>
+      <div class="schedule-item-header" style="display: flex; flex-direction: column; gap: 10px;">
+        <span style="font-weight: 600; font-size: 1.1em; color: #2d3748;">${h.nome} <small style="font-weight: normal; color: #718096;">(Vigente a partir de ${h.dataInicio.split('-').reverse().join('/')})</small></span>
+        <div class="class-actions" style="display: flex; gap: 10px; margin-top: 5px;">
+          <button class="btn btn-secondary form-action-btn" data-action="duplicateSchedule" data-index="${index}">📑 Duplicar</button>
           <button class="btn btn-secondary form-action-btn" data-action="editSchedule" data-index="${index}">✏️ Editar</button>
           <button class="btn btn-danger form-action-btn" data-action="deleteSchedule" data-index="${index}">🗑️ Remover</button>
         </div>
       </div>
-      ${htmlGrid}
     `;
     container.appendChild(div);
   });
@@ -974,6 +982,20 @@ window.deleteSchedule = async (index) => {
   }
 };
 
+window.duplicateSchedule = async (index) => {
+  const original = state.horariosCustomizados[index];
+  const copy = JSON.parse(JSON.stringify(original)); // Deep copy
+  
+  copy.id = Date.now().toString();
+  copy.nome = copy.nome + ' (Cópia)';
+  
+  state.horariosCustomizados.push(copy);
+  await chrome.storage.local.set({ escolaRsHorariosCustomizados: state.horariosCustomizados });
+  
+  showToast('Quadro duplicado com sucesso!', 'success');
+  renderSchedulesList();
+};
+
 function showNewScheduleForm() {
   document.getElementById('schedulesList').classList.add('hidden');
   const container = document.getElementById('scheduleFormContainer');
@@ -983,7 +1005,7 @@ function showNewScheduleForm() {
   state.escolas.forEach(e => {
     e.turmas.forEach(t => {
       t.disciplinas.forEach(d => {
-        options += `<option value="${t.id}|${d.id}">${e.nome} - ${t.nome} - ${d.nome}</option>`;
+        options += `<option value="${t.id}|${d.id}">${t.nome} - ${e.nome} - ${d.nome}</option>`;
       });
     });
   });
@@ -999,51 +1021,79 @@ function showNewScheduleForm() {
         <label>Início da Vigência</label>
         <input type="date" id="schDataInicio" class="form-control">
       </div>
-      <div class="form-group" style="flex:1; display:flex; align-items:flex-end;">
-        <button class="btn btn-secondary form-action-btn" data-action="fillWithApiSchedule" style="width:100%;" title="Puxa a grade atual sincronizada com o estado">⏬ Preencher com Grade Atual</button>
-      </div>
     </div>
     
-    <div class="form-grid-creator">
-      <h4 style="margin-bottom: 10px;">Aulas da Grade Semanal</h4>
-      <div class="grid-row-creator">
-        <select id="schDia" class="form-control" style="width:130px;">
-          <option value="1">Segunda-feira</option>
-          <option value="2">Terça-feira</option>
-          <option value="3">Quarta-feira</option>
-          <option value="4">Quinta-feira</option>
-          <option value="5">Sexta-feira</option>
-          <option value="6">Sábado</option>
-          <option value="0">Domingo</option>
-        </select>
-        <select id="schDisc" class="form-control" style="flex:1;">
-          ${options}
-        </select>
-        <input type="text" id="schPeriodos" class="form-control" placeholder="Ex: 1, 2" title="Períodos separados por vírgula" style="width:120px;">
-        <button class="btn btn-secondary form-action-btn" data-action="addScheduleRow">Adicionar</button>
+    <div class="form-grid-creator" style="margin-top: 20px;">
+      <h4 style="margin-bottom: 10px;">Quadro Semanal por Turno</h4>
+      
+      <div class="shift-tabs" style="display:flex; gap:10px; margin-bottom: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">
+        <button class="btn shift-tab-btn active form-action-btn" data-target="grid-M" data-action="switchShiftTab" style="flex:1;">☀️ Manhã</button>
+        <button class="btn shift-tab-btn form-action-btn" data-target="grid-T" data-action="switchShiftTab" style="flex:1; background:#f1f5f9; color:#555;">🌤️ Tarde</button>
+        <button class="btn shift-tab-btn form-action-btn" data-target="grid-N" data-action="switchShiftTab" style="flex:1; background:#f1f5f9; color:#555;">🌙 Noite</button>
       </div>
       
-      <table class="grid-table" id="newScheduleTable">
-        <thead>
-          <tr><th>Dia da Semana</th><th>Disciplina</th><th>Períodos</th><th>Ação</th></tr>
-        </thead>
-        <tbody id="newScheduleBody">
-           <tr><td colspan="4" style="text-align: center; color: #777;">Nenhuma aula vinculada ainda.</td></tr>
-        </tbody>
-      </table>
+      ${['M', 'T', 'N'].map(shift => `
+        <div id="grid-${shift}" class="shift-grid-container ${shift !== 'M' ? 'hidden' : ''}">
+          <table class="grid-table template-schedule-grid" data-turno="${shift}" style="table-layout: fixed; width: 100%;">
+            <thead>
+              <tr style="font-size: 0.85rem;">
+                <th style="width: 50px; text-align: center;">Período</th>
+                <th>Segunda</th>
+                <th>Terça</th>
+                <th>Quarta</th>
+                <th>Quinta</th>
+                <th>Sexta</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${[1, 2, 3, 4, 5, 6].map(per => `
+                <tr>
+                  <td style="text-align: center; font-weight: bold; background: #fafafa;">${per}º</td>
+                  ${[1, 2, 3, 4, 5].map(day => `
+                    <td style="padding: 2px;">
+                      <select class="form-control schedule-cell-select" data-turno="${shift}" data-dia="${day}" data-periodo="${per}" style="width: 100%; padding: 4px; font-size: 0.75rem; border: 1px solid transparent; cursor: pointer; height: 100%;">
+                        ${options}
+                      </select>
+                    </td>
+                  `).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `).join('')}
     </div>
 
-    <div class="class-actions" style="justify-content: flex-start; gap: 15px;">
+    <div class="class-actions" style="justify-content: flex-start; gap: 15px; margin-top:20px;">
       <button class="btn btn-primary form-action-btn" data-action="saveNewSchedule">Salvar Quadro Definitivo</button>
       <button class="btn btn-secondary form-action-btn" data-action="renderSchedulesList">Cancelar</button>
     </div>
   `;
 
-  // Store temp rows
-  window._tempScheduleRows = [];
   window._editingScheduleId = null;
-  renderTempRows();
+  // Limpar selections
+  document.querySelectorAll('.schedule-cell-select').forEach(sel => sel.value = "");
 }
+
+
+window.switchShiftTab = (btn) => {
+   // get all tabs, remove active
+   document.querySelectorAll('.shift-tab-btn').forEach(b => {
+      b.classList.remove('active');
+      b.style.background = '#f1f5f9';
+      b.style.color = '#555';
+   });
+   
+   // activate target btn
+   btn.classList.add('active');
+   btn.style.background = '';
+   btn.style.color = '';
+   
+   // hide all grids
+   document.querySelectorAll('.shift-grid-container').forEach(g => g.classList.add('hidden'));
+   // show target grid
+   document.getElementById(btn.dataset.target).classList.remove('hidden');
+};
 
 window.editSchedule = (index) => {
   const h = state.horariosCustomizados[index];
@@ -1052,79 +1102,15 @@ window.editSchedule = (index) => {
   document.getElementById('schNome').value = h.nome;
   document.getElementById('schDataInicio').value = h.dataInicio;
 
-  window._tempScheduleRows = [];
-  const daysStr = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
-
   h.aulas.forEach(a => {
-    const conf = buildAulaConfigFromIds(a.idTurma, a.idDisciplina);
-    if (conf) {
-      window._tempScheduleRows.push({
-        diaSemana: a.diaSemana,
-        idTurma: a.idTurma,
-        idDisciplina: a.idDisciplina,
-        periodos: [...a.periodos],
-        nomeDisc: `${conf.escolaNome} - ${conf.turma.nome} - ${conf.disciplina.nome}`,
-        nomeDia: daysStr[a.diaSemana]
-      });
-    }
+    const turno = a.turno || 'M';
+    a.periodos.forEach(p => {
+       const select = document.querySelector(`.schedule-cell-select[data-turno="${turno}"][data-dia="${a.diaSemana}"][data-periodo="${p}"]`);
+       if (select) select.value = `${a.idTurma}|${a.idDisciplina}`;
+    });
   });
 
   window._editingScheduleId = h.id;
-  renderTempRows();
-};
-
-function renderTempRows() {
-  const tbody = document.getElementById('newScheduleBody');
-  if (!tbody) return;
-  tbody.innerHTML = '';
-
-  if (window._tempScheduleRows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #777;">Nenhuma aula vinculada ainda.</td></tr>';
-    return;
-  }
-
-  window._tempScheduleRows.forEach((r, i) => {
-    let selectHtml = `<select class="temp-row-dia form-control" data-index="${i}" style="width: 130px; padding: 4px;">
-      <option value="1" ${r.diaSemana == 1 ? 'selected' : ''}>Segunda-feira</option>
-      <option value="2" ${r.diaSemana == 2 ? 'selected' : ''}>Terça-feira</option>
-      <option value="3" ${r.diaSemana == 3 ? 'selected' : ''}>Quarta-feira</option>
-      <option value="4" ${r.diaSemana == 4 ? 'selected' : ''}>Quinta-feira</option>
-      <option value="5" ${r.diaSemana == 5 ? 'selected' : ''}>Sexta-feira</option>
-      <option value="6" ${r.diaSemana == 6 ? 'selected' : ''}>Sábado</option>
-      <option value="0" ${r.diaSemana == 0 ? 'selected' : ''}>Domingo</option>
-    </select>`;
-
-    tbody.innerHTML += `<tr>
-      <td>${selectHtml}</td>
-      <td>${r.nomeDisc}</td>
-      <td><input type="text" value="${r.periodos.join(', ')}" class="temp-row-periodos form-control" data-index="${i}" style="width: 80px; padding: 4px;" title="Edite os períodos aqui (separados por vírgula)"></td>
-      <td><button class="btn btn-danger form-action-btn" data-action="removeTempRow" data-index="${i}">X</button></td>
-    </tr>`;
-  });
-}
-
-window.addScheduleRow = () => {
-  const diaSel = document.getElementById('schDia');
-  const discSel = document.getElementById('schDisc');
-  const perInp = document.getElementById('schPeriodos').value.split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n));
-
-  if (!discSel.value || perInp.length === 0) return alert('Por favor, selecione a disciplina e informe os períodos numéricos corretos (ex: 1, 2).');
-
-  const [tId, dId] = discSel.value.split('|');
-  window._tempScheduleRows.push({
-    diaSemana: parseInt(diaSel.value),
-    idTurma: parseInt(tId),
-    idDisciplina: parseInt(dId),
-    periodos: perInp,
-    nomeDisc: discSel.options[discSel.selectedIndex].text,
-    nomeDia: diaSel.options[diaSel.selectedIndex].text
-  });
-  renderTempRows();
-};
-
-window.removeTempRow = (idx) => {
-  window._tempScheduleRows.splice(idx, 1);
-  renderTempRows();
 };
 
 window.saveNewSchedule = async () => {
@@ -1132,18 +1118,49 @@ window.saveNewSchedule = async () => {
   const dI = document.getElementById('schDataInicio').value;
 
   if (!nome || !dI) return alert('Preencha os campos de Nome e Data Inicial do Quadro.');
-  if (window._tempScheduleRows.length === 0) return alert('Adicione pelo menos uma aula na grade desse quadro.');
 
-  // Coletar as alterações nos inputs (Período e Dia da Semana)
-  const periodInputs = document.querySelectorAll('.temp-row-periodos');
-  const diaInputs = document.querySelectorAll('.temp-row-dia');
+  const aulas = [];
 
-  periodInputs.forEach((inp, x) => {
-    const idx = parseInt(inp.dataset.index);
-    const per = inp.value.split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n));
-    window._tempScheduleRows[idx].periodos = per;
-    window._tempScheduleRows[idx].diaSemana = parseInt(diaInputs[x].value);
+  ['M', 'T', 'N'].forEach(turno => {
+    for (let day = 1; day <= 5; day++) {
+       let lastVal = null;
+       let currentPeriods = [];
+       
+       for (let p = 1; p <= 6; p++) {
+          const sel = document.querySelector(`.schedule-cell-select[data-turno="${turno}"][data-dia="${day}"][data-periodo="${p}"]`);
+          const val = sel ? sel.value : "";
+          
+          if (val === lastVal && val !== "") {
+             currentPeriods.push(p);
+          } else {
+             if (lastVal) {
+                const [idTurma, idDisciplina] = lastVal.split('|');
+                aulas.push({
+                   turno: turno,
+                   diaSemana: day,
+                   idTurma: parseInt(idTurma),
+                   idDisciplina: parseInt(idDisciplina),
+                   periodos: currentPeriods
+                });
+             }
+             lastVal = val;
+             currentPeriods = val ? [p] : [];
+          }
+       }
+       if (lastVal) {
+           const [idTurma, idDisciplina] = lastVal.split('|');
+           aulas.push({
+              turno: turno,
+              diaSemana: day,
+              idTurma: parseInt(idTurma),
+              idDisciplina: parseInt(idDisciplina),
+              periodos: currentPeriods
+           });
+       }
+    }
   });
+
+  if (aulas.length === 0) return alert('Adicione pelo menos uma aula na grade desse quadro.');
 
   const targetId = window._editingScheduleId || Date.now().toString();
 
@@ -1151,9 +1168,7 @@ window.saveNewSchedule = async () => {
     id: targetId,
     nome: nome,
     dataInicio: dI,
-    aulas: window._tempScheduleRows.map(r => ({
-      idTurma: r.idTurma, idDisciplina: r.idDisciplina, diaSemana: r.diaSemana, periodos: r.periodos
-    }))
+    aulas: aulas
   };
 
   if (window._editingScheduleId) {
@@ -1220,56 +1235,6 @@ function importSchedules(event) {
   };
   reader.readAsText(file);
 }
-
-window.fillWithApiSchedule = () => {
-  if (!confirm("Isso puxará toda a grade atual vinculada no sistema da Escola.\nAulas já adicionadas abaixo serão substituídas. Deseja continuar?")) return;
-
-  window._tempScheduleRows = [];
-
-  const daysStr = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
-
-  // A API varre os JS Days (0 = Domingo, ..., 6 = Sábado)
-  for (let jsDay = 0; jsDay <= 6; jsDay++) {
-    const apiAulas = state.mapaAulasPorDiaDaSemana.get(jsDay) || [];
-    apiAulas.forEach(aulaConfig => {
-      window._tempScheduleRows.push({
-        diaSemana: jsDay,
-        idTurma: aulaConfig.turma.id,
-        idDisciplina: aulaConfig.disciplina.id,
-        periodos: [...aulaConfig.periodos],
-        nomeDisc: `${aulaConfig.escolaNome} - ${aulaConfig.turma.nome} - ${aulaConfig.disciplina.nome}`,
-        nomeDia: daysStr[jsDay]
-      });
-    });
-  }
-
-  const tbody = document.getElementById('newScheduleBody');
-  tbody.innerHTML = '';
-
-  if (window._tempScheduleRows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #777;">Nenhuma aula programada na Escola para você.</td></tr>';
-    return;
-  }
-
-  window._tempScheduleRows.forEach((r, i) => {
-    let selectHtml = `<select class="temp-row-dia form-control" data-index="${i}" style="width: 130px; padding: 4px;">
-        <option value="1" ${r.diaSemana == 1 ? 'selected' : ''}>Segunda-feira</option>
-        <option value="2" ${r.diaSemana == 2 ? 'selected' : ''}>Terça-feira</option>
-        <option value="3" ${r.diaSemana == 3 ? 'selected' : ''}>Quarta-feira</option>
-        <option value="4" ${r.diaSemana == 4 ? 'selected' : ''}>Quinta-feira</option>
-        <option value="5" ${r.diaSemana == 5 ? 'selected' : ''}>Sexta-feira</option>
-        <option value="6" ${r.diaSemana == 6 ? 'selected' : ''}>Sábado</option>
-        <option value="0" ${r.diaSemana == 0 ? 'selected' : ''}>Domingo</option>
-      </select>`;
-
-    tbody.innerHTML += `<tr>
-        <td>${selectHtml}</td>
-        <td>${r.nomeDisc}</td>
-        <td><input type="text" value="${r.periodos.join(', ')}" class="temp-row-periodos form-control" data-index="${i}" style="width: 80px; padding: 4px;"></td>
-        <td><button class="btn btn-danger form-action-btn" data-action="removeTempRow" data-index="${i}">X</button></td>
-      </tr>`;
-  });
-};
 
 // --- Gestão de Alunos Infrequentes  ---
 window.initViewFilters = () => {
