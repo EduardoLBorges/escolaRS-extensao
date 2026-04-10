@@ -10,11 +10,12 @@ const API_TIMEOUT = 30000; // 30 segundos de timeout
  * Faz uma chamada genérica à API do EscolaRS com timeout e lógica de repetição para token expirado.
  * @param {string} endpoint - Endpoint relativo.
  * @param {string} token - Token de autenticação inicial.
+ * @param {Object} [options={}] - Opções customizadas para o fetch (método, body, etc).
  * @param {number} [timeout=API_TIMEOUT] - Timeout em milissegundos.
  * @returns {Promise<Object>} Resposta JSON da API.
  * @throws {Error} Se a requisição falhar, expirar o timeout, ou a repetição não for bem-sucedida.
  */
-async function fetchEscolaRS(endpoint, token, timeout = API_TIMEOUT) {
+async function fetchEscolaRS(endpoint, token, options = {}, timeout = API_TIMEOUT) {
   const url = `${API_BASE_URL}/${endpoint}`;
   let currentToken = token;
 
@@ -25,14 +26,20 @@ async function fetchEscolaRS(endpoint, token, timeout = API_TIMEOUT) {
 
     let response;
     try {
-      response = await fetch(url, {
-        method: 'GET',
+      const fetchOptions = {
+        method: options.method || 'GET',
         headers: {
           "Authorization": currentToken,
           "Content-Type": "application/json"
         },
         signal: controller.signal
-      });
+      };
+      
+      if (options.body) {
+        fetchOptions.body = JSON.stringify(options.body);
+      }
+
+      response = await fetch(url, fetchOptions);
     } catch (error) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
@@ -101,5 +108,23 @@ async function listarResultadosTurma(turmaId, discId, idRecHumano, token) {
   return fetchEscolaRS(
     `listarAulasDaTurmaComResultado/${turmaId}/${discId}/${idRecHumano}/false`,
     token
+  );
+}
+
+/**
+ * Registra a chamada e conteúdo de uma aula em uma data
+ * @param {number} turmaId - ID da turma
+ * @param {number} discId - ID da disciplina
+ * @param {string} data - Data no formato YYYY-MM-DD
+ * @param {number} idRecHumano - ID do recurso humano
+ * @param {Object} payload - Dados da chamada e conteúdo
+ * @param {string} token - Token de autenticação
+ * @returns {Promise<Object>}
+ */
+async function registrarChamadaAula(turmaId, discId, data, idRecHumano, payload, token) {
+  return fetchEscolaRS(
+    `chamada`,
+    token,
+    { method: 'POST', body: payload }
   );
 }

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Registro de Aulas e Chamadas</title>
+  <link rel="stylesheet" href="chamada.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <header class="header">
+      <div class="header-content">
+        <h1>Registro de Aulas e Chamada</h1>
+        <div class="header-actions">
+          <button id="btnSettings" class="btn btn-primary" style="margin-right: 10px;">⚙️ Ajustar Horários</button>
+          <button id="btnVoltar" class="btn btn-secondary">Voltar ao Dashboard</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="main-content">
+      <div id="loading" class="loading-state">
+        <div class="spinner"></div>
+        <p id="loadingText">Sincronizando dados das turmas...</p>
+      </div>
+
+      <div id="calendarContainer" class="calendar-layout hidden">
+        <!-- Esquerda: Calendário -->
+        <div class="calendar-sidebar">
+          <div class="calendar-header">
+            <button id="prevMonth" class="btn-icon">&lt;</button>
+            <h2 id="currentMonthYear">Abril 2026</h2>
+            <button id="nextMonth" class="btn-icon">&gt;</button>
+          </div>
+          <div class="calendar-grid-header">
+            <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
+          </div>
+          <div id="calendarDays" class="calendar-days">
+            <!-- Dias injetados via JS -->
+          </div>
+        </div>
+
+        <!-- Direita: Aulas do Dia e Formulário -->
+        <div class="daily-classes">
+          <div class="day-header">
+            <h2 id="selectedDayTitle">Selecione um dia</h2>
+          </div>
+          
+          <div id="classesList" class="classes-list">
+            <!-- Lista de aulas do dia e formulário -->
+            <p class="empty-state">Nenhuma aula programada para este dia.</p>
+          </div>
+        </div>
+      </div>
+      
+      <div id="toastContainer" class="toast-container"></div>
+      
+      <!-- Modal Overlay de Configuração -->
+      <div id="settingsModal" class="modal-overlay hidden">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2>Gestão de Horários Customizados</h2>
+            <button id="btnCloseModal" class="btn-close">&times;</button>
+          </div>
+          <div class="modal-body">
+            
+            <div class="settings-toolbar">
+              <button id="btnNewSchedule" class="btn btn-primary">➕ Novo Quadro de Horário</button>
+              <div>
+                <button id="btnExport" class="btn btn-secondary">📥 Exportar</button>
+                <input type="file" id="btnImportFile" style="display: none;" accept=".json">
+                <button id="btnImport" class="btn btn-secondary">📤 Importar</button>
+              </div>
+            </div>
+
+            <div id="scheduleFormContainer" class="hidden">
+              <!-- JS Injects the Form here -->
+            </div>
+
+            <div id="schedulesList" class="schedules-list">
+              <!-- JS Injects active schedules here -->
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="../../api/escolaRS.js"></script>
+  <script src="chamada.js"></script>
+</body>
+</html>

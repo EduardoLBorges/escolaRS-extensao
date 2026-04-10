@@ -1,17 +1,21 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard de Notas - EscolaRS Export</title>
   <link rel="stylesheet" href="dashboard.css">
 </head>
+
 <body>
 
   <header>
     <div class="header-top">
       <h1>Dashboard de Notas</h1>
-      <button id="header-refresh" title="Atualizar dados" aria-label="Atualizar dados" type="button">⟳</button>
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <button id="header-refresh" title="Atualizar dados" aria-label="Atualizar dados" type="button">⟳</button>
+      </div>
     </div>
 
     <p id="professor-info"></p>
@@ -27,7 +31,7 @@
     <p style="font-size: 16px; color: #2e7d32;">Carregando dados do professor...</p>
     <p style="font-size: 14px; color: #66bb6a;">Por favor, aguarde.</p>
   </div>
-  
+
   <div class="progress-container" id="progress-container">
     <p style="font-size: 16px; color: #2e7d32; margin: 0 0 10px 0;">Carregando turmas</p>
     <div class="progress-bar">
@@ -43,4 +47,5 @@
   <script src="../../libs/xlsx.mini.min.js"></script>
   <script src="dashboard.js"></script>
 </body>
+
 </html>

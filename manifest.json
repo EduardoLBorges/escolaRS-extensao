@@ -27,7 +27,8 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "ui/dashboard/dashboard.html"
+        "ui/dashboard/dashboard.html",
+        "ui/chamada/chamada.html"
       ],
       "matches": [
         "<all_urls>"
