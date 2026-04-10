@@ -87,6 +87,28 @@ function setupEventListeners() {
   document.getElementById('btnImport').addEventListener('click', () => document.getElementById('btnImportFile').click());
   document.getElementById('btnImportFile').addEventListener('change', importSchedules);
   
+  // Modal de Infrequentes
+  document.getElementById('btnInfrequentes').addEventListener('click', openInfrequentesModal);
+  document.getElementById('searchInfrequente').addEventListener('input', renderInfrequentesList);
+  document.getElementById('btnCloseInfrequentesModal').addEventListener('click', () => {
+    document.getElementById('infrequentesModal').classList.add('hidden');
+    renderClassesForSelectedDay();
+  });
+  
+  document.getElementById('listaTodosAlunos').addEventListener('change', async (e) => {
+    if (e.target.tagName === 'INPUT' && e.target.type === 'checkbox') {
+      const mat = parseInt(e.target.dataset.matricula);
+      if (e.target.checked) {
+        if (!state.infrequentes.includes(mat)) {
+          state.infrequentes.push(mat);
+        }
+      } else {
+        state.infrequentes = state.infrequentes.filter(m => m !== mat);
+      }
+      await chrome.storage.local.set({ escolaRsInfrequentes: state.infrequentes });
+    }
+  });
+  
   document.getElementById('settingsModal').addEventListener('click', (e) => {
     if (e.target.classList.contains('form-action-btn')) {
       const action = e.target.dataset.action;
@@ -114,7 +136,7 @@ async function loadData() {
   setLoading(true, 'Carregando autenticação...');
   
   try {
-    const authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc", "escolaRsIgnorados", "escolaRsHorariosCustomizados"]);
+    const authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc", "escolaRsIgnorados", "escolaRsHorariosCustomizados", "escolaRsInfrequentes"]);
     if (!authData.escolaRsToken || !authData.nrDoc) {
       throw new Error('Usuário não autenticado.');
     }
@@ -123,6 +145,7 @@ async function loadData() {
     state.nrDoc = authData.nrDoc;
     state.ignorados = authData.escolaRsIgnorados || {};
     state.horariosCustomizados = authData.escolaRsHorariosCustomizados || [];
+    state.infrequentes = authData.escolaRsInfrequentes || [];
     
     setLoading(true, 'Buscando turmas e alunos...');
     // Busca dados com a API (do arquivo api/escolaRS.js incluído no HTML)
@@ -521,7 +544,15 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
   
   let studentsHtml = '';
   alunos.forEach(aluno => {
-    const isFalta = matriculasComFalta.has(aluno.matricula);
+    const isInfrequente = state.infrequentes.includes(aluno.matricula);
+    let isFalta = false;
+
+    if (chamadaExistente) {
+      isFalta = matriculasComFalta.has(aluno.matricula);
+    } else {
+      isFalta = isInfrequente;
+    }
+    
     const clsPresente = isFalta ? "" : "active";
     const clsFalta = isFalta ? "active" : "";
     
@@ -1038,16 +1069,21 @@ window.saveNewSchedule = async () => {
 };
 
 function exportSchedules() {
-  if (state.horariosCustomizados.length === 0) {
-    alert("Não há horários customizados para exportar.");
+  const config = {
+    horariosCustomizados: state.horariosCustomizados || [],
+    infrequentes: state.infrequentes || []
+  };
+  
+  if (config.horariosCustomizados.length === 0 && config.infrequentes.length === 0) {
+    alert("Não há configurações para exportar.");
     return;
   }
-  const data = JSON.stringify(state.horariosCustomizados, null, 2);
+  const data = JSON.stringify(config, null, 2);
   const blob = new Blob([data], {type: 'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'horarios_customizados_escolaRs.json';
+  a.download = 'configuracoes_escolaRs.json';
   a.click();
 }
 
@@ -1057,17 +1093,26 @@ function importSchedules(event) {
   const reader = new FileReader();
   reader.onload = async (e) => {
     try {
-      const arr = JSON.parse(e.target.result);
-      if (Array.isArray(arr)) {
-        state.horariosCustomizados = arr;
-        await chrome.storage.local.set({ escolaRsHorariosCustomizados: state.horariosCustomizados });
-        showToast('Quadros importados com sucesso!', 'success');
-        renderSchedulesList();
+      const parsed = JSON.parse(e.target.result);
+      
+      // Retrocompatibilidade: Se for array, é um backup antigo de horários apenas
+      if (Array.isArray(parsed)) {
+        state.horariosCustomizados = parsed;
+      } else if (parsed && typeof parsed === 'object') {
+        if (parsed.horariosCustomizados) state.horariosCustomizados = parsed.horariosCustomizados;
+        if (parsed.infrequentes) state.infrequentes = parsed.infrequentes;
       } else {
-         alert('Estrutura de arquivo inválida.');
+        throw new Error('Formato inválido.');
       }
+      
+      await chrome.storage.local.set({ 
+         escolaRsHorariosCustomizados: state.horariosCustomizados,
+         escolaRsInfrequentes: state.infrequentes
+      });
+      showToast('Configurações importadas com sucesso!', 'success');
+      renderSchedulesList();
     } catch(err) {
-      alert('Arquivo inválido ou corrompido.');
+      alert('Arquivo inválido ou corrompido: ' + err.message);
     }
     // reset input
     event.target.value = '';
@@ -1123,4 +1168,79 @@ window.fillWithApiSchedule = () => {
         <td><button class="btn btn-danger form-action-btn" data-action="removeTempRow" data-index="${i}">X</button></td>
       </tr>`;
    });
+};
+
+// --- Gestão de Alunos Infrequentes  ---
+window.openInfrequentesModal = () => {
+  document.getElementById('infrequentesModal').classList.remove('hidden');
+  document.getElementById('searchInfrequente').value = '';
+  
+  const mapaAlunos = new Map();
+  state.escolas.forEach(e => {
+    e.turmas.forEach(t => {
+      t.disciplinas.forEach(d => {
+        const alunos = d.alunosEAulas?.alunos || [];
+        alunos.forEach(a => {
+          if (a.situacao.id === 1 || a.situacao.id === 2) {
+            if (!mapaAlunos.has(a.matricula)) {
+              mapaAlunos.set(a.matricula, { ...a, turmaNome: t.nome, escolaNome: e.nome });
+            }
+          }
+        });
+      });
+    });
+  });
+  
+  window._todosAlunosParaInfrequentes = Array.from(mapaAlunos.values()).sort((a,b) => a.nome.localeCompare(b.nome));
+  renderInfrequentesList();
+};
+
+window.renderInfrequentesList = () => {
+  const list = document.getElementById('listaTodosAlunos');
+  const q = document.getElementById('searchInfrequente').value.toLowerCase();
+  
+  // Agrupar alunos
+  const agrupado = {};
+  window._todosAlunosParaInfrequentes.forEach(a => {
+    const textToSearch = `${a.nome.toLowerCase()} ${a.turmaNome.toLowerCase()} ${a.escolaNome.toLowerCase()}`;
+    if (!q || textToSearch.includes(q)) {
+      const nomeGrupo = `${a.turmaNome} - ${a.escolaNome}`;
+      if(!agrupado[nomeGrupo]) agrupado[nomeGrupo] = [];
+      agrupado[nomeGrupo].push(a);
+    }
+  });
+  
+  const chaves = Object.keys(agrupado).sort((a,b) => a.localeCompare(b));
+  
+  let html = '';
+  if (chaves.length === 0) {
+     html = '<p style="padding:15px; text-align:center; color:#888;">Nenhum aluno encontrado.</p>';
+  } else {
+     chaves.forEach((grupoName) => {
+        const alunos = agrupado[grupoName];
+        alunos.sort((a, b) => a.nome.localeCompare(b.nome));
+        
+        let studentsHtml = '';
+        alunos.forEach(a => {
+           const isChecked = state.infrequentes.includes(a.matricula) ? 'checked' : '';
+           studentsHtml += `<label class="infrequente-item">
+                     <input type="checkbox" data-matricula="${a.matricula}" ${isChecked}>
+                     <div><strong>${a.nome}</strong></div>
+                   </label>`;
+        });
+        
+        // Se estiver pesquisando, abre todos os details que deram match
+        const openAttr = q.length > 0 ? 'open' : '';
+        html += `
+          <details class="turma-group" ${openAttr}>
+             <summary class="turma-group-summary">${grupoName} <span class="turma-badge">${alunos.length} Aluno(s)</span></summary>
+             <div class="turma-group-content">
+                ${studentsHtml}
+             </div>
+          </details>
+        `;
+     });
+  }
+  
+  list.innerHTML = html;
 };

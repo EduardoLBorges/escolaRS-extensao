@@ -13,6 +13,7 @@
         <h1>Registro de Aulas e Chamada</h1>
         <div class="header-actions">
           <button id="btnSettings" class="btn btn-primary" style="margin-right: 10px;">⚙️ Ajustar Horários</button>
+          <button id="btnInfrequentes" class="btn btn-secondary" style="margin-right: 10px;">👥 Alunos Infrequentes</button>
           <button id="btnVoltar" class="btn btn-secondary">Voltar ao Dashboard</button>
         </div>
       </div>
@@ -81,6 +82,25 @@
               <!-- JS Injects active schedules here -->
             </div>
 
+          </div>
+        </div>
+      </div>
+      <!-- Modal Overlay de Infrequentes -->
+      <div id="infrequentesModal" class="modal-overlay hidden">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2>Gestão de Alunos Infrequentes</h2>
+            <button id="btnCloseInfrequentesModal" class="btn-close">&times;</button>
+          </div>
+          <div class="modal-body">
+            <p style="margin-bottom: 15px; color: #555;">Marque os alunos que costumam faltar. O sistema pré-marcará <strong>Falta</strong> automaticamente para eles nos novos registros de chamada de suas turmas.</p>
+            <div class="form-group">
+                <input type="text" id="searchInfrequente" class="form-control" placeholder="Buscar aluno por nome, turma ou escola...">
+            </div>
+            
+            <div id="listaTodosAlunos" class="alunos-infrequentes-list">
+               <!-- Checkboxes JS -->
+            </div>
           </div>
         </div>
       </div>

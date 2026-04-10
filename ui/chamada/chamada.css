@@ -434,6 +434,65 @@ body {
   transition: all 0.2s;
   font-weight: 500;
 }
+
+/* Alunos Infrequentes Modal */
+.alunos-infrequentes-list {
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 5px;
+}
+
+.turma-group {
+  margin-bottom: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.turma-group-summary {
+  background: #f8f9fa;
+  padding: 12px 15px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.turma-group-content {
+  background: #fff;
+  padding: 5px 0;
+}
+.turma-badge {
+  background: #e2e8f0;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: normal;
+  color: #555;
+}
+
+.infrequente-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 15px;
+  border-bottom: 1px solid #edf2f7;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.infrequente-item:last-child {
+  border-bottom: none;
+}
+
+.infrequente-item:hover {
+  background: #f7fafc;
+}
+
+.infrequente-item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
 .attendance-btn.present {
   color: var(--primary);
   border-color: var(--primary);
