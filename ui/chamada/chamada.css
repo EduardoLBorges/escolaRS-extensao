@@ -97,6 +97,15 @@ body {
   display: none !important;
 }
 
+.view-filters {
+  background: var(--surface);
+  padding: 15px;
+  border-radius: var(--radius-lg);
+  border-top: 1px solid #e2e8f0;
+  margin-top: 15px;
+  box-shadow: none;
+}
+
 /* Sidebar Calendar */
 .calendar-sidebar {
   background: var(--surface);

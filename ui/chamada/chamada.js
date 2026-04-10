@@ -13,7 +13,9 @@ let state = {
   mapaAulasPorDiaDaSemana: new Map(), // { 0: [...], 1: [...] } onde 0 = Domingo, 1 = Segunda
   mapaAulasPorDataEspecifica: new Map(), // { "YYYY-MM-DD": [...] }
   ignorados: {}, // { "YYYY-MM-DD": ["idTurma-idDisciplina"] }
-  horariosCustomizados: [] // array de quadros
+  horariosCustomizados: [], // array de quadros
+  viewFilters: { escola: '', turma: '' },
+  isWeekView: false
 };
 
 // --- Início: Inicialização ---
@@ -46,7 +48,7 @@ function setupEventListeners() {
       row.querySelectorAll('.attendance-btn').forEach(b => b.classList.remove('active'));
       e.target.classList.add('active');
     }
-    
+
     if (e.target.classList.contains('submit-attendance')) {
       const btn = e.target;
       submitAttendance(
@@ -59,18 +61,18 @@ function setupEventListeners() {
         btn
       );
     }
-    
+
     if (e.target.classList.contains('toggle-attendance-btn')) {
       const targetId = e.target.dataset.target;
       const targetEl = document.getElementById(targetId);
       if (targetEl) {
-         if (targetEl.style.display === 'none') {
-            targetEl.style.display = 'block';
-            e.target.innerHTML = '🔼 Ocultar Alunos';
-         } else {
-            targetEl.style.display = 'none';
-            e.target.innerHTML = '🔽 Mostrar Alunos';
-         }
+        if (targetEl.style.display === 'none') {
+          targetEl.style.display = 'block';
+          e.target.innerHTML = '🔼 Ocultar Alunos';
+        } else {
+          targetEl.style.display = 'none';
+          e.target.innerHTML = '🔽 Mostrar Alunos';
+        }
       }
     }
   });
@@ -83,10 +85,10 @@ function setupEventListeners() {
   });
   document.getElementById('btnNewSchedule').addEventListener('click', showNewScheduleForm);
   document.getElementById('btnExport').addEventListener('click', exportSchedules);
-  
+
   document.getElementById('btnImport').addEventListener('click', () => document.getElementById('btnImportFile').click());
   document.getElementById('btnImportFile').addEventListener('change', importSchedules);
-  
+
   // Modal de Infrequentes
   document.getElementById('btnInfrequentes').addEventListener('click', openInfrequentesModal);
   document.getElementById('searchInfrequente').addEventListener('input', renderInfrequentesList);
@@ -94,7 +96,7 @@ function setupEventListeners() {
     document.getElementById('infrequentesModal').classList.add('hidden');
     renderClassesForSelectedDay();
   });
-  
+
   document.getElementById('listaTodosAlunos').addEventListener('change', async (e) => {
     if (e.target.tagName === 'INPUT' && e.target.type === 'checkbox') {
       const mat = parseInt(e.target.dataset.matricula);
@@ -108,7 +110,7 @@ function setupEventListeners() {
       await chrome.storage.local.set({ escolaRsInfrequentes: state.infrequentes });
     }
   });
-  
+
   document.getElementById('settingsModal').addEventListener('click', (e) => {
     if (e.target.classList.contains('form-action-btn')) {
       const action = e.target.dataset.action;
@@ -134,29 +136,33 @@ function setupEventListeners() {
 
 async function loadData() {
   setLoading(true, 'Carregando autenticação...');
-  
+
   try {
     const authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc", "escolaRsIgnorados", "escolaRsHorariosCustomizados", "escolaRsInfrequentes"]);
     if (!authData.escolaRsToken || !authData.nrDoc) {
       throw new Error('Usuário não autenticado.');
     }
-    
+
     state.token = authData.escolaRsToken;
     state.nrDoc = authData.nrDoc;
     state.ignorados = authData.escolaRsIgnorados || {};
     state.horariosCustomizados = authData.escolaRsHorariosCustomizados || [];
     state.infrequentes = authData.escolaRsInfrequentes || [];
-    
+
     setLoading(true, 'Buscando turmas e alunos...');
     // Busca dados com a API (do arquivo api/escolaRS.js incluído no HTML)
     const dados = await listarEscolasProfessor(state.nrDoc, state.token);
     state.dadosBrutos = dados;
     state.idRecHumano = dados.idRecHumano;
     state.escolas = dados.escolas || [];
-    
+
     mapearAulasDaSemana();
-    
+    initViewFilters();
+
     setLoading(false);
+
+    // Mostra barra de filtros se tudo der ok
+    document.getElementById('filterContainer').classList.remove('hidden');
   } catch (err) {
     console.error(err);
     showToast('Erro ao carregar dados: ' + err.message, 'error');
@@ -168,7 +174,7 @@ async function loadData() {
 
 // --- Processamento de Dados ---
 function mapearAulasDaSemana() {
-    // Limpa mapas
+  // Limpa mapas
   for (let i = 0; i <= 6; i++) {
     state.mapaAulasPorDiaDaSemana.set(i, []);
   }
@@ -177,15 +183,15 @@ function mapearAulasDaSemana() {
   state.escolas.forEach(escola => {
     escola.turmas.forEach(turma => {
       turma.disciplinas.forEach(disciplina => {
-        
+
         // As aulas programadas para a semana (cenário normal)
         const listaAulas = disciplina.listaAulasNaTurmaDisciplina || [];
         listaAulas.forEach(aulaConfig => {
-          const jsDay = aulaConfig.diaSemana - 1; 
-          
+          const jsDay = aulaConfig.diaSemana - 1;
+
           if (jsDay >= 0 && jsDay <= 6) {
             const arr = state.mapaAulasPorDiaDaSemana.get(jsDay);
-            
+
             const existe = arr.find(a => a.disciplina.id === disciplina.id && a.turma.id === turma.id);
             if (existe) {
               existe.periodos.push(aulaConfig.periodoAula);
@@ -200,16 +206,16 @@ function mapearAulasDaSemana() {
             }
           }
         });
-        
+
         // Aulas do Histórico (Chamadas reais)
         const chamadas = disciplina.chamadas || [];
         chamadas.forEach(chamada => {
           const dataIso = chamada.data;
-          
+
           if (!state.mapaAulasPorDataEspecifica.has(dataIso)) {
             state.mapaAulasPorDataEspecifica.set(dataIso, []);
           }
-          
+
           const arr = state.mapaAulasPorDataEspecifica.get(dataIso);
           if (!arr.find(a => a.disciplina.id === disciplina.id && a.turma.id === turma.id)) {
             arr.push({
@@ -217,12 +223,12 @@ function mapearAulasDaSemana() {
               idCalenEstab: chamada.idCalenEstab || null,
               turma: turma,
               disciplina: disciplina,
-              periodos: chamada.qtPeriodos ? Array.from({length: chamada.qtPeriodos}, (_, i) => i+1) : [1],
+              periodos: chamada.qtPeriodos ? Array.from({ length: chamada.qtPeriodos }, (_, i) => i + 1) : [1],
               ehHistorico: true
             });
           }
         });
-        
+
       });
     });
   });
@@ -233,20 +239,20 @@ function isClassActiveOnDate(aulaConfig, dayDate) {
   const { turma } = aulaConfig;
   const today = new Date();
   today.setHours(23, 59, 59, 999);
-  
+
   if (dayDate > today) return false;
-  
+
   if (turma.dtInicioAtividade) {
     const [y, m, d] = turma.dtInicioAtividade.split('-');
     const dtInicio = new Date(y, m - 1, d);
-    dtInicio.setHours(0,0,0,0);
+    dtInicio.setHours(0, 0, 0, 0);
     if (dayDate < dtInicio) return false;
   }
-  
+
   if (turma.periodos && turma.periodos.length > 0) {
-    let minDate = new Date(8640000000000000); 
+    let minDate = new Date(8640000000000000);
     let maxDate = new Date(-8640000000000000);
-    
+
     turma.periodos.forEach(p => {
       if (p.dataInicioPeriodo) {
         const [dd, mm, yyyy] = p.dataInicioPeriodo.split('/');
@@ -260,11 +266,11 @@ function isClassActiveOnDate(aulaConfig, dayDate) {
         if (d > maxDate) maxDate = d;
       }
     });
-    
+
     if (minDate !== new Date(8640000000000000) && dayDate < minDate) return false;
     if (maxDate !== new Date(-8640000000000000) && dayDate > maxDate) return false;
   }
-  
+
   return true;
 }
 
@@ -272,62 +278,73 @@ function isClassActiveOnDate(aulaConfig, dayDate) {
 function renderCalendar() {
   const year = state.currentDate.getFullYear();
   const month = state.currentDate.getMonth();
-  
+
   const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
     "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-    
+
   document.getElementById('currentMonthYear').textContent = `${monthNames[month]} ${year}`;
-  
+
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
-  
-  const startDayOfWeek = firstDay.getDay(); 
+
+  const startDayOfWeek = firstDay.getDay();
   const totalDays = lastDay.getDate();
-  
+
+  const selectedStart = new Date(state.selectedDate);
+  selectedStart.setDate(selectedStart.getDate() - selectedStart.getDay());
+  selectedStart.setHours(0, 0, 0, 0);
+  const selectedEnd = new Date(selectedStart);
+  selectedEnd.setDate(selectedStart.getDate() + 6);
+  selectedEnd.setHours(23, 59, 59, 999);
+
   const calendarDays = document.getElementById('calendarDays');
   calendarDays.innerHTML = '';
-  
+
   // Preenche dias vazios iniciais
   for (let i = 0; i < startDayOfWeek; i++) {
+    const emptyDate = new Date(year, month, i - startDayOfWeek + 1);
     const emptyDiv = document.createElement('div');
     emptyDiv.className = 'cal-day empty';
+    if (state.isWeekView && emptyDate >= selectedStart && emptyDate <= selectedEnd) {
+      emptyDiv.classList.add('selected');
+    }
     calendarDays.appendChild(emptyDiv);
   }
-  
+
   const today = new Date();
-  
+
   // Preenche os dias do mês
   for (let d = 1; d <= totalDays; d++) {
     const currentIterDate = new Date(year, month, d);
     const dayOfWeek = currentIterDate.getDay();
-    
+
     const dayDiv = document.createElement('div');
     dayDiv.className = 'cal-day';
     dayDiv.textContent = d;
-    
-    const isoDate = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    
+
+    const isoDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
     // Tem aula neste dia? 
     const customSchedule = getCustomScheduleForDate(isoDate);
     let aulasRegulares = [];
-    
+
     if (customSchedule) {
       const customClasses = customSchedule.aulas.filter(a => a.diaSemana == dayOfWeek);
       customClasses.forEach(c => {
-         const foundAulaConfig = buildAulaConfigFromIds(c.idTurma, c.idDisciplina);
-         if (foundAulaConfig) {
-             foundAulaConfig.periodos = c.periodos;
-             aulasRegulares.push(foundAulaConfig);
-         }
+        const foundAulaConfig = buildAulaConfigFromIds(c.idTurma, c.idDisciplina);
+        if (foundAulaConfig) {
+          foundAulaConfig.periodos = c.periodos;
+          aulasRegulares.push(foundAulaConfig);
+        }
       });
     } else {
       const aulasDesteDiaSemana = state.mapaAulasPorDiaDaSemana.get(dayOfWeek) || [];
       aulasRegulares = aulasDesteDiaSemana.filter(aula => isClassActiveOnDate(aula, currentIterDate));
     }
-    
+
     // Histórico de aulas específicas para esta data
     const aulasHistorico = state.mapaAulasPorDataEspecifica.get(isoDate) || [];
-    
+
     // Mesclar sem duplicatas
     const aulasDoDiaMap = new Map();
     [...aulasRegulares, ...aulasHistorico].forEach(aula => {
@@ -337,19 +354,29 @@ function renderCalendar() {
       }
     });
     const aulasTotais = Array.from(aulasDoDiaMap.values());
-    
+
     // Filtrar aulas ignoradas pelo usuário
     const ignoradosNoDia = state.ignorados[isoDate] || [];
-    const aulasFiltradas = aulasTotais.filter(aula => !ignoradosNoDia.includes(`${aula.turma.id}-${aula.disciplina.id}`));
-    
+    let aulasFiltradas = aulasTotais.filter(aula => !ignoradosNoDia.includes(`${aula.turma.id}-${aula.disciplina.id}`));
+
+    // Filtros de View
+    if (state.viewFilters.turma) {
+      aulasFiltradas = aulasFiltradas.filter(a => a.turma?.nome === state.viewFilters.turma || (a.nomeDisc && a.nomeDisc.includes(state.viewFilters.turma)));
+    }
     // Hoje?
     if (d === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
       dayDiv.classList.add('today');
     }
-    
+
     // Selecionado?
-    if (d === state.selectedDate.getDate() && month === state.selectedDate.getMonth() && year === state.selectedDate.getFullYear()) {
-      dayDiv.classList.add('selected');
+    if (state.isWeekView) {
+      if (currentIterDate >= selectedStart && currentIterDate <= selectedEnd) {
+        dayDiv.classList.add('selected');
+      }
+    } else {
+      if (d === state.selectedDate.getDate() && month === state.selectedDate.getMonth() && year === state.selectedDate.getFullYear()) {
+        dayDiv.classList.add('selected');
+      }
     }
 
     if (currentIterDate > today) {
@@ -357,7 +384,7 @@ function renderCalendar() {
       dayDiv.classList.add('disabled');
     } else {
       // É um dia válido para click, independente de ter aula ou não
-      
+
       // Avalia Status (Completo/Pendente) se houver aulas
       if (aulasFiltradas.length > 0) {
         let registeredCount = 0;
@@ -367,88 +394,158 @@ function renderCalendar() {
             registeredCount++;
           }
         });
-        
+
         if (registeredCount === aulasFiltradas.length) {
           dayDiv.classList.add('has-class-complete');
         } else {
           dayDiv.classList.add('has-class-pending');
         }
       }
-      
+
       dayDiv.addEventListener('click', () => {
-        document.querySelectorAll('.cal-day.selected').forEach(el => el.classList.remove('selected'));
-        dayDiv.classList.add('selected');
-        
         state.selectedDate = new Date(year, month, d);
+        renderCalendar();
         renderClassesForSelectedDay();
       });
     }
-    
+
     calendarDays.appendChild(dayDiv);
+  }
+
+  // Opcional: preencher os "emptys" finais para a visão da semana fechar redondinha se exceder o mes
+  const lastDayOfWeek = lastDay.getDay(); // 0 a 6
+  if (lastDayOfWeek < 6) {
+    for (let i = 1; i <= 6 - lastDayOfWeek; i++) {
+      const emptyDate = new Date(year, month + 1, i);
+      const emptyDiv = document.createElement('div');
+      emptyDiv.className = 'cal-day empty';
+      if (state.isWeekView && emptyDate >= selectedStart && emptyDate <= selectedEnd) {
+        emptyDiv.classList.add('selected');
+      }
+      calendarDays.appendChild(emptyDiv);
+    }
   }
 }
 
 // --- Renderização das Aulas do Dia Selecionado ---
 function renderClassesForSelectedDay() {
   const container = document.getElementById('classesList');
-  const jsDay = state.selectedDate.getDay();
-  
-  const dataStr = formatDate(state.selectedDate);
-  document.getElementById('selectedDayTitle').innerHTML = `Aulas do dia <span class="text-primary">${dataStr}</span>`;
-  
-  const isoDate = formatDateIso(state.selectedDate);
+  container.innerHTML = '';
+
+  if (state.isWeekView) {
+    const selectedStart = new Date(state.selectedDate);
+    selectedStart.setDate(selectedStart.getDate() - selectedStart.getDay());
+    selectedStart.setHours(0, 0, 0, 0);
+    const selectedEnd = new Date(selectedStart);
+    selectedEnd.setDate(selectedStart.getDate() + 6);
+    selectedEnd.setHours(23, 59, 59, 999);
+
+    const titleStart = formatDate(selectedStart).slice(0, 5);
+    const titleEnd = formatDate(selectedEnd);
+    document.getElementById('selectedDayTitle').innerHTML = `Aulas da Semana <span class="text-primary">${titleStart} a ${titleEnd}</span>`;
+
+    let curr = new Date(selectedStart);
+    let todasAulasSemanas = [];
+
+    while (curr <= selectedEnd) {
+      const classesToRender = getClassesObjForDate(curr);
+      if (classesToRender.length > 0) {
+        const dataStr = formatDate(curr);
+        const isoDate = formatDateIso(curr);
+
+        classesToRender.forEach((aulaConfig) => {
+          todasAulasSemanas.push({
+            aulaConfig,
+            dataStr,
+            isoDate
+          });
+        });
+      }
+      curr.setDate(curr.getDate() + 1);
+    }
+
+    if (todasAulasSemanas.length === 0) {
+      container.innerHTML = '<p class="empty-state">Nenhuma aula programada ou correspondente ao filtro para esta semana.</p>';
+    } else {
+      // Ordenação Alfabética e Numérica pelo Nome da Turma (Ex: Turma 101, Turma 102, Turma A)
+      todasAulasSemanas.sort((a, b) => {
+        const tA = a.aulaConfig.turma.nome || "";
+        const tB = b.aulaConfig.turma.nome || "";
+        const res = tA.localeCompare(tB, undefined, { numeric: true, sensitivity: 'base' });
+        if (res !== 0) return res;
+        return new Date(a.isoDate) - new Date(b.isoDate);
+      });
+
+      todasAulasSemanas.forEach((item, index) => {
+        container.appendChild(createClassForm(item.aulaConfig, item.dataStr, index, item.isoDate));
+      });
+    }
+  } else {
+    const dataStr = formatDate(state.selectedDate);
+    document.getElementById('selectedDayTitle').innerHTML = `Aulas do dia <span class="text-primary">${dataStr}</span>`;
+
+    const classesToRender = getClassesObjForDate(state.selectedDate);
+    const isoDate = formatDateIso(state.selectedDate);
+
+    if (classesToRender.length === 0) {
+      container.innerHTML = '<p class="empty-state">Nenhuma aula programada ou correspondente ao filtro para este dia.</p>';
+    } else {
+      classesToRender.forEach((aulaConfig, index) => {
+        container.appendChild(createClassForm(aulaConfig, dataStr, index, isoDate));
+      });
+    }
+
+    // Adiciona o botão de nova aula extra só na visão de dia
+    const btnExtra = document.createElement('button');
+    btnExtra.className = 'btn btn-secondary';
+    btnExtra.style.width = '100%';
+    btnExtra.innerHTML = '➕ Adicionar Aula Manual';
+    btnExtra.onclick = () => renderExtraClassForm(dataStr, isoDate);
+    container.appendChild(btnExtra);
+  }
+}
+
+function getClassesObjForDate(dateObj) {
+  const jsDay = dateObj.getDay();
+  const isoDate = formatDateIso(dateObj);
   const customSchedule = getCustomScheduleForDate(isoDate);
-  
+
   let aulasRegulares = [];
   if (customSchedule) {
-      const customClasses = customSchedule.aulas.filter(a => a.diaSemana == jsDay);
-      customClasses.forEach(c => {
-         const foundAulaConfig = buildAulaConfigFromIds(c.idTurma, c.idDisciplina);
-         if (foundAulaConfig) {
-             foundAulaConfig.periodos = c.periodos;
-             aulasRegulares.push(foundAulaConfig);
-         }
-      });
+    const customClasses = customSchedule.aulas.filter(a => a.diaSemana == jsDay);
+    customClasses.forEach(c => {
+      const foundAulaConfig = buildAulaConfigFromIds(c.idTurma, c.idDisciplina);
+      if (foundAulaConfig) {
+        foundAulaConfig.periodos = c.periodos;
+        aulasRegulares.push(foundAulaConfig);
+      }
+    });
   } else {
-      const rawAulas = state.mapaAulasPorDiaDaSemana.get(jsDay) || [];
-      aulasRegulares = rawAulas.filter(aula => isClassActiveOnDate(aula, state.selectedDate));
+    const rawAulas = state.mapaAulasPorDiaDaSemana.get(jsDay) || [];
+    aulasRegulares = rawAulas.filter(aula => isClassActiveOnDate(aula, dateObj));
   }
-  
+
   const aulasHistorico = state.mapaAulasPorDataEspecifica.get(isoDate) || [];
-  
-  // Mesclar sem duplicatas
+
   const aulasDoDiaMap = new Map();
   [...aulasRegulares, ...aulasHistorico].forEach(aula => {
     const ch = `${aula.turma.id}-${aula.disciplina.id}`;
-    if (!aulasDoDiaMap.has(ch)) {
-      aulasDoDiaMap.set(ch, aula);
-    }
+    if (!aulasDoDiaMap.has(ch)) aulasDoDiaMap.set(ch, aula);
   });
-  
+
   const ignoradosNoDia = state.ignorados[isoDate] || [];
   const aulasFiltradas = Array.from(aulasDoDiaMap.values()).filter(aula => !ignoradosNoDia.includes(`${aula.turma.id}-${aula.disciplina.id}`));
-  
-  container.innerHTML = '';
-  
-  if (aulasFiltradas.length === 0) {
-    container.innerHTML = '<p class="empty-state" style="margin-bottom: 20px;">Nenhuma aula programada ou pendente para este dia.</p>';
-  } else {
-    aulasFiltradas.forEach((aulaConfig, index) => {
-      container.appendChild(createClassForm(aulaConfig, dataStr, index, isoDate));
-    });
+
+  let classesToRender = [...aulasFiltradas];
+  if (state.viewFilters.turma) {
+    classesToRender = classesToRender.filter(c => c.turma?.nome === state.viewFilters.turma || (c.nomeDisc && c.nomeDisc.includes(state.viewFilters.turma)));
   }
-  
-  // Adiciona o botão de nova aula extra
-  const btnExtra = document.createElement('button');
-  btnExtra.className = 'btn btn-secondary';
-  btnExtra.style.width = '100%';
-  btnExtra.innerHTML = '➕ Adicionar Aula Manual';
-  btnExtra.onclick = () => renderExtraClassForm(dataStr, isoDate);
-  container.appendChild(btnExtra);
+  return classesToRender;
 }
 
+
 function formatDateIso(dateObj) {
-  return `${dateObj.getFullYear()}-${String(dateObj.getMonth()+1).padStart(2,'0')}-${String(dateObj.getDate()).padStart(2,'0')}`;
+  return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
 }
 
 function renderExtraClassForm(dataStr, isoDate) {
@@ -458,14 +555,14 @@ function renderExtraClassForm(dataStr, isoDate) {
   // Remove empty state and button to append form
   const empty = container.querySelector('.empty-state');
   if (empty) empty.remove();
-  
+
   const lastBtn = container.querySelector('.btn-secondary');
   if (lastBtn) lastBtn.remove();
-  
+
   // Criar seletor
   const div = document.createElement('div');
   div.className = 'class-card extra-class-selector';
-  
+
   let options = '<option value="">-- Selecione a Turma e Disciplina --</option>';
   state.escolas.forEach(e => {
     e.turmas.forEach(t => {
@@ -474,7 +571,7 @@ function renderExtraClassForm(dataStr, isoDate) {
       });
     });
   });
-  
+
   div.innerHTML = `
     <h3 style="margin-bottom: 15px;">Adicionar Aula Manual</h3>
     <div class="form-group">
@@ -493,9 +590,9 @@ function renderExtraClassForm(dataStr, isoDate) {
 window.confirmExtraClass = (dataStr, isoDate) => {
   const select = document.getElementById('extraClassSelect');
   if (!select.value) return;
-  
+
   const [idTurma, idDisc] = select.value.split('|');
-  
+
   const aulaConfig = buildAulaConfigFromIds(idTurma, idDisc);
   if (aulaConfig) {
     // Adiciona temporariamente ao mapa de data especifica para que seja renderizado
@@ -510,38 +607,42 @@ window.confirmExtraClass = (dataStr, isoDate) => {
 function createClassForm(aulaConfig, dataStr, index, isoDate) {
   const div = document.createElement('div');
   div.className = 'class-card';
-  
+
   const { turma, disciplina, escolaNome, periodos } = aulaConfig;
-  
+
   const [d, m, y] = dataStr.split('/');
   // isoDate is passed via param agora
-  
+
   // Verifica se já existe chamada registrada
   let chamadaExistente = null;
   if (disciplina.chamadas && disciplina.chamadas.length > 0) {
     chamadaExistente = disciplina.chamadas.find(c => c.data === isoDate);
   }
-  
+
   if (chamadaExistente) {
     div.classList.add('completed');
   }
-  
+
   const matriculasComFalta = new Set(
-    chamadaExistente && chamadaExistente.alunoFaltas 
-      ? chamadaExistente.alunoFaltas.map(af => af.matricula) 
+    chamadaExistente && chamadaExistente.alunoFaltas
+      ? chamadaExistente.alunoFaltas.map(af => af.matricula)
       : []
   );
-  
+
   const registroConteudo = chamadaExistente ? chamadaExistente.registroConteudo : '';
   const textBtnEnvio = chamadaExistente ? "Atualizar Registro" : "Enviar Registro";
   const idPeriodoAulaExistente = chamadaExistente ? chamadaExistente.idPeriodoAulaData : "";
-  
-  const alunos = disciplina.alunosEAulas?.alunos?.filter(a => a.situacao.id === 1 || a.situacao.id === 2) || []; 
-  
-  alunos.sort((a, b) => (a.nroNaTurma || 0) - (b.nroNaTurma || 0));
+
+  const alunos = disciplina.alunosEAulas?.alunos?.filter(a => a.situacao.id === 1 || a.situacao.id === 2) || [];
+
+  alunos.sort((a, b) => {
+    const nomeA = a.nomeAluno || a.nome || '';
+    const nomeB = b.nomeAluno || b.nome || '';
+    return nomeA.localeCompare(nomeB);
+  });
 
   const formId = `form-${index}`;
-  
+
   let studentsHtml = '';
   alunos.forEach(aluno => {
     const isInfrequente = state.infrequentes.includes(aluno.matricula);
@@ -552,10 +653,10 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
     } else {
       isFalta = isInfrequente;
     }
-    
+
     const clsPresente = isFalta ? "" : "active";
     const clsFalta = isFalta ? "active" : "";
-    
+
     studentsHtml += `
       <div class="student-row" data-matricula="${aluno.matricula}">
         <div class="student-info">
@@ -569,7 +670,7 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
       </div>
     `;
   });
-  
+
   const qtPeriodos = periodos.length || 1;
 
   div.innerHTML = `
@@ -608,7 +709,7 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
       </button>
     </div>
   `;
-  
+
   return div;
 }
 
@@ -618,23 +719,23 @@ window.submitAttendance = async (formIndex, idTurma, idDisciplina, qtPeriodos, d
   const originalText = btn.textContent;
   btn.disabled = true;
   btn.textContent = 'Enviando...';
-  
+
   try {
     const conteudo = document.getElementById(`conteudo-${formIndex}`).value;
     const studentsContainer = document.getElementById(`students-${formIndex}`);
     const rows = studentsContainer.querySelectorAll('.student-row');
-    
+
     const alunoFaltas = [];
-    
+
     // Gerar arrays de faltas completos baseados no qtPeriodos (ex: [1], [1, 2], [1, 2, 3])
-    const arrFaltas = Array.from({length: qtPeriodos}, (_, i) => i + 1);
+    const arrFaltas = Array.from({ length: qtPeriodos }, (_, i) => i + 1);
     const faltasJustificadas = {};
     arrFaltas.forEach(f => faltasJustificadas[f.toString()] = false);
-    
+
     rows.forEach(row => {
       const isAbsent = row.querySelector('.absent.active');
       const matricula = parseInt(row.dataset.matricula);
-      
+
       if (isAbsent) {
         alunoFaltas.push({
           matricula: matricula,
@@ -649,19 +750,19 @@ window.submitAttendance = async (formIndex, idTurma, idDisciplina, qtPeriodos, d
         });
       }
     });
-    
+
     // Buscar chamadas existentes e dados para o payload
     // Na API, idCalenEstab e idSerie etc. Como construir?
     // Podemos tentar pegar da turma
-    let turmaDados = state.escolas.flatMap(e=>e.turmas).find(t => t.id === idTurma);
-    
+    let turmaDados = state.escolas.flatMap(e => e.turmas).find(t => t.id === idTurma);
+
     // Pegar o iso date (YYYY-MM-DD)
     const [d, m, y] = dataStr.split('/');
     const isoDate = `${y}-${m}-${d}`;
-    
+
     const now = new Date();
-    const dataVersaoLocal = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
-    
+    const dataVersaoLocal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+
     const payload = {
       idTurma: idTurma,
       idDisciplina: idDisciplina,
@@ -678,38 +779,38 @@ window.submitAttendance = async (formIndex, idTurma, idDisciplina, qtPeriodos, d
       ctrDthInc: "",
       ctrDthAtu: ""
     };
-    
+
     if (idPeriodoAulaExistente) {
       payload.idPeriodoAulaData = parseInt(idPeriodoAulaExistente);
     }
-    
+
     // Tenta arrumar o idCalenEstab
     try {
       const disc = turmaDados.disciplinas.find(d => d.id === idDisciplina);
       if (disc && disc.chamadas && disc.chamadas.length > 0) {
         payload.idCalenEstab = disc.chamadas[0].idCalenEstab;
       }
-    } catch(e) {}
-    
+    } catch (e) { }
+
     console.log("Enviando payload:", payload);
-    
+
     await registrarChamadaAula(
-      idTurma, 
-      idDisciplina, 
-      isoDate, 
-      state.idRecHumano, 
-      payload, 
+      idTurma,
+      idDisciplina,
+      isoDate,
+      state.idRecHumano,
+      payload,
       state.token
     );
-    
+
     showToast('Chamada registrada com sucesso!', 'success');
-    
+
     // Atualiza imediatamente a visualização do Card para estado completo
     const card = btn.closest('.class-card');
     if (card) {
       card.classList.add('completed');
     }
-    
+
     // Muda o texto original para não voltar para "Enviar Chamada"
     btn.textContent = 'Atualizar Registro';
     btn.disabled = false; // Permite re-enviar (atualizar) imediatamente sem refresh
@@ -718,40 +819,40 @@ window.submitAttendance = async (formIndex, idTurma, idDisciplina, qtPeriodos, d
     console.error(err);
     showToast('Erro ao gravar: ' + err.message, 'error');
   }
-  
+
   // O finally manual (apenas caso de erro executa para restaurar o disabled e o form)
   btn.disabled = false;
   btn.textContent = originalText;
 };
 
-  // Event Delegation para Ignore
-  document.getElementById('classesList').addEventListener('click', async (e) => {
-    if (e.target.classList.contains('ignore-class-btn')) {
-      const btn = e.target;
-      const isoDate = btn.dataset.isoDate;
-      const key = `${btn.dataset.idTurma}-${btn.dataset.idDisciplina}`;
-      
-      if (!state.ignorados[isoDate]) {
-        state.ignorados[isoDate] = [];
-      }
-      
-      if (!state.ignorados[isoDate].includes(key)) {
-        state.ignorados[isoDate].push(key);
-        await chrome.storage.local.set({ escolaRsIgnorados: state.ignorados });
-        showToast('Aula ignorada para essa data.', 'success');
-        
-        renderClassesForSelectedDay();
-        renderCalendar(); // atualizar bolinhas do calendario
-      }
+// Event Delegation para Ignore
+document.getElementById('classesList').addEventListener('click', async (e) => {
+  if (e.target.classList.contains('ignore-class-btn')) {
+    const btn = e.target;
+    const isoDate = btn.dataset.isoDate;
+    const key = `${btn.dataset.idTurma}-${btn.dataset.idDisciplina}`;
+
+    if (!state.ignorados[isoDate]) {
+      state.ignorados[isoDate] = [];
     }
-  });
+
+    if (!state.ignorados[isoDate].includes(key)) {
+      state.ignorados[isoDate].push(key);
+      await chrome.storage.local.set({ escolaRsIgnorados: state.ignorados });
+      showToast('Aula ignorada para essa data.', 'success');
+
+      renderClassesForSelectedDay();
+      renderCalendar(); // atualizar bolinhas do calendario
+    }
+  }
+});
 
 // --- Utilidades ---
 function setLoading(isLoading, text = '') {
   const loading = document.getElementById('loading');
   const calendarLayout = document.getElementById('calendarContainer');
   const textEl = document.getElementById('loadingText');
-  
+
   if (isLoading) {
     loading.classList.remove('hidden');
     calendarLayout.classList.add('hidden');
@@ -767,9 +868,9 @@ function showToast(message, type = 'success') {
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
   toast.textContent = message;
-  
+
   container.appendChild(toast);
-  
+
   setTimeout(() => {
     toast.remove();
   }, 3500);
@@ -823,34 +924,34 @@ function renderSchedulesList() {
   document.getElementById('scheduleFormContainer').classList.add('hidden');
   container.classList.remove('hidden');
   container.innerHTML = '<h3 style="margin-bottom: 15px;">Quadros de Horários Ativos</h3>';
-  
+
   if (!state.horariosCustomizados || state.horariosCustomizados.length === 0) {
     container.innerHTML += '<p class="empty-state">Nenhum quadro de horários configurado. O sistema usará o padrão sincronizado da Seduc.</p>';
     return;
   }
-  
+
   state.horariosCustomizados.forEach((h, index) => {
     const div = document.createElement('div');
     div.className = 'schedule-item';
-    
+
     let htmlGrid = '<div class="schedule-item-grid">';
     const daysStr = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
     htmlGrid += '<table class="grid-table"><thead><tr><th>Dia</th><th>Turma/Disc</th><th>Períodos</th></tr></thead><tbody>';
-    
+
     // Sort array by day
-    h.aulas.sort((a,b) => a.diaSemana - b.diaSemana).forEach(a => {
-       const conf = buildAulaConfigFromIds(a.idTurma, a.idDisciplina);
-       if(conf) {
-          htmlGrid += `<tr>
+    h.aulas.sort((a, b) => a.diaSemana - b.diaSemana).forEach(a => {
+      const conf = buildAulaConfigFromIds(a.idTurma, a.idDisciplina);
+      if (conf) {
+        htmlGrid += `<tr>
             <td>${daysStr[a.diaSemana]}</td>
             <td>${conf.turma.nome} - ${conf.disciplina.nome}</td>
             <td>${a.periodos.join(', ')}</td>
           </tr>`;
-       }
+      }
     });
-    
+
     htmlGrid += '</tbody></table></div>';
-    
+
     div.innerHTML = `
       <div class="schedule-item-header">
         <span>${h.nome} (Vigente a partir de ${h.dataInicio.split('-').reverse().join('/')})</span>
@@ -877,7 +978,7 @@ function showNewScheduleForm() {
   document.getElementById('schedulesList').classList.add('hidden');
   const container = document.getElementById('scheduleFormContainer');
   container.classList.remove('hidden');
-  
+
   let options = '<option value="">-- Selecione Turma e Disciplina --</option>';
   state.escolas.forEach(e => {
     e.turmas.forEach(t => {
@@ -886,7 +987,7 @@ function showNewScheduleForm() {
       });
     });
   });
-  
+
   container.innerHTML = `
     <h3 style="margin-bottom: 20px;">Criar Novo Quadro de Horário</h3>
     <div style="display:flex; gap:15px; margin-top:15px;">
@@ -937,7 +1038,7 @@ function showNewScheduleForm() {
       <button class="btn btn-secondary form-action-btn" data-action="renderSchedulesList">Cancelar</button>
     </div>
   `;
-  
+
   // Store temp rows
   window._tempScheduleRows = [];
   window._editingScheduleId = null;
@@ -947,16 +1048,16 @@ function showNewScheduleForm() {
 window.editSchedule = (index) => {
   const h = state.horariosCustomizados[index];
   showNewScheduleForm();
-  
+
   document.getElementById('schNome').value = h.nome;
   document.getElementById('schDataInicio').value = h.dataInicio;
-  
+
   window._tempScheduleRows = [];
   const daysStr = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
-  
+
   h.aulas.forEach(a => {
     const conf = buildAulaConfigFromIds(a.idTurma, a.idDisciplina);
-    if(conf) {
+    if (conf) {
       window._tempScheduleRows.push({
         diaSemana: a.diaSemana,
         idTurma: a.idTurma,
@@ -967,21 +1068,21 @@ window.editSchedule = (index) => {
       });
     }
   });
-  
+
   window._editingScheduleId = h.id;
   renderTempRows();
 };
 
 function renderTempRows() {
   const tbody = document.getElementById('newScheduleBody');
-  if(!tbody) return;
+  if (!tbody) return;
   tbody.innerHTML = '';
-  
+
   if (window._tempScheduleRows.length === 0) {
     tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #777;">Nenhuma aula vinculada ainda.</td></tr>';
     return;
   }
-  
+
   window._tempScheduleRows.forEach((r, i) => {
     let selectHtml = `<select class="temp-row-dia form-control" data-index="${i}" style="width: 130px; padding: 4px;">
       <option value="1" ${r.diaSemana == 1 ? 'selected' : ''}>Segunda-feira</option>
@@ -992,7 +1093,7 @@ function renderTempRows() {
       <option value="6" ${r.diaSemana == 6 ? 'selected' : ''}>Sábado</option>
       <option value="0" ${r.diaSemana == 0 ? 'selected' : ''}>Domingo</option>
     </select>`;
-    
+
     tbody.innerHTML += `<tr>
       <td>${selectHtml}</td>
       <td>${r.nomeDisc}</td>
@@ -1006,9 +1107,9 @@ window.addScheduleRow = () => {
   const diaSel = document.getElementById('schDia');
   const discSel = document.getElementById('schDisc');
   const perInp = document.getElementById('schPeriodos').value.split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n));
-  
+
   if (!discSel.value || perInp.length === 0) return alert('Por favor, selecione a disciplina e informe os períodos numéricos corretos (ex: 1, 2).');
-  
+
   const [tId, dId] = discSel.value.split('|');
   window._tempScheduleRows.push({
     diaSemana: parseInt(diaSel.value),
@@ -1029,23 +1130,23 @@ window.removeTempRow = (idx) => {
 window.saveNewSchedule = async () => {
   const nome = document.getElementById('schNome').value;
   const dI = document.getElementById('schDataInicio').value;
-  
+
   if (!nome || !dI) return alert('Preencha os campos de Nome e Data Inicial do Quadro.');
   if (window._tempScheduleRows.length === 0) return alert('Adicione pelo menos uma aula na grade desse quadro.');
-  
+
   // Coletar as alterações nos inputs (Período e Dia da Semana)
   const periodInputs = document.querySelectorAll('.temp-row-periodos');
   const diaInputs = document.querySelectorAll('.temp-row-dia');
-  
+
   periodInputs.forEach((inp, x) => {
     const idx = parseInt(inp.dataset.index);
     const per = inp.value.split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n));
     window._tempScheduleRows[idx].periodos = per;
     window._tempScheduleRows[idx].diaSemana = parseInt(diaInputs[x].value);
   });
-  
+
   const targetId = window._editingScheduleId || Date.now().toString();
-  
+
   const h = {
     id: targetId,
     nome: nome,
@@ -1054,14 +1155,14 @@ window.saveNewSchedule = async () => {
       idTurma: r.idTurma, idDisciplina: r.idDisciplina, diaSemana: r.diaSemana, periodos: r.periodos
     }))
   };
-  
+
   if (window._editingScheduleId) {
     const idx = state.horariosCustomizados.findIndex(c => c.id === targetId);
-    if(idx !== -1) state.horariosCustomizados[idx] = h;
+    if (idx !== -1) state.horariosCustomizados[idx] = h;
   } else {
     state.horariosCustomizados.push(h);
   }
-  
+
   await chrome.storage.local.set({ escolaRsHorariosCustomizados: state.horariosCustomizados });
   showToast('Quadro salvo com sucesso!', 'success');
   window._editingScheduleId = null;
@@ -1073,13 +1174,13 @@ function exportSchedules() {
     horariosCustomizados: state.horariosCustomizados || [],
     infrequentes: state.infrequentes || []
   };
-  
+
   if (config.horariosCustomizados.length === 0 && config.infrequentes.length === 0) {
     alert("Não há configurações para exportar.");
     return;
   }
   const data = JSON.stringify(config, null, 2);
-  const blob = new Blob([data], {type: 'application/json'});
+  const blob = new Blob([data], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -1094,7 +1195,7 @@ function importSchedules(event) {
   reader.onload = async (e) => {
     try {
       const parsed = JSON.parse(e.target.result);
-      
+
       // Retrocompatibilidade: Se for array, é um backup antigo de horários apenas
       if (Array.isArray(parsed)) {
         state.horariosCustomizados = parsed;
@@ -1104,14 +1205,14 @@ function importSchedules(event) {
       } else {
         throw new Error('Formato inválido.');
       }
-      
-      await chrome.storage.local.set({ 
-         escolaRsHorariosCustomizados: state.horariosCustomizados,
-         escolaRsInfrequentes: state.infrequentes
+
+      await chrome.storage.local.set({
+        escolaRsHorariosCustomizados: state.horariosCustomizados,
+        escolaRsInfrequentes: state.infrequentes
       });
       showToast('Configurações importadas com sucesso!', 'success');
       renderSchedulesList();
-    } catch(err) {
+    } catch (err) {
       alert('Arquivo inválido ou corrompido: ' + err.message);
     }
     // reset input
@@ -1121,37 +1222,37 @@ function importSchedules(event) {
 }
 
 window.fillWithApiSchedule = () => {
-   if (!confirm("Isso puxará toda a grade atual vinculada no sistema da Escola.\nAulas já adicionadas abaixo serão substituídas. Deseja continuar?")) return;
-   
-   window._tempScheduleRows = [];
-   
-   const daysStr = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
-   
-   // A API varre os JS Days (0 = Domingo, ..., 6 = Sábado)
-   for (let jsDay = 0; jsDay <= 6; jsDay++) {
-      const apiAulas = state.mapaAulasPorDiaDaSemana.get(jsDay) || [];
-      apiAulas.forEach(aulaConfig => {
-         window._tempScheduleRows.push({
-            diaSemana: jsDay,
-            idTurma: aulaConfig.turma.id,
-            idDisciplina: aulaConfig.disciplina.id,
-            periodos: [...aulaConfig.periodos],
-            nomeDisc: `${aulaConfig.escolaNome} - ${aulaConfig.turma.nome} - ${aulaConfig.disciplina.nome}`,
-            nomeDia: daysStr[jsDay]
-         });
+  if (!confirm("Isso puxará toda a grade atual vinculada no sistema da Escola.\nAulas já adicionadas abaixo serão substituídas. Deseja continuar?")) return;
+
+  window._tempScheduleRows = [];
+
+  const daysStr = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
+
+  // A API varre os JS Days (0 = Domingo, ..., 6 = Sábado)
+  for (let jsDay = 0; jsDay <= 6; jsDay++) {
+    const apiAulas = state.mapaAulasPorDiaDaSemana.get(jsDay) || [];
+    apiAulas.forEach(aulaConfig => {
+      window._tempScheduleRows.push({
+        diaSemana: jsDay,
+        idTurma: aulaConfig.turma.id,
+        idDisciplina: aulaConfig.disciplina.id,
+        periodos: [...aulaConfig.periodos],
+        nomeDisc: `${aulaConfig.escolaNome} - ${aulaConfig.turma.nome} - ${aulaConfig.disciplina.nome}`,
+        nomeDia: daysStr[jsDay]
       });
-   }
-   
-   const tbody = document.getElementById('newScheduleBody');
-   tbody.innerHTML = '';
-   
-   if (window._tempScheduleRows.length === 0) {
-     tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #777;">Nenhuma aula programada na Escola para você.</td></tr>';
-     return;
-   }
-   
-   window._tempScheduleRows.forEach((r, i) => {
-      let selectHtml = `<select class="temp-row-dia form-control" data-index="${i}" style="width: 130px; padding: 4px;">
+    });
+  }
+
+  const tbody = document.getElementById('newScheduleBody');
+  tbody.innerHTML = '';
+
+  if (window._tempScheduleRows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #777;">Nenhuma aula programada na Escola para você.</td></tr>';
+    return;
+  }
+
+  window._tempScheduleRows.forEach((r, i) => {
+    let selectHtml = `<select class="temp-row-dia form-control" data-index="${i}" style="width: 130px; padding: 4px;">
         <option value="1" ${r.diaSemana == 1 ? 'selected' : ''}>Segunda-feira</option>
         <option value="2" ${r.diaSemana == 2 ? 'selected' : ''}>Terça-feira</option>
         <option value="3" ${r.diaSemana == 3 ? 'selected' : ''}>Quarta-feira</option>
@@ -1160,21 +1261,160 @@ window.fillWithApiSchedule = () => {
         <option value="6" ${r.diaSemana == 6 ? 'selected' : ''}>Sábado</option>
         <option value="0" ${r.diaSemana == 0 ? 'selected' : ''}>Domingo</option>
       </select>`;
-      
-      tbody.innerHTML += `<tr>
+
+    tbody.innerHTML += `<tr>
         <td>${selectHtml}</td>
         <td>${r.nomeDisc}</td>
         <td><input type="text" value="${r.periodos.join(', ')}" class="temp-row-periodos form-control" data-index="${i}" style="width: 80px; padding: 4px;"></td>
         <td><button class="btn btn-danger form-action-btn" data-action="removeTempRow" data-index="${i}">X</button></td>
       </tr>`;
-   });
+  });
 };
+
+// --- Gestão de Alunos Infrequentes  ---
+window.initViewFilters = () => {
+  const trmSelect = document.getElementById('filterTurma');
+  const btnClear = document.getElementById('btnClearFilters');
+
+  // Obter todas as turmas de todas as escolas
+  const turmas = [...new Set(state.escolas.flatMap(e => e.turmas.map(t => t.nome)))].sort();
+
+  trmSelect.innerHTML = '<option value="">Nenhuma turma selecionada...</option>';
+  turmas.forEach(t => {
+    trmSelect.innerHTML += `<option value="${t}">${t}</option>`;
+  });
+
+  // Listeners
+  trmSelect.addEventListener('change', (e) => {
+    state.viewFilters.turma = e.target.value;
+    if (state.viewFilters.turma) {
+      btnClear.classList.remove('hidden');
+    } else {
+      btnClear.classList.add('hidden');
+    }
+    applyFiltersToViews();
+  });
+
+  btnClear.addEventListener('click', () => {
+    trmSelect.value = '';
+    state.viewFilters.turma = '';
+    btnClear.classList.add('hidden');
+    applyFiltersToViews();
+  });
+
+  const chkWeek = document.getElementById('chkWeekView');
+  if (chkWeek) {
+    chkWeek.addEventListener('change', (e) => {
+      state.isWeekView = e.target.checked;
+      applyFiltersToViews();
+    });
+  }
+};
+
+function applyFiltersToViews() {
+  if (state.viewFilters.turma) {
+    document.getElementById('calendarDays').style.opacity = '0.3';
+    document.getElementById('calendarDays').style.pointerEvents = 'none';
+    renderHistoricalClassesForTurma();
+  } else {
+    document.getElementById('calendarDays').style.opacity = '1';
+    document.getElementById('calendarDays').style.pointerEvents = 'auto';
+    renderCalendar();
+    renderClassesForSelectedDay();
+  }
+}
+
+function renderHistoricalClassesForTurma() {
+  const container = document.getElementById('classesList');
+  container.innerHTML = '';
+  document.getElementById('selectedDayTitle').innerHTML = `Histórico Contínuo da Turma <span style="color:var(--primary)">${state.viewFilters.turma}</span>`;
+
+  let foundTurma = null;
+  state.escolas.forEach(e => {
+    e.turmas.forEach(t => {
+      if (t.nome === state.viewFilters.turma) {
+        foundTurma = t;
+      }
+    });
+  });
+
+  if (!foundTurma) return;
+
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+
+  // Data inicio do periodo letivo (ou fallback pra fevereiro do ano atual)
+  let dtInicio = new Date(today.getFullYear(), 1, 1);
+  if (foundTurma.dtInicioAtividade) {
+    const [y, m, d] = foundTurma.dtInicioAtividade.split('-');
+    dtInicio = new Date(y, m - 1, d);
+  }
+
+  const currDateIter = new Date(dtInicio);
+  currDateIter.setHours(12, 0, 0, 0);
+
+  let todasAulasHistoricas = [];
+
+  while (currDateIter <= today) {
+    const isoDate = `${currDateIter.getFullYear()}-${String(currDateIter.getMonth() + 1).padStart(2, '0')}-${String(currDateIter.getDate()).padStart(2, '0')}`;
+    const dayOfWeek = currDateIter.getDay();
+    const dataStr = currDateIter.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+
+    let aulasRegularesFallback = [];
+    const customSchedule = getCustomScheduleForDate(isoDate);
+
+    if (customSchedule) {
+      const rs = customSchedule.aulas.filter(a => a.diaSemana == dayOfWeek && a.idTurma == foundTurma.id);
+      rs.forEach(r => {
+        const foundAulaconf = buildAulaConfigFromIds(r.idTurma, r.idDisciplina);
+        if (foundAulaconf) {
+          foundAulaconf.periodos = r.periodos;
+          aulasRegularesFallback.push(foundAulaconf);
+        }
+      });
+    } else {
+      const diasSem = state.mapaAulasPorDiaDaSemana.get(dayOfWeek) || [];
+      aulasRegularesFallback = diasSem.filter(a => a.turma.id === foundTurma.id && isClassActiveOnDate(a, currDateIter));
+    }
+
+    const historicoDataEspec = state.mapaAulasPorDataEspecifica.get(isoDate) || [];
+    const aulasNesseDiaHistorico = historicoDataEspec.filter(a => a.turma.id === foundTurma.id);
+
+    const aulasDoDiaMap = new Map();
+    [...aulasRegularesFallback, ...aulasNesseDiaHistorico].forEach(aula => {
+      const ch = `${aula.turma.id}-${aula.disciplina.id}`;
+      if (!aulasDoDiaMap.has(ch)) aulasDoDiaMap.set(ch, aula);
+    });
+
+    const todasAsAulasDoDiaParaTurma = Array.from(aulasDoDiaMap.values());
+
+    const ignoradosNoDia = state.ignorados[isoDate] || [];
+    const validClasses = todasAsAulasDoDiaParaTurma.filter(aula => !ignoradosNoDia.includes(`${aula.turma.id}-${aula.disciplina.id}`));
+
+    validClasses.forEach(c => {
+      todasAulasHistoricas.push({ ...c, dataStr, isoDate });
+    });
+
+    currDateIter.setDate(currDateIter.getDate() + 1);
+  }
+
+  if (todasAulasHistoricas.length === 0) {
+    container.innerHTML = '<p class="empty-state">Nenhuma aula encontrada para esta turma no intervalo até hoje.</p>';
+    return;
+  }
+
+  todasAulasHistoricas.sort((a, b) => new Date(b.isoDate) - new Date(a.isoDate));
+
+  todasAulasHistoricas.forEach((item, idx) => {
+    container.appendChild(createClassForm(item, item.dataStr, idx, item.isoDate));
+  });
+}
 
 // --- Gestão de Alunos Infrequentes  ---
 window.openInfrequentesModal = () => {
   document.getElementById('infrequentesModal').classList.remove('hidden');
   document.getElementById('searchInfrequente').value = '';
-  
+
   const mapaAlunos = new Map();
   state.escolas.forEach(e => {
     e.turmas.forEach(t => {
@@ -1190,48 +1430,48 @@ window.openInfrequentesModal = () => {
       });
     });
   });
-  
-  window._todosAlunosParaInfrequentes = Array.from(mapaAlunos.values()).sort((a,b) => a.nome.localeCompare(b.nome));
+
+  window._todosAlunosParaInfrequentes = Array.from(mapaAlunos.values()).sort((a, b) => a.nome.localeCompare(b.nome));
   renderInfrequentesList();
 };
 
 window.renderInfrequentesList = () => {
   const list = document.getElementById('listaTodosAlunos');
   const q = document.getElementById('searchInfrequente').value.toLowerCase();
-  
+
   // Agrupar alunos
   const agrupado = {};
   window._todosAlunosParaInfrequentes.forEach(a => {
     const textToSearch = `${a.nome.toLowerCase()} ${a.turmaNome.toLowerCase()} ${a.escolaNome.toLowerCase()}`;
     if (!q || textToSearch.includes(q)) {
       const nomeGrupo = `${a.turmaNome} - ${a.escolaNome}`;
-      if(!agrupado[nomeGrupo]) agrupado[nomeGrupo] = [];
+      if (!agrupado[nomeGrupo]) agrupado[nomeGrupo] = [];
       agrupado[nomeGrupo].push(a);
     }
   });
-  
-  const chaves = Object.keys(agrupado).sort((a,b) => a.localeCompare(b));
-  
+
+  const chaves = Object.keys(agrupado).sort((a, b) => a.localeCompare(b));
+
   let html = '';
   if (chaves.length === 0) {
-     html = '<p style="padding:15px; text-align:center; color:#888;">Nenhum aluno encontrado.</p>';
+    html = '<p style="padding:15px; text-align:center; color:#888;">Nenhum aluno encontrado.</p>';
   } else {
-     chaves.forEach((grupoName) => {
-        const alunos = agrupado[grupoName];
-        alunos.sort((a, b) => a.nome.localeCompare(b.nome));
-        
-        let studentsHtml = '';
-        alunos.forEach(a => {
-           const isChecked = state.infrequentes.includes(a.matricula) ? 'checked' : '';
-           studentsHtml += `<label class="infrequente-item">
+    chaves.forEach((grupoName) => {
+      const alunos = agrupado[grupoName];
+      alunos.sort((a, b) => a.nome.localeCompare(b.nome));
+
+      let studentsHtml = '';
+      alunos.forEach(a => {
+        const isChecked = state.infrequentes.includes(a.matricula) ? 'checked' : '';
+        studentsHtml += `<label class="infrequente-item">
                      <input type="checkbox" data-matricula="${a.matricula}" ${isChecked}>
                      <div><strong>${a.nome}</strong></div>
                    </label>`;
-        });
-        
-        // Se estiver pesquisando, abre todos os details que deram match
-        const openAttr = q.length > 0 ? 'open' : '';
-        html += `
+      });
+
+      // Se estiver pesquisando, abre todos os details que deram match
+      const openAttr = q.length > 0 ? 'open' : '';
+      html += `
           <details class="turma-group" ${openAttr}>
              <summary class="turma-group-summary">${grupoName} <span class="turma-badge">${alunos.length} Aluno(s)</span></summary>
              <div class="turma-group-content">
@@ -1239,8 +1479,8 @@ window.renderInfrequentesList = () => {
              </div>
           </details>
         `;
-     });
+    });
   }
-  
+
   list.innerHTML = html;
 };

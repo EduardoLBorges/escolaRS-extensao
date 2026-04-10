@@ -25,6 +25,7 @@
         <p id="loadingText">Sincronizando dados das turmas...</p>
       </div>
 
+
       <div id="calendarContainer" class="calendar-layout hidden">
         <!-- Esquerda: Calendário -->
         <div class="calendar-sidebar">
@@ -38,6 +39,23 @@
           </div>
           <div id="calendarDays" class="calendar-days">
             <!-- Dias injetados via JS -->
+          </div>
+          
+          <div style="margin-top: 15px; text-align: center;">
+             <label style="cursor: pointer; font-size: 0.95rem; font-weight: 500; display: inline-flex; align-items: center; gap: 6px;">
+                <input type="checkbox" id="chkWeekView">
+                Selecionar Semana Inteira
+             </label>
+          </div>
+          
+          <div id="filterContainer" class="view-filters hidden">
+             <div style="display:flex; flex-direction:column; gap: 10px;">
+                 <label style="font-weight:600; font-size:0.9rem; margin-bottom:-4px;">🔎 Visão de Histórico Contínuo</label>
+                 <select id="filterTurma" class="form-control" style="padding: 6px;">
+                     <option value="">Nenhuma turma selecionada...</option>
+                 </select>
+                 <button id="btnClearFilters" class="btn btn-sm hidden" style="background:#e2e8f0; color:#555;">Limpar Visão</button>
+             </div>
           </div>
         </div>
 
