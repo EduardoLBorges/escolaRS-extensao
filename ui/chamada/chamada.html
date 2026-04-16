@@ -12,6 +12,7 @@
       <div class="header-content">
         <h1>Registro de Aulas e Chamada</h1>
         <div class="header-actions">
+          <button id="btnPlanosAula" class="btn btn-secondary" style="margin-right: 10px;">📚 Planos de Aula</button>
           <button id="btnSettings" class="btn btn-primary" style="margin-right: 10px;">⚙️ Ajustar Horários</button>
           <button id="btnInfrequentes" class="btn btn-secondary" style="margin-right: 10px;">👥 Alunos Infrequentes</button>
           <button id="btnVoltar" class="btn btn-secondary">Voltar ao Dashboard</button>
@@ -123,6 +124,27 @@
         </div>
       </div>
     </main>
+
+    <!-- Modal Planos de Aula -->
+    <div id="planosAulaModal" class="modal-overlay hidden">
+      <div class="modal-content" style="max-width: 860px;">
+        <div class="modal-header">
+          <h2>📚 Planos de Aula</h2>
+          <button id="btnClosePlanosModal" class="btn-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="planos-toolbar">
+            <button id="btnNovoPlanoDisciplina" class="btn btn-primary">➕ Novo Plano</button>
+          </div>
+          <div id="planosFormContainer" class="hidden" style="margin-bottom:20px;">
+            <!-- JS injeta aqui -->
+          </div>
+          <div id="planosListContainer">
+            <!-- JS injeta planos agrupados aqui -->
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="../../api/escolaRS.js"></script>

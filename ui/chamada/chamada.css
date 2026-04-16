@@ -223,6 +223,8 @@ body {
   padding: 24px;
   box-shadow: var(--shadow-md);
   min-height: 400px;
+  min-width: 0; /* Impede o grid item de crescer além da coluna */
+  overflow: hidden;
 }
 
 .day-header {
@@ -564,3 +566,195 @@ body {
 .toast.error { background: var(--danger); }
 @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
 @keyframes fadeOut { to { opacity: 0; visibility: hidden; } }
+
+/* ===== Planos de Aula ===== */
+.planos-toolbar {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.plano-disc-group {
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.plano-disc-summary {
+  background: var(--primary);
+  color: white;
+  padding: 12px 16px;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.plano-disc-summary::-webkit-details-marker { display: none; }
+.plano-disc-summary::before { content: '▶'; transition: transform 0.2s; font-size: 0.75rem; }
+.plano-disc-group[open] > .plano-disc-summary::before { transform: rotate(90deg); }
+
+.plano-serie-group {
+  border-top: 1px solid var(--border);
+  background: #fafafa;
+}
+.plano-serie-summary {
+  padding: 10px 16px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  list-style: none;
+  color: var(--primary-hover);
+  gap: 4px;
+}
+.plano-serie-summary::-webkit-details-marker { display: none; }
+
+.plano-aulas-list {
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.plano-aula-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  cursor: grab;
+  transition: box-shadow 0.15s, opacity 0.15s;
+}
+.plano-aula-item:hover { box-shadow: var(--shadow-sm); }
+.plano-item--dragging { opacity: 0.45; box-shadow: none; }
+.plano-item--dragover { border-color: var(--primary); box-shadow: 0 0 0 2px var(--secondary); }
+
+.plano-drag-handle {
+  font-size: 1.2rem;
+  color: #ccc;
+  cursor: grab;
+  user-select: none;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.plano-aula-content {
+  flex: 1;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.plano-add-aula-form {
+  background: #f0faf2;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+/* Slider de Sugestões no Card de Aula */
+.plano-sugestoes-wrapper {
+  width: 100%;               /* Ocupa exatamente a largura do card pai */
+  box-sizing: border-box;    /* Padding não aumenta a largura */
+  overflow-x: auto;          /* Scroll lateral apenas aqui */
+  overflow-y: hidden;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  background: #f6fdf7;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--secondary);
+  -webkit-overflow-scrolling: touch;
+  cursor: grab;
+  user-select: none;
+}
+.plano-sugestoes-wrapper.plano-grabbing,
+.plano-sugestoes-wrapper.plano-grabbing * {
+  cursor: grabbing !important;
+}
+.plano-sugestoes-wrapper::-webkit-scrollbar {
+  height: 3px;
+}
+.plano-sugestoes-wrapper::-webkit-scrollbar-thumb {
+  background: var(--secondary);
+  border-radius: 2px;
+}
+
+.plano-sugestoes-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;      /* Label não quebra linha ao rolar */
+}
+
+.plano-chips-slider {
+  display: flex;
+  flex-wrap: nowrap;        /* Não quebra linha; overflow fica com o wrapper */
+  gap: 8px;
+  padding-bottom: 2px;
+}
+
+.plano-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex-shrink: 0;
+  width: 160px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--secondary);
+  background: #f0faf2;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  scroll-snap-align: start;
+}
+.plano-chip:hover {
+  background: var(--secondary);
+  border-color: var(--primary);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+.plano-chip--active {
+  background: var(--primary) !important;
+  color: white !important;
+  transform: scale(0.97);
+}
+.plano-chip--active .plano-chip-num,
+.plano-chip--active .plano-chip-text { color: white; }
+
+.plano-chip-num {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.plano-chip-text {
+  font-size: 0.82rem;
+  color: var(--text-main);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+}
+.btn-danger {
+  background: var(--danger);
+  color: white;
+}
+.btn-danger:hover { background: var(--danger-hover); }

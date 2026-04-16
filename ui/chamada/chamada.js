@@ -5,15 +5,17 @@
 let state = {
   currentDate: new Date(),
   selectedDate: new Date(),
-  dadosBrutos: null, // Resultado do listarEscolasProfessor
+  dadosBrutos: null,
   escolas: [],
   idRecHumano: null,
   token: null,
   nrDoc: null,
-  mapaAulasPorDiaDaSemana: new Map(), // { 0: [...], 1: [...] } onde 0 = Domingo, 1 = Segunda
-  mapaAulasPorDataEspecifica: new Map(), // { "YYYY-MM-DD": [...] }
-  ignorados: {}, // { "YYYY-MM-DD": ["idTurma-idDisciplina"] }
-  horariosCustomizados: [], // array de quadros
+  mapaAulasPorDiaDaSemana: new Map(),
+  mapaAulasPorDataEspecifica: new Map(),
+  ignorados: {},
+  horariosCustomizados: [],
+  infrequentes: [],
+  planosDeAula: [], // { id, disciplinaId, serie, aulas: [{ idAula, ordem, habilidade, estrategia, objetoConhecimento }] }
   viewFilters: { escola: '', turma: '' },
   isWeekView: false
 };
@@ -97,6 +99,13 @@ function setupEventListeners() {
     renderClassesForSelectedDay();
   });
 
+  // Modal de Planos de Aula
+  document.getElementById('btnPlanosAula').addEventListener('click', openPlanosModal);
+  document.getElementById('btnClosePlanosModal').addEventListener('click', () => {
+    document.getElementById('planosAulaModal').classList.add('hidden');
+  });
+  document.getElementById('btnNovoPlanoDisciplina').addEventListener('click', showPlanoForm);
+
   document.getElementById('listaTodosAlunos').addEventListener('change', async (e) => {
     if (e.target.tagName === 'INPUT' && e.target.type === 'checkbox') {
       const mat = parseInt(e.target.dataset.matricula);
@@ -115,7 +124,7 @@ function setupEventListeners() {
     if (e.target.classList.contains('form-action-btn')) {
       const action = e.target.dataset.action;
       if (action === 'switchShiftTab') {
-         window.switchShiftTab(e.target);
+        window.switchShiftTab(e.target);
       }
       else if (action === 'saveNewSchedule') window.saveNewSchedule();
       else if (action === 'renderSchedulesList') renderSchedulesList();
@@ -139,7 +148,7 @@ async function loadData() {
   setLoading(true, 'Carregando autenticação...');
 
   try {
-    const authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc", "escolaRsIgnorados", "escolaRsHorariosCustomizados", "escolaRsInfrequentes"]);
+    const authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc", "escolaRsIgnorados", "escolaRsHorariosCustomizados", "escolaRsInfrequentes", "escolaRsPlanosDeAula"]);
     if (!authData.escolaRsToken || !authData.nrDoc) {
       throw new Error('Usuário não autenticado.');
     }
@@ -149,6 +158,7 @@ async function loadData() {
     state.ignorados = authData.escolaRsIgnorados || {};
     state.horariosCustomizados = authData.escolaRsHorariosCustomizados || [];
     state.infrequentes = authData.escolaRsInfrequentes || [];
+    state.planosDeAula = authData.escolaRsPlanosDeAula || [];
 
     setLoading(true, 'Buscando turmas e alunos...');
     // Busca dados com a API (do arquivo api/escolaRS.js incluído no HTML)
@@ -674,6 +684,35 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
 
   const qtPeriodos = periodos.length || 1;
 
+  // --- Slider de sugestões do Plano de Aula ---
+  let sliderHtml = '';
+  const planosDaTurmaDisc = (state.planosDeAula || []).filter(p =>
+    String(p.disciplinaId) === String(disciplina.id) &&
+    String(p.serie) === String(turma.idSerie)
+  );
+  const todasAulasDosPlanos = planosDaTurmaDisc.flatMap(p => p.aulas || []).sort((a, b) => a.ordem - b.ordem);
+  if (todasAulasDosPlanos.length > 0) {
+    const chips = todasAulasDosPlanos.map(aula => `
+      <div class="plano-chip" 
+           data-form-index="${index}" 
+           data-habilidade="${(aula.habilidade || '').replace(/"/g, '&quot;')}" 
+           data-estrategia="${(aula.estrategia || '').replace(/"/g, '&quot;')}"
+           data-objeto="${(aula.objetoConhecimento || '').replace(/"/g, '&quot;')}"
+           title="Estratégia: ${(aula.estrategia || '').replace(/"/g, '&quot;')}"
+           role="button">
+        <span class="plano-chip-num">Aula ${aula.ordem}</span>
+        <span class="plano-chip-text">${aula.objetoConhecimento || '—'}</span>
+      </div>
+    `).join('');
+    sliderHtml = `
+      <div class="plano-sugestoes-wrapper">
+        <span class="plano-sugestoes-label">💡 Sugestões do Plano</span>
+        <div class="plano-chips-slider">${chips}</div>
+      </div>
+    `;
+  }
+  // --- Fim slider ---
+
   div.innerHTML = `
     <div class="class-header" style="justify-content: flex-start; align-items: center; gap: 10px;">
       <div style="flex-grow: 1;">
@@ -682,7 +721,7 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
       </div>
       <button class="btn btn-secondary ignore-class-btn" data-id-turma="${turma.id}" data-id-disciplina="${disciplina.id}" data-iso-date="${isoDate}">Ignorar Pendência</button>
     </div>
-    
+    ${sliderHtml}
     <div class="form-group">
       <label>Conteúdo da Aula</label>
       <textarea class="form-control" rows="3" id="conteudo-${index}" placeholder="Digite o conteúdo abordado ou observações...">${registroConteudo}</textarea>
@@ -710,6 +749,52 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
       </button>
     </div>
   `;
+
+  // Event Listener do slider (auto-fill)
+  div.querySelectorAll('.plano-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const textarea = document.getElementById(`conteudo-${index}`);
+      if (!textarea) return;
+      const habilidade = chip.dataset.habilidade ? `Habilidade: ${chip.dataset.habilidade}\n` : '';
+      const estrategia = chip.dataset.estrategia ? `Estratégia: ${chip.dataset.estrategia}\n` : '';
+      const objeto = chip.dataset.objeto || '';
+      textarea.value = `${objeto}\n${habilidade}${estrategia}`.trim();
+      chip.classList.add('plano-chip--active');
+      setTimeout(() => chip.classList.remove('plano-chip--active'), 600);
+    });
+  });
+  // Drag-to-scroll no wrapper de sugestões
+  const wrapper = div.querySelector('.plano-sugestoes-wrapper');
+  if (wrapper) {
+    let isDragging = false;
+    let startX = 0;
+    let startScrollLeft = 0;
+
+    wrapper.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      startX = e.pageX - wrapper.offsetLeft;
+      startScrollLeft = wrapper.scrollLeft;
+      wrapper.classList.add('plano-grabbing');
+      e.preventDefault(); // Evita selecionar texto durante o arraste
+    });
+
+    wrapper.addEventListener('mouseleave', () => {
+      isDragging = false;
+      wrapper.classList.remove('plano-grabbing');
+    });
+
+    wrapper.addEventListener('mouseup', () => {
+      isDragging = false;
+      wrapper.classList.remove('plano-grabbing');
+    });
+
+    wrapper.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const x = e.pageX - wrapper.offsetLeft;
+      const walk = (x - startX) * 1.2; // Multiplicador de velocidade
+      wrapper.scrollLeft = startScrollLeft - walk;
+    });
+  }
 
   return div;
 }
@@ -807,22 +892,22 @@ window.submitAttendance = async (formIndex, idTurma, idDisciplina, qtPeriodos, d
     // Salvar localmente no state para persistir durante a mesma sessão sem F5
     const discToUpdate = turmaDados.disciplinas.find(d => d.id === idDisciplina);
     if (discToUpdate) {
-        if (!discToUpdate.chamadas) discToUpdate.chamadas = [];
-        
-        let existing = discToUpdate.chamadas.find(c => c.data === isoDate);
-        if (existing) {
-            existing.alunoFaltas = alunoFaltas;
-            existing.registroConteudo = conteudo;
-        } else {
-            discToUpdate.chamadas.push({
-                data: isoDate,
-                alunoFaltas: alunoFaltas,
-                registroConteudo: conteudo,
-                qtPeriodos: payload.periodos ? payload.periodos.length : payload.qtPeriodos
-            });
-        }
-        
-        mapearAulasDaSemana(); // Reconstrói os mapas do calendário e histórico com os novos dados
+      if (!discToUpdate.chamadas) discToUpdate.chamadas = [];
+
+      let existing = discToUpdate.chamadas.find(c => c.data === isoDate);
+      if (existing) {
+        existing.alunoFaltas = alunoFaltas;
+        existing.registroConteudo = conteudo;
+      } else {
+        discToUpdate.chamadas.push({
+          data: isoDate,
+          alunoFaltas: alunoFaltas,
+          registroConteudo: conteudo,
+          qtPeriodos: payload.periodos ? payload.periodos.length : payload.qtPeriodos
+        });
+      }
+
+      mapearAulasDaSemana(); // Reconstrói os mapas do calendário e histórico com os novos dados
     }
 
     showToast('Chamada registrada com sucesso!', 'success');
@@ -985,13 +1070,13 @@ window.deleteSchedule = async (index) => {
 window.duplicateSchedule = async (index) => {
   const original = state.horariosCustomizados[index];
   const copy = JSON.parse(JSON.stringify(original)); // Deep copy
-  
+
   copy.id = Date.now().toString();
   copy.nome = copy.nome + ' (Cópia)';
-  
+
   state.horariosCustomizados.push(copy);
   await chrome.storage.local.set({ escolaRsHorariosCustomizados: state.horariosCustomizados });
-  
+
   showToast('Quadro duplicado com sucesso!', 'success');
   renderSchedulesList();
 };
@@ -1077,22 +1162,22 @@ function showNewScheduleForm() {
 
 
 window.switchShiftTab = (btn) => {
-   // get all tabs, remove active
-   document.querySelectorAll('.shift-tab-btn').forEach(b => {
-      b.classList.remove('active');
-      b.style.background = '#f1f5f9';
-      b.style.color = '#555';
-   });
-   
-   // activate target btn
-   btn.classList.add('active');
-   btn.style.background = '';
-   btn.style.color = '';
-   
-   // hide all grids
-   document.querySelectorAll('.shift-grid-container').forEach(g => g.classList.add('hidden'));
-   // show target grid
-   document.getElementById(btn.dataset.target).classList.remove('hidden');
+  // get all tabs, remove active
+  document.querySelectorAll('.shift-tab-btn').forEach(b => {
+    b.classList.remove('active');
+    b.style.background = '#f1f5f9';
+    b.style.color = '#555';
+  });
+
+  // activate target btn
+  btn.classList.add('active');
+  btn.style.background = '';
+  btn.style.color = '';
+
+  // hide all grids
+  document.querySelectorAll('.shift-grid-container').forEach(g => g.classList.add('hidden'));
+  // show target grid
+  document.getElementById(btn.dataset.target).classList.remove('hidden');
 };
 
 window.editSchedule = (index) => {
@@ -1105,8 +1190,8 @@ window.editSchedule = (index) => {
   h.aulas.forEach(a => {
     const turno = a.turno || 'M';
     a.periodos.forEach(p => {
-       const select = document.querySelector(`.schedule-cell-select[data-turno="${turno}"][data-dia="${a.diaSemana}"][data-periodo="${p}"]`);
-       if (select) select.value = `${a.idTurma}|${a.idDisciplina}`;
+      const select = document.querySelector(`.schedule-cell-select[data-turno="${turno}"][data-dia="${a.diaSemana}"][data-periodo="${p}"]`);
+      if (select) select.value = `${a.idTurma}|${a.idDisciplina}`;
     });
   });
 
@@ -1123,40 +1208,40 @@ window.saveNewSchedule = async () => {
 
   ['M', 'T', 'N'].forEach(turno => {
     for (let day = 1; day <= 5; day++) {
-       let lastVal = null;
-       let currentPeriods = [];
-       
-       for (let p = 1; p <= 6; p++) {
-          const sel = document.querySelector(`.schedule-cell-select[data-turno="${turno}"][data-dia="${day}"][data-periodo="${p}"]`);
-          const val = sel ? sel.value : "";
-          
-          if (val === lastVal && val !== "") {
-             currentPeriods.push(p);
-          } else {
-             if (lastVal) {
-                const [idTurma, idDisciplina] = lastVal.split('|');
-                aulas.push({
-                   turno: turno,
-                   diaSemana: day,
-                   idTurma: parseInt(idTurma),
-                   idDisciplina: parseInt(idDisciplina),
-                   periodos: currentPeriods
-                });
-             }
-             lastVal = val;
-             currentPeriods = val ? [p] : [];
-          }
-       }
-       if (lastVal) {
-           const [idTurma, idDisciplina] = lastVal.split('|');
-           aulas.push({
+      let lastVal = null;
+      let currentPeriods = [];
+
+      for (let p = 1; p <= 6; p++) {
+        const sel = document.querySelector(`.schedule-cell-select[data-turno="${turno}"][data-dia="${day}"][data-periodo="${p}"]`);
+        const val = sel ? sel.value : "";
+
+        if (val === lastVal && val !== "") {
+          currentPeriods.push(p);
+        } else {
+          if (lastVal) {
+            const [idTurma, idDisciplina] = lastVal.split('|');
+            aulas.push({
               turno: turno,
               diaSemana: day,
               idTurma: parseInt(idTurma),
               idDisciplina: parseInt(idDisciplina),
               periodos: currentPeriods
-           });
-       }
+            });
+          }
+          lastVal = val;
+          currentPeriods = val ? [p] : [];
+        }
+      }
+      if (lastVal) {
+        const [idTurma, idDisciplina] = lastVal.split('|');
+        aulas.push({
+          turno: turno,
+          diaSemana: day,
+          idTurma: parseInt(idTurma),
+          idDisciplina: parseInt(idDisciplina),
+          periodos: currentPeriods
+        });
+      }
     }
   });
 
@@ -1187,10 +1272,11 @@ window.saveNewSchedule = async () => {
 function exportSchedules() {
   const config = {
     horariosCustomizados: state.horariosCustomizados || [],
-    infrequentes: state.infrequentes || []
+    infrequentes: state.infrequentes || [],
+    planosDeAula: state.planosDeAula || []
   };
 
-  if (config.horariosCustomizados.length === 0 && config.infrequentes.length === 0) {
+  if (config.horariosCustomizados.length === 0 && config.infrequentes.length === 0 && config.planosDeAula.length === 0) {
     alert("Não há configurações para exportar.");
     return;
   }
@@ -1217,13 +1303,15 @@ function importSchedules(event) {
       } else if (parsed && typeof parsed === 'object') {
         if (parsed.horariosCustomizados) state.horariosCustomizados = parsed.horariosCustomizados;
         if (parsed.infrequentes) state.infrequentes = parsed.infrequentes;
+        if (parsed.planosDeAula) state.planosDeAula = parsed.planosDeAula;
       } else {
         throw new Error('Formato inválido.');
       }
 
       await chrome.storage.local.set({
         escolaRsHorariosCustomizados: state.horariosCustomizados,
-        escolaRsInfrequentes: state.infrequentes
+        escolaRsInfrequentes: state.infrequentes,
+        escolaRsPlanosDeAula: state.planosDeAula
       });
       showToast('Configurações importadas com sucesso!', 'success');
       renderSchedulesList();
@@ -1449,3 +1537,332 @@ window.renderInfrequentesList = () => {
 
   list.innerHTML = html;
 };
+
+// ===================================================
+// --- GESTÃO DE PLANOS DE AULA ---
+// ===================================================
+
+function openPlanosModal() {
+  document.getElementById('planosAulaModal').classList.remove('hidden');
+  renderPlanosList();
+
+  // Event Delegation para todos os botões do modal de Planos (CSP safe)
+  const modal = document.getElementById('planosAulaModal');
+  // Remove listener antigo para não duplicar
+  if (modal._planosDelegate) modal.removeEventListener('click', modal._planosDelegate);
+  modal._planosDelegate = async (e) => {
+    const btn = e.target.closest('.plano-action-btn');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const planoId = btn.dataset.planoId;
+    const aulaId = btn.dataset.aulaId;
+
+    if (action === 'deleteAula') await deleteAulaDaPlano(planoId, aulaId);
+    else if (action === 'showAddAulaForm') showAddAulaForm(planoId);
+    else if (action === 'deletePlano') await deletePlano(planoId);
+    else if (action === 'addAulaNaPlano') await addAulaNaPlano(planoId);
+    else if (action === 'cancelAddAula') document.getElementById(`addAulaForm-${planoId}`).classList.add('hidden');
+    else if (action === 'savePlano') await savePlano();
+    else if (action === 'cancelPlanoForm') document.getElementById('planosFormContainer').classList.add('hidden');
+  };
+  modal.addEventListener('click', modal._planosDelegate);
+}
+
+function renderPlanosList() {
+  const container = document.getElementById('planosListContainer');
+  document.getElementById('planosFormContainer').classList.add('hidden');
+
+  if (!state.planosDeAula || state.planosDeAula.length === 0) {
+    container.innerHTML = '<p class="empty-state">Nenhum plano de aula criado ainda. Clique em "Novo Plano" para começar.</p>';
+    return;
+  }
+
+  // Helper para buscar o label da série a partir do idSerie
+  const getSerieLabel = (idSerie) => {
+    for (const e of state.escolas) {
+      for (const t of e.turmas) {
+        if (String(t.idSerie) === String(idSerie)) {
+          const cdS = t.cdSerie || idSerie;
+          const tipoLabel = t.cdTipoEnsino === 'S2' ? 'EJA' : t.cdTipoEnsino === 'R2' ? 'Médio Regular' : (t.cdTipoEnsino || '');
+          return tipoLabel ? `${cdS}ª Série - ${tipoLabel}` : `${cdS}ª Série`;
+        }
+      }
+    }
+    return `Série ${idSerie}`;
+  };
+
+  // Agrupar por disciplina
+  const porDisc = {};
+  state.planosDeAula.forEach(p => {
+    const discObj = state.escolas.flatMap(e => e.turmas.flatMap(t => t.disciplinas)).find(d => String(d.id) === String(p.disciplinaId));
+    const discNome = discObj ? discObj.nome : `Disciplina ${p.disciplinaId}`;
+    if (!porDisc[discNome]) porDisc[discNome] = [];
+    porDisc[discNome].push(p);
+  });
+
+  let html = '';
+  Object.keys(porDisc).sort().forEach(discNome => {
+    html += `<details class="plano-disc-group" open><summary class="plano-disc-summary">${discNome}</summary>`;
+
+    // Agrupar por série dentro da disciplina
+    const porSerie = {};
+    porDisc[discNome].forEach(p => {
+      if (!porSerie[p.serie]) porSerie[p.serie] = [];
+      porSerie[p.serie].push(p);
+    });
+
+    Object.keys(porSerie).sort().forEach(serie => {
+      const serieLabel = getSerieLabel(serie);
+      porSerie[serie].forEach(plano => {
+        const aulasSorted = [...(plano.aulas || [])].sort((a, b) => a.ordem - b.ordem);
+        const aulaItems = aulasSorted.map(aula => `
+          <div class="plano-aula-item" draggable="true" data-plano-id="${plano.id}" data-aula-id="${aula.idAula}" data-ordem="${aula.ordem}">
+            <span class="plano-drag-handle" title="Arraste para reordenar">⠿</span>
+            <div class="plano-aula-content">
+              <strong>Aula ${aula.ordem}:</strong> ${aula.objetoConhecimento || '—'}
+              ${aula.habilidade ? `<br><small><b>Habilidade:</b> ${aula.habilidade}</small>` : ''}
+              ${aula.estrategia ? `<br><small><b>Estratégia:</b> ${aula.estrategia}</small>` : ''}
+            </div>
+            <button class="btn btn-sm btn-danger plano-action-btn" data-action="deleteAula" data-plano-id="${plano.id}" data-aula-id="${aula.idAula}">✕</button>
+          </div>
+        `).join('');
+
+        html += `
+          <details class="plano-serie-group" open>
+            <summary class="plano-serie-summary">
+              ${serieLabel}
+              <div style="display:inline-flex;gap:6px;margin-left:10px;">
+                <button class="btn btn-sm btn-primary plano-action-btn" data-action="showAddAulaForm" data-plano-id="${plano.id}">+ Aula</button>
+                <button class="btn btn-sm btn-danger plano-action-btn" data-action="deletePlano" data-plano-id="${plano.id}">🗑️ Remover</button>
+              </div>
+            </summary>
+            <div class="plano-aulas-list" id="aulasList-${plano.id}">
+              ${aulaItems || '<p style="padding:10px;color:#888;">Nenhuma aula adicionada.</p>'}
+            </div>
+            <div id="addAulaForm-${plano.id}" class="plano-add-aula-form hidden" style="padding:15px;border-top:1px solid var(--border);">
+              <div class="form-group">
+                <label>Objeto do Conhecimento</label>
+                <input type="text" id="novaAulaObjeto-${plano.id}" class="form-control" placeholder="Ex: Cinemática - Movimento Uniforme">
+              </div>
+              <div class="form-group">
+                <label>Habilidade Trabalhada</label>
+                <textarea id="novaAulaHabilidade-${plano.id}" class="form-control" rows="2" placeholder="Ex: Analisar e interpretar gráficos de posição..."></textarea>
+              </div>
+              <div class="form-group">
+                <label>Estratégia Adotada</label>
+                <textarea id="novaAulaEstrategia-${plano.id}" class="form-control" rows="2" placeholder="Ex: Aula expositiva com resolução de problemas..."></textarea>
+              </div>
+              <div class="class-actions" style="padding-top:8px;">
+                <button class="btn btn-primary plano-action-btn" data-action="addAulaNaPlano" data-plano-id="${plano.id}">Adicionar Aula</button>
+                <button class="btn btn-secondary plano-action-btn" data-action="cancelAddAula" data-plano-id="${plano.id}" style="margin-left:8px;">Cancelar</button>
+              </div>
+            </div>
+          </details>
+        `;
+      });
+    });
+    html += '</details>';
+  });
+
+  container.innerHTML = html;
+  setupDragAndDrop();
+}
+
+function showPlanoForm() {
+  const container = document.getElementById('planosFormContainer');
+  container.classList.remove('hidden');
+
+  // Disciplinas únicas por id, ordenadas por nome
+  const disciplinasMap = new Map();
+  state.escolas.forEach(e => e.turmas.forEach(t => t.disciplinas.forEach(d => {
+    if (!disciplinasMap.has(d.id)) disciplinasMap.set(d.id, d.nome);
+  })));
+
+  // Mapa de séries: idSerie -> { cdSerie, cdTipoEnsino, discIds: Set<discId> }
+  const seriesMap = new Map();
+  state.escolas.forEach(e => e.turmas.forEach(t => {
+    const idSerie = t.idSerie;
+    if (!idSerie) return;
+    if (!seriesMap.has(idSerie)) {
+      seriesMap.set(idSerie, {
+        cdSerie: t.cdSerie || String(idSerie),
+        cdTipoEnsino: t.cdTipoEnsino || '',
+        discIds: new Set()
+      });
+    }
+    t.disciplinas.forEach(d => seriesMap.get(idSerie).discIds.add(d.id));
+  }));
+
+  // Helper: formata o label da série
+  const formatSerieLabel = (s) => {
+    let tipoLabel = '';
+    if (s.cdTipoEnsino === 'S2') tipoLabel = 'EJA';
+    else if (s.cdTipoEnsino === 'R2') tipoLabel = 'Médio Regular';
+    else if (s.cdTipoEnsino) tipoLabel = s.cdTipoEnsino;
+    return tipoLabel ? `${s.cdSerie}ª Série - ${tipoLabel}` : `${s.cdSerie}ª Série`;
+  };
+
+  let discOptions = '<option value="">-- Selecione a disciplina --</option>';
+  [...disciplinasMap.entries()].sort((a, b) => a[1].localeCompare(b[1])).forEach(([id, nome]) => {
+    discOptions += `<option value="${id}">${nome}</option>`;
+  });
+
+  container.innerHTML = `
+    <div style="border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;">
+      <h3 style="margin-bottom:14px;">Novo Plano de Aula</h3>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <div class="form-group" style="flex:1;min-width:200px;">
+          <label>Disciplina</label>
+          <select id="novoPlanoDisc" class="form-control">${discOptions}</select>
+        </div>
+        <div class="form-group" style="flex:1;min-width:200px;">
+          <label>Série</label>
+          <select id="novoPlanoSerie" class="form-control">
+            <option value="">-- Selecione a disciplina primeiro --</option>
+          </select>
+        </div>
+      </div>
+      <div class="class-actions" style="padding-top:8px;">
+        <button class="btn btn-primary plano-action-btn" data-action="savePlano">Criar Plano</button>
+        <button class="btn btn-secondary plano-action-btn" data-action="cancelPlanoForm" style="margin-left:8px;">Cancelar</button>
+      </div>
+    </div>
+  `;
+
+  // Listener: filtra as séries que possuem a disciplina selecionada
+  document.getElementById('novoPlanoDisc').addEventListener('change', (ev) => {
+    const discId = parseInt(ev.target.value);
+    const serieSelect = document.getElementById('novoPlanoSerie');
+
+    if (!discId) {
+      serieSelect.innerHTML = '<option value="">-- Selecione a disciplina primeiro --</option>';
+      return;
+    }
+
+    const seriesFiltradas = [...seriesMap.entries()]
+      .filter(([, s]) => s.discIds.has(discId))
+      .sort((a, b) => {
+        if (a[1].cdTipoEnsino !== b[1].cdTipoEnsino) return a[1].cdTipoEnsino.localeCompare(b[1].cdTipoEnsino);
+        return parseInt(a[1].cdSerie) - parseInt(b[1].cdSerie);
+      });
+
+    if (seriesFiltradas.length === 0) {
+      serieSelect.innerHTML = '<option value="">Nenhuma série encontrada</option>';
+      return;
+    }
+
+    serieSelect.innerHTML = '<option value="">-- Selecione a série --</option>';
+    seriesFiltradas.forEach(([idSerie, s]) => {
+      serieSelect.innerHTML += `<option value="${idSerie}">${formatSerieLabel(s)}</option>`;
+    });
+  });
+}
+
+window.savePlano = async () => {
+  const discId = document.getElementById('novoPlanoDisc').value;
+  const serie = document.getElementById('novoPlanoSerie').value;
+  if (!discId || !serie) return alert('Selecione Disciplina e Série.');
+
+  // Evitar duplicata
+  const jaExiste = state.planosDeAula.find(p => String(p.disciplinaId) === String(discId) && String(p.serie) === String(serie));
+  if (jaExiste) {
+    showToast('Já existe um plano para essa disciplina/série.', 'error');
+    return;
+  }
+
+  const novoPlano = {
+    id: 'plano-' + Date.now(),
+    disciplinaId: discId,
+    serie: serie,
+    aulas: []
+  };
+
+  state.planosDeAula.push(novoPlano);
+  await chrome.storage.local.set({ escolaRsPlanosDeAula: state.planosDeAula });
+  showToast('Plano criado! Adicione as aulas clicando em "+ Aula".', 'success');
+  renderPlanosList();
+};
+
+window.showAddAulaForm = (planoId) => {
+  document.getElementById(`addAulaForm-${planoId}`).classList.remove('hidden');
+};
+
+window.addAulaNaPlano = async (planoId) => {
+  const objeto = document.getElementById(`novaAulaObjeto-${planoId}`).value.trim();
+  const habilidade = document.getElementById(`novaAulaHabilidade-${planoId}`).value.trim();
+  const estrategia = document.getElementById(`novaAulaEstrategia-${planoId}`).value.trim();
+
+  const plano = state.planosDeAula.find(p => p.id === planoId);
+  if (!plano) return;
+
+  const maxOrdem = plano.aulas.reduce((max, a) => Math.max(max, a.ordem), 0);
+  plano.aulas.push({
+    idAula: 'aula-' + Date.now(),
+    ordem: maxOrdem + 1,
+    objetoConhecimento: objeto,
+    habilidade: habilidade,
+    estrategia: estrategia
+  });
+
+  await chrome.storage.local.set({ escolaRsPlanosDeAula: state.planosDeAula });
+  showToast('Aula adicionada!', 'success');
+  renderPlanosList();
+};
+
+window.deleteAulaDaPlano = async (planoId, aulaId) => {
+  const plano = state.planosDeAula.find(p => p.id === planoId);
+  if (!plano) return;
+  plano.aulas = plano.aulas.filter(a => a.idAula !== aulaId);
+  // Renumerar
+  plano.aulas.sort((a, b) => a.ordem - b.ordem).forEach((a, i) => a.ordem = i + 1);
+  await chrome.storage.local.set({ escolaRsPlanosDeAula: state.planosDeAula });
+  renderPlanosList();
+};
+
+window.deletePlano = async (planoId) => {
+  if (!confirm('Remover este plano e todas as suas aulas?')) return;
+  state.planosDeAula = state.planosDeAula.filter(p => p.id !== planoId);
+  await chrome.storage.local.set({ escolaRsPlanosDeAula: state.planosDeAula });
+  showToast('Plano removido.', 'success');
+  renderPlanosList();
+};
+
+function setupDragAndDrop() {
+  document.querySelectorAll('.plano-aula-item').forEach(item => {
+    item.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', JSON.stringify({
+        planoId: item.dataset.planoId,
+        aulaId: item.dataset.aulaId
+      }));
+      item.classList.add('plano-item--dragging');
+    });
+    item.addEventListener('dragend', () => item.classList.remove('plano-item--dragging'));
+    item.addEventListener('dragover', e => {
+      e.preventDefault();
+      item.classList.add('plano-item--dragover');
+    });
+    item.addEventListener('dragleave', () => item.classList.remove('plano-item--dragover'));
+    item.addEventListener('drop', async e => {
+      e.preventDefault();
+      item.classList.remove('plano-item--dragover');
+      const { planoId, aulaId: fromAulaId } = JSON.parse(e.dataTransfer.getData('text/plain'));
+      const toAulaId = item.dataset.aulaId;
+      if (fromAulaId === toAulaId || planoId !== item.dataset.planoId) return;
+
+      const plano = state.planosDeAula.find(p => p.id === planoId);
+      if (!plano) return;
+
+      const fromAula = plano.aulas.find(a => a.idAula === fromAulaId);
+      const toAula = plano.aulas.find(a => a.idAula === toAulaId);
+      if (!fromAula || !toAula) return;
+
+      // Swap de ordem
+      const tempOrdem = fromAula.ordem;
+      fromAula.ordem = toAula.ordem;
+      toAula.ordem = tempOrdem;
+
+      await chrome.storage.local.set({ escolaRsPlanosDeAula: state.planosDeAula });
+      renderPlanosList();
+    });
+  });
+}
