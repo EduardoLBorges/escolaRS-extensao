@@ -55,6 +55,35 @@ body {
   color: var(--primary);
 }
 
+/* Lucide Icons */
+[data-lucide], .btn i, .btn-close i, .btn-icon i {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
+  vertical-align: middle;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.btn-close i {
+  width: 20px;
+  height: 20px;
+}
+.btn-icon i {
+  width: 14px;
+  height: 14px;
+}
+.plano-drag-handle i {
+  width: 16px;
+  height: 16px;
+  color: #ccc;
+  vertical-align: middle;
+}
+.plano-sugestoes-label i {
+  width: 14px;
+  height: 14px;
+  vertical-align: middle;
+}
+
 .btn {
   padding: 8px 16px;
   border-radius: var(--radius-md);

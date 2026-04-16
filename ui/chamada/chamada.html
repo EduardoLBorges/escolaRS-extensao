@@ -12,10 +12,18 @@
       <div class="header-content">
         <h1>Registro de Aulas e Chamada</h1>
         <div class="header-actions">
-          <button id="btnPlanosAula" class="btn btn-secondary" style="margin-right: 10px;">📚 Planos de Aula</button>
-          <button id="btnSettings" class="btn btn-primary" style="margin-right: 10px;">⚙️ Ajustar Horários</button>
-          <button id="btnInfrequentes" class="btn btn-secondary" style="margin-right: 10px;">👥 Alunos Infrequentes</button>
-          <button id="btnVoltar" class="btn btn-secondary">Voltar ao Dashboard</button>
+          <button id="btnPlanosAula" class="btn btn-secondary" style="margin-right: 10px;">
+            <i data-lucide="book-open"></i> Planos de Aula
+          </button>
+          <button id="btnSettings" class="btn btn-primary" style="margin-right: 10px;">
+            <i data-lucide="settings"></i> Ajustar Horários
+          </button>
+          <button id="btnInfrequentes" class="btn btn-secondary" style="margin-right: 10px;">
+            <i data-lucide="users"></i> Infrequentes
+          </button>
+          <button id="btnVoltar" class="btn btn-secondary">
+            <i data-lucide="arrow-left"></i> Dashboard
+          </button>
         </div>
       </div>
     </header>
@@ -31,9 +39,9 @@
         <!-- Esquerda: Calendário -->
         <div class="calendar-sidebar">
           <div class="calendar-header">
-            <button id="prevMonth" class="btn-icon">&lt;</button>
+            <button id="prevMonth" class="btn-icon"><i data-lucide="chevron-left"></i></button>
             <h2 id="currentMonthYear">Abril 2026</h2>
-            <button id="nextMonth" class="btn-icon">&gt;</button>
+            <button id="nextMonth" class="btn-icon"><i data-lucide="chevron-right"></i></button>
           </div>
           <div class="calendar-grid-header">
             <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
@@ -51,7 +59,9 @@
           
           <div id="filterContainer" class="view-filters hidden">
              <div style="display:flex; flex-direction:column; gap: 10px;">
-                 <label style="font-weight:600; font-size:0.9rem; margin-bottom:-4px;">🔎 Visão de Histórico Contínuo</label>
+                 <label style="font-weight:600; font-size:0.9rem; margin-bottom:-4px; display:inline-flex; align-items:center; gap:6px;">
+                   <i data-lucide="history"></i> Histórico Contínuo
+                 </label>
                  <select id="filterTurma" class="form-control" style="padding: 6px;">
                      <option value="">Nenhuma turma selecionada...</option>
                  </select>
@@ -80,16 +90,22 @@
         <div class="modal-content">
           <div class="modal-header">
             <h2>Gestão de Horários Customizados</h2>
-            <button id="btnCloseModal" class="btn-close">&times;</button>
+            <button id="btnCloseModal" class="btn-close"><i data-lucide="x"></i></button>
           </div>
           <div class="modal-body">
             
             <div class="settings-toolbar">
-              <button id="btnNewSchedule" class="btn btn-primary">➕ Novo Quadro de Horário</button>
+              <button id="btnNewSchedule" class="btn btn-primary">
+                <i data-lucide="plus"></i> Novo Quadro de Horário
+              </button>
               <div>
-                <button id="btnExport" class="btn btn-secondary">📥 Exportar</button>
+                <button id="btnExport" class="btn btn-secondary">
+                  <i data-lucide="download"></i> Exportar
+                </button>
                 <input type="file" id="btnImportFile" style="display: none;" accept=".json">
-                <button id="btnImport" class="btn btn-secondary">📤 Importar</button>
+                <button id="btnImport" class="btn btn-secondary">
+                  <i data-lucide="upload"></i> Importar
+                </button>
               </div>
             </div>
 
@@ -109,7 +125,7 @@
         <div class="modal-content">
           <div class="modal-header">
             <h2>Gestão de Alunos Infrequentes</h2>
-            <button id="btnCloseInfrequentesModal" class="btn-close">&times;</button>
+            <button id="btnCloseInfrequentesModal" class="btn-close"><i data-lucide="x"></i></button>
           </div>
           <div class="modal-body">
             <p style="margin-bottom: 15px; color: #555;">Marque os alunos que costumam faltar. O sistema pré-marcará <strong>Falta</strong> automaticamente para eles nos novos registros de chamada de suas turmas.</p>
@@ -129,12 +145,14 @@
     <div id="planosAulaModal" class="modal-overlay hidden">
       <div class="modal-content" style="max-width: 860px;">
         <div class="modal-header">
-          <h2>📚 Planos de Aula</h2>
-          <button id="btnClosePlanosModal" class="btn-close">&times;</button>
+          <h2 style="display:inline-flex;align-items:center;gap:8px;"><i data-lucide="book-open"></i> Planos de Aula</h2>
+          <button id="btnClosePlanosModal" class="btn-close"><i data-lucide="x"></i></button>
         </div>
         <div class="modal-body">
           <div class="planos-toolbar">
-            <button id="btnNovoPlanoDisciplina" class="btn btn-primary">➕ Novo Plano</button>
+            <button id="btnNovoPlanoDisciplina" class="btn btn-primary">
+              <i data-lucide="plus"></i> Novo Plano
+            </button>
           </div>
           <div id="planosFormContainer" class="hidden" style="margin-bottom:20px;">
             <!-- JS injeta aqui -->
@@ -147,6 +165,7 @@
     </div>
   </div>
 
+  <script src="../libs/lucide.min.js"></script>
   <script src="../../api/escolaRS.js"></script>
   <script src="chamada.js"></script>
 </body>

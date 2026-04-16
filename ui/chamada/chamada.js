@@ -26,6 +26,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadData();
   renderCalendar();
   renderClassesForSelectedDay();
+  lucide.createIcons();
 });
 
 function setupEventListeners() {
@@ -70,10 +71,12 @@ function setupEventListeners() {
       if (targetEl) {
         if (targetEl.style.display === 'none') {
           targetEl.style.display = 'block';
-          e.target.innerHTML = '🔼 Ocultar Alunos';
+          e.target.innerHTML = '<i data-lucide="chevron-up"></i> Ocultar Alunos';
+          lucide.createIcons({ nodes: [e.target] });
         } else {
           targetEl.style.display = 'none';
-          e.target.innerHTML = '🔽 Mostrar Alunos';
+          e.target.innerHTML = '<i data-lucide="chevron-down"></i> Mostrar Alunos';
+          lucide.createIcons({ nodes: [e.target] });
         }
       }
     }
@@ -510,7 +513,8 @@ function renderClassesForSelectedDay() {
     const btnExtra = document.createElement('button');
     btnExtra.className = 'btn btn-secondary';
     btnExtra.style.width = '100%';
-    btnExtra.innerHTML = '➕ Adicionar Aula Manual';
+    btnExtra.innerHTML = '<i data-lucide="plus"></i> Adicionar Aula Manual';
+    lucide.createIcons({ nodes: [btnExtra] });
     btnExtra.onclick = () => renderExtraClassForm(dataStr, isoDate);
     container.appendChild(btnExtra);
   }
@@ -706,7 +710,7 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
     `).join('');
     sliderHtml = `
       <div class="plano-sugestoes-wrapper">
-        <span class="plano-sugestoes-label">💡 Sugestões do Plano</span>
+        <span class="plano-sugestoes-label"><i data-lucide="lightbulb"></i> Sugestões do Plano</span>
         <div class="plano-chips-slider">${chips}</div>
       </div>
     `;
@@ -730,7 +734,7 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
     <div class="form-group">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
          <label style="margin-bottom: 0;">Lista de Presença</label>
-         <button class="btn btn-sm btn-secondary toggle-attendance-btn" data-target="students-${index}">🔽 Mostrar Alunos</button>
+         <button class="btn btn-sm btn-secondary toggle-attendance-btn" data-target="students-${index}"><i data-lucide="chevron-down"></i> Mostrar Alunos</button>
       </div>
       <div class="students-list" id="students-${index}" style="display: none;">
         ${studentsHtml}
@@ -795,6 +799,9 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
       wrapper.scrollLeft = startScrollLeft - walk;
     });
   }
+
+  // Renderizar ícones nos elementos dinâmicos do card
+  lucide.createIcons({ nodes: [div] });
 
   return div;
 }
@@ -1049,14 +1056,15 @@ function renderSchedulesList() {
       <div class="schedule-item-header" style="display: flex; flex-direction: column; gap: 10px;">
         <span style="font-weight: 600; font-size: 1.1em; color: #2d3748;">${h.nome} <small style="font-weight: normal; color: #718096;">(Vigente a partir de ${h.dataInicio.split('-').reverse().join('/')})</small></span>
         <div class="class-actions" style="display: flex; gap: 10px; margin-top: 5px;">
-          <button class="btn btn-secondary form-action-btn" data-action="duplicateSchedule" data-index="${index}">📑 Duplicar</button>
-          <button class="btn btn-secondary form-action-btn" data-action="editSchedule" data-index="${index}">✏️ Editar</button>
-          <button class="btn btn-danger form-action-btn" data-action="deleteSchedule" data-index="${index}">🗑️ Remover</button>
+          <button class="btn btn-secondary form-action-btn" data-action="duplicateSchedule" data-index="${index}"><i data-lucide="copy"></i> Duplicar</button>
+          <button class="btn btn-secondary form-action-btn" data-action="editSchedule" data-index="${index}"><i data-lucide="pencil"></i> Editar</button>
+          <button class="btn btn-danger form-action-btn" data-action="deleteSchedule" data-index="${index}"><i data-lucide="trash-2"></i> Remover</button>
         </div>
       </div>
     `;
     container.appendChild(div);
   });
+  lucide.createIcons({ nodes: [container] });
 }
 
 window.deleteSchedule = async (index) => {
@@ -1112,9 +1120,9 @@ function showNewScheduleForm() {
       <h4 style="margin-bottom: 10px;">Quadro Semanal por Turno</h4>
       
       <div class="shift-tabs" style="display:flex; gap:10px; margin-bottom: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">
-        <button class="btn shift-tab-btn active form-action-btn" data-target="grid-M" data-action="switchShiftTab" style="flex:1;">☀️ Manhã</button>
-        <button class="btn shift-tab-btn form-action-btn" data-target="grid-T" data-action="switchShiftTab" style="flex:1; background:#f1f5f9; color:#555;">🌤️ Tarde</button>
-        <button class="btn shift-tab-btn form-action-btn" data-target="grid-N" data-action="switchShiftTab" style="flex:1; background:#f1f5f9; color:#555;">🌙 Noite</button>
+        <button class="btn shift-tab-btn active form-action-btn" data-target="grid-M" data-action="switchShiftTab" style="flex:1;"><i data-lucide="sun"></i> Manhã</button>
+        <button class="btn shift-tab-btn form-action-btn" data-target="grid-T" data-action="switchShiftTab" style="flex:1; background:#f1f5f9; color:#555;"><i data-lucide="cloud-sun"></i> Tarde</button>
+        <button class="btn shift-tab-btn form-action-btn" data-target="grid-N" data-action="switchShiftTab" style="flex:1; background:#f1f5f9; color:#555;"><i data-lucide="moon"></i> Noite</button>
       </div>
       
       ${['M', 'T', 'N'].map(shift => `
@@ -1617,13 +1625,13 @@ function renderPlanosList() {
         const aulasSorted = [...(plano.aulas || [])].sort((a, b) => a.ordem - b.ordem);
         const aulaItems = aulasSorted.map(aula => `
           <div class="plano-aula-item" draggable="true" data-plano-id="${plano.id}" data-aula-id="${aula.idAula}" data-ordem="${aula.ordem}">
-            <span class="plano-drag-handle" title="Arraste para reordenar">⠿</span>
+            <span class="plano-drag-handle" title="Arraste para reordenar"><i data-lucide="grip-vertical"></i></span>
             <div class="plano-aula-content">
               <strong>Aula ${aula.ordem}:</strong> ${aula.objetoConhecimento || '—'}
               ${aula.habilidade ? `<br><small><b>Habilidade:</b> ${aula.habilidade}</small>` : ''}
               ${aula.estrategia ? `<br><small><b>Estratégia:</b> ${aula.estrategia}</small>` : ''}
             </div>
-            <button class="btn btn-sm btn-danger plano-action-btn" data-action="deleteAula" data-plano-id="${plano.id}" data-aula-id="${aula.idAula}">✕</button>
+            <button class="btn btn-sm btn-danger plano-action-btn" data-action="deleteAula" data-plano-id="${plano.id}" data-aula-id="${aula.idAula}"><i data-lucide="x"></i></button>
           </div>
         `).join('');
 
@@ -1633,7 +1641,7 @@ function renderPlanosList() {
               ${serieLabel}
               <div style="display:inline-flex;gap:6px;margin-left:10px;">
                 <button class="btn btn-sm btn-primary plano-action-btn" data-action="showAddAulaForm" data-plano-id="${plano.id}">+ Aula</button>
-                <button class="btn btn-sm btn-danger plano-action-btn" data-action="deletePlano" data-plano-id="${plano.id}">🗑️ Remover</button>
+                <button class="btn btn-sm btn-danger plano-action-btn" data-action="deletePlano" data-plano-id="${plano.id}"><i data-lucide="trash-2"></i> Remover</button>
               </div>
             </summary>
             <div class="plano-aulas-list" id="aulasList-${plano.id}">
@@ -1665,6 +1673,7 @@ function renderPlanosList() {
   });
 
   container.innerHTML = html;
+  lucide.createIcons({ nodes: [container] });
   setupDragAndDrop();
 }
 
