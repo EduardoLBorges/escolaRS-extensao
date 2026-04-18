@@ -234,6 +234,8 @@ function renderApp() {
 
 
 document.addEventListener('DOMContentLoaded', () => {
+  lucide.createIcons();
+  
   // Listener para mensagens de progresso
   chrome.runtime.onMessage.addListener((request) => {
     if (request.action === 'updateProgress') {

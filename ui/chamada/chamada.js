@@ -82,12 +82,24 @@ function setupEventListeners() {
     }
   });
 
+  document.getElementById('btnViewSchedule').addEventListener('click', openViewScheduleModal);
+
+  document.getElementById('btnCloseViewScheduleModal').addEventListener('click', () => {
+    document.getElementById('viewScheduleModal').classList.add('hidden');
+  });
+
   document.getElementById('btnSettings').addEventListener('click', openSettingsModal);
   document.getElementById('btnCloseModal').addEventListener('click', () => {
     document.getElementById('settingsModal').classList.add('hidden');
     renderCalendar();
     renderClassesForSelectedDay();
   });
+
+  document.getElementById('btnBackToSchedule').addEventListener('click', () => {
+    document.getElementById('settingsModal').classList.add('hidden');
+    openViewScheduleModal();
+  });
+
   document.getElementById('btnNewSchedule').addEventListener('click', showNewScheduleForm);
   document.getElementById('btnExport').addEventListener('click', exportSchedules);
 
@@ -152,7 +164,7 @@ async function loadData() {
 
   try {
     let authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc", "escolaRsIgnorados", "escolaRsHorariosCustomizados", "escolaRsInfrequentes", "escolaRsPlanosDeAula"]);
-    
+
     if (!authData.escolaRsToken) {
       console.log('[Chamada] Token ausente. Tentando renovação silenciosa inicial...');
       try {
@@ -664,7 +676,7 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
   alunos.sort((a, b) => {
     const numA = parseInt(a.nroNaTurma, 10);
     const numB = parseInt(b.nroNaTurma, 10);
-    
+
     if (!isNaN(numA) && !isNaN(numB)) {
       if (numA !== numB) return numA - numB;
     } else if (!isNaN(numA)) {
@@ -1051,8 +1063,165 @@ function buildAulaConfigFromIds(idTurma, idDisc) {
 // --- Modal Logic ---
 
 function openSettingsModal() {
+  document.getElementById('viewScheduleModal').classList.add('hidden');
   document.getElementById('settingsModal').classList.remove('hidden');
   renderSchedulesList();
+}
+
+function openViewScheduleModal() {
+  document.getElementById('viewScheduleModal').classList.remove('hidden');
+  renderActiveScheduleView();
+}
+
+function renderActiveScheduleView() {
+  const container = document.getElementById('activeScheduleGridContainer');
+  const todayIso = new Date().toISOString().split('T')[0];
+  const customSchedule = getCustomScheduleForDate(todayIso);
+
+  let activeAulas = [];
+  if (customSchedule) {
+    activeAulas = customSchedule.aulas;
+  } else {
+    // Extrai horários a partir do default (listaAulasNaTurmaDisciplina)
+    state.escolas.forEach(e => {
+      e.turmas.forEach(t => {
+        t.disciplinas.forEach(d => {
+          const arr = d.listaAulasNaTurmaDisciplina || [];
+          arr.forEach(ac => {
+            if (ac.siglaTurno && typeof ac.siglaTurno === 'string') {
+              activeAulas.push({
+                diaSemana: ac.diaSemana - 1, // Torna 1=Seg a 5=Sex
+                periodos: [ac.periodoAula],
+                turno: ac.siglaTurno.charAt(0).toUpperCase(),
+                turmaNome: t.nome,
+                discNome: d.nome,
+                escolaNome: e.nome
+              });
+            }
+          });
+        });
+      });
+    });
+  }
+
+  const shifts = ['M', 'T', 'N'];
+  const shiftNames = { 'M': 'Manhã', 'T': 'Tarde', 'N': 'Noite' };
+
+  const subtleColors = ['#f0fdf4', '#eff6ff', '#fff7ed', '#faf5ff', '#fef2f2', '#ecfdf5', '#fefce8', '#f8fafc'];
+  const escColorsMap = {};
+  let colorIndex = 0;
+
+  let html = '';
+
+  shifts.forEach(shift => {
+    let hasClasses = false;
+    const lookup = { 1: {}, 2: {}, 3: {}, 4: {}, 5: {} };
+
+    activeAulas.forEach(a => {
+      let currentTurno = a.turno || 'M';
+      if (currentTurno === shift) {
+        let tName = a.turmaNome;
+        let dName = a.discNome;
+        let eName = a.escolaNome;
+
+        // Se vier de cronograma customizado, resgatar os nomes
+        if (!tName && a.idTurma) {
+          let found = false;
+          state.escolas.forEach(e => {
+            if (found) return;
+            const ft = e.turmas.find(tx => tx.id == a.idTurma);
+            if (ft) {
+              tName = ft.nome;
+              eName = e.nome;
+              const fd = ft.disciplinas.find(dx => dx.id == a.idDisciplina);
+              if (fd) dName = fd.nome;
+              found = true;
+            }
+          });
+        }
+
+        if (!tName) tName = "Aula";
+        if (!dName) dName = "";
+        if (!eName) eName = "Escola Desconhecida";
+
+        if (!escColorsMap[eName]) {
+          escColorsMap[eName] = subtleColors[colorIndex % subtleColors.length];
+          colorIndex++;
+        }
+
+        const bgColor = escColorsMap[eName];
+
+        a.periodos.forEach(p => {
+          hasClasses = true;
+          if (lookup[a.diaSemana]) {
+            lookup[a.diaSemana][p] = `<div style="background:${bgColor}; padding:4px 2px; border-radius:4px; border:1px solid #e2e8f0; line-height:1.2; height:100%;">
+                <strong style="font-size:0.8rem; color:#1e293b;">${tName.substring(0, 18)}</strong><br>
+                <span style="font-size:0.7rem; color:#475569;">${dName.substring(0, 25)}</span>
+             </div>`;
+          }
+        });
+      }
+    });
+
+    if (!hasClasses) return;
+
+    html += `
+      <div class="shift-grid-container" style="margin-bottom: 25px;">
+        <h3 style="margin-bottom: 10px; padding-bottom: 5px; border-bottom: 2px solid #e2e8f0; color: #334155; display:inline-flex; align-items:center; gap:6px; font-size:1.1rem;">
+          <i data-lucide="${shift === 'M' ? 'sun' : (shift === 'T' ? 'cloud-sun' : 'moon')}"></i> Turno da ${shiftNames[shift]}
+        </h3>
+        <table class="grid-table" style="table-layout: fixed; width: 100%;">
+          <thead>
+            <tr style="font-size: 0.85rem; color:#64748b;">
+              <th style="width: 55px; text-align: center;">P</th>
+              <th>Segunda</th>
+              <th>Terça</th>
+              <th>Quarta</th>
+              <th>Quinta</th>
+              <th>Sexta</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${[1, 2, 3, 4, 5, 6].map(per => `
+              <tr>
+                <td style="text-align: center; font-weight: bold; background: #f1f5f9; color:#475569;">${per}º</td>
+                ${[1, 2, 3, 4, 5].map(day => {
+      const content = (lookup[day] && lookup[day][per]) ? lookup[day][per] : '<span style="color:#e2e8f0;">-</span>';
+      return `<td style="padding: 4px; text-align:center; vertical-align:middle; height:48px;">${content}</td>`;
+    }).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  });
+
+  if (!html) {
+    html = `<div class="empty-state" style="margin-top:40px;">
+        <i data-lucide="calendar-x" style="width:48px;height:48px;margin:0 auto 10px;color:#cbd5e1;display:block;"></i>
+        Nenhum horário cadastrado para a sua grade vigente. Adicione horários clicando em Configurar.
+      </div>`;
+  } else {
+    // Build legend
+    const escNames = Object.keys(escColorsMap);
+    if (escNames.length > 0) {
+      let legendHtml = `<div style="margin-top: 10px; padding-top: 15px; border-top: 1px dashed #e2e8f0; font-size: 0.85rem; color: #64748b;">
+        <div style="margin-bottom: 8px; font-weight: 500;">Legenda de Escolas:</div>
+        <div style="display:flex; flex-wrap:wrap; gap: 15px;">`;
+      escNames.forEach(en => {
+        legendHtml += `<div style="display:inline-flex; align-items:center; gap:6px;">
+            <div style="width:14px; height:14px; border-radius:3px; background:${escColorsMap[en]}; border:1px solid #cbd5e1;"></div>
+            <span>${en}</span>
+         </div>`;
+      });
+      legendHtml += `</div></div>`;
+      html += legendHtml;
+    }
+  }
+
+  container.innerHTML = html;
+  lucide.createIcons({ nodes: [container] });
 }
 
 function renderSchedulesList() {
@@ -1152,7 +1321,7 @@ function showNewScheduleForm() {
           <table class="grid-table template-schedule-grid" data-turno="${shift}" style="table-layout: fixed; width: 100%;">
             <thead>
               <tr style="font-size: 0.85rem;">
-                <th style="width: 50px; text-align: center;">Período</th>
+                <th style="width: 50px; text-align: center;">P</th>
                 <th>Segunda</th>
                 <th>Terça</th>
                 <th>Quarta</th>
@@ -1186,8 +1355,37 @@ function showNewScheduleForm() {
   `;
 
   window._editingScheduleId = null;
-  // Limpar selections
+  // Limpar selections primeiro
   document.querySelectorAll('.schedule-cell-select').forEach(sel => sel.value = "");
+
+  // Auto-preencher com horários padrão da Procergs
+  state.escolas.forEach(e => {
+    e.turmas.forEach(t => {
+      t.disciplinas.forEach(d => {
+        const listaAulas = d.listaAulasNaTurmaDisciplina || [];
+        listaAulas.forEach(aulaConfig => {
+          const day = aulaConfig.diaSemana - 1; // 2=Seg -> 1, 6=Sex -> 5
+          const per = aulaConfig.periodoAula;
+
+          let shift = "";
+          if (aulaConfig.siglaTurno && typeof aulaConfig.siglaTurno === 'string') {
+            shift = aulaConfig.siglaTurno.charAt(0).toUpperCase(); // Pega apenas 'M', 'T' ou 'N'
+          }
+
+          if (shift && day >= 1 && day <= 5 && per) {
+            const select = document.querySelector(`.schedule-cell-select[data-turno="${shift}"][data-dia="${day}"][data-periodo="${per}"]`);
+            if (select) {
+              // Somente sobrescreve se ainda estiver vazio, evitando duplicação em caso de choque no mesmo período (?)
+              // Mas como é preenchimento oficial, podemos forçar o último da lista ou apenas setar.
+              select.value = `${t.id}|${d.id}`;
+            }
+          }
+        });
+      });
+    });
+  });
+
+  lucide.createIcons({ nodes: [container] });
 }
 
 

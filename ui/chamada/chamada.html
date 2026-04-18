@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
   <meta charset="UTF-8">
   <title>Registro de Aulas e Chamadas</title>
   <link rel="stylesheet" href="chamada.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
+
 <body>
   <div class="app-container">
     <header class="header">
@@ -15,8 +17,8 @@
           <button id="btnPlanosAula" class="btn btn-secondary" style="margin-right: 10px;">
             <i data-lucide="book-open"></i> Planos de Aula
           </button>
-          <button id="btnSettings" class="btn btn-primary" style="margin-right: 10px;">
-            <i data-lucide="settings"></i> Ajustar Horários
+          <button id="btnViewSchedule" class="btn btn-primary" style="margin-right: 10px;">
+            <i data-lucide="calendar"></i> Horários
           </button>
           <button id="btnInfrequentes" class="btn btn-secondary" style="margin-right: 10px;">
             <i data-lucide="users"></i> Infrequentes
@@ -49,24 +51,27 @@
           <div id="calendarDays" class="calendar-days">
             <!-- Dias injetados via JS -->
           </div>
-          
+
           <div style="margin-top: 15px; text-align: center;">
-             <label style="cursor: pointer; font-size: 0.95rem; font-weight: 500; display: inline-flex; align-items: center; gap: 6px;">
-                <input type="checkbox" id="chkWeekView">
-                Selecionar Semana Inteira
-             </label>
+            <label
+              style="cursor: pointer; font-size: 0.95rem; font-weight: 500; display: inline-flex; align-items: center; gap: 6px;">
+              <input type="checkbox" id="chkWeekView">
+              Selecionar Semana Inteira
+            </label>
           </div>
-          
+
           <div id="filterContainer" class="view-filters hidden">
-             <div style="display:flex; flex-direction:column; gap: 10px;">
-                 <label style="font-weight:600; font-size:0.9rem; margin-bottom:-4px; display:inline-flex; align-items:center; gap:6px;">
-                   <i data-lucide="history"></i> Histórico Contínuo
-                 </label>
-                 <select id="filterTurma" class="form-control" style="padding: 6px;">
-                     <option value="">Nenhuma turma selecionada...</option>
-                 </select>
-                 <button id="btnClearFilters" class="btn btn-sm hidden" style="background:#e2e8f0; color:#555;">Limpar Visão</button>
-             </div>
+            <div style="display:flex; flex-direction:column; gap: 10px;">
+              <label
+                style="font-weight:600; font-size:0.9rem; margin-bottom:-4px; display:inline-flex; align-items:center; gap:6px;">
+                <i data-lucide="history"></i> Histórico Contínuo
+              </label>
+              <select id="filterTurma" class="form-control" style="padding: 6px;">
+                <option value="">Nenhuma turma selecionada...</option>
+              </select>
+              <button id="btnClearFilters" class="btn btn-sm hidden" style="background:#e2e8f0; color:#555;">Limpar
+                Visão</button>
+            </div>
           </div>
         </div>
 
@@ -75,25 +80,51 @@
           <div class="day-header">
             <h2 id="selectedDayTitle">Selecione um dia</h2>
           </div>
-          
+
           <div id="classesList" class="classes-list">
             <!-- Lista de aulas do dia e formulário -->
             <p class="empty-state">Nenhuma aula programada para este dia.</p>
           </div>
         </div>
       </div>
-      
+
       <div id="toastContainer" class="toast-container"></div>
-      
+
+      <!-- Modal Overlay de Quadro Atual -->
+      <div id="viewScheduleModal" class="modal-overlay hidden">
+        <div class="modal-content" style="max-width: 900px; width: 95vw;">
+          <div class="modal-header">
+            <h2 style="display:inline-flex;align-items:center;gap:8px;"><i data-lucide="calendar"></i> Meu Horário da
+              Semana</h2>
+            <button id="btnCloseViewScheduleModal" class="btn-close"><i data-lucide="x"></i></button>
+          </div>
+          <div class="modal-body">
+            <div style="display:flex; justify-content:space-between; margin-bottom: 20px;">
+              <p style="color: #64748b;">Abaixo os horários programados a partir da configuração vigente para hoje.</p>
+              <button id="btnSettings" class="btn btn-secondary">
+                <i data-lucide="settings"></i> Configurar / Ajustar Grades
+              </button>
+            </div>
+
+            <div id="activeScheduleGridContainer">
+              <!-- JS injeta visualização aqui -->
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Modal Overlay de Configuração -->
       <div id="settingsModal" class="modal-overlay hidden">
         <div class="modal-content">
           <div class="modal-header">
+            <button id="btnBackToSchedule" class="btn btn-secondary" title="Voltar ao Quadro Geral">
+              <i data-lucide="arrow-left"></i>
+            </button>
             <h2>Gestão de Horários Customizados</h2>
             <button id="btnCloseModal" class="btn-close"><i data-lucide="x"></i></button>
           </div>
           <div class="modal-body">
-            
+
             <div class="settings-toolbar">
               <button id="btnNewSchedule" class="btn btn-primary">
                 <i data-lucide="plus"></i> Novo Quadro de Horário
@@ -128,13 +159,16 @@
             <button id="btnCloseInfrequentesModal" class="btn-close"><i data-lucide="x"></i></button>
           </div>
           <div class="modal-body">
-            <p style="margin-bottom: 15px; color: #555;">Marque os alunos que costumam faltar. O sistema pré-marcará <strong>Falta</strong> automaticamente para eles nos novos registros de chamada de suas turmas.</p>
+            <p style="margin-bottom: 15px; color: #555;">Marque os alunos que costumam faltar. O sistema pré-marcará
+              <strong>Falta</strong> automaticamente para eles nos novos registros de chamada de suas turmas.
+            </p>
             <div class="form-group">
-                <input type="text" id="searchInfrequente" class="form-control" placeholder="Buscar aluno por nome, turma ou escola...">
+              <input type="text" id="searchInfrequente" class="form-control"
+                placeholder="Buscar aluno por nome, turma ou escola...">
             </div>
-            
+
             <div id="listaTodosAlunos" class="alunos-infrequentes-list">
-               <!-- Checkboxes JS -->
+              <!-- Checkboxes JS -->
             </div>
           </div>
         </div>
@@ -145,7 +179,8 @@
     <div id="planosAulaModal" class="modal-overlay hidden">
       <div class="modal-content" style="max-width: 860px;">
         <div class="modal-header">
-          <h2 style="display:inline-flex;align-items:center;gap:8px;"><i data-lucide="book-open"></i> Planos de Aula</h2>
+          <h2 style="display:inline-flex;align-items:center;gap:8px;"><i data-lucide="book-open"></i> Planos de Aula
+          </h2>
           <button id="btnClosePlanosModal" class="btn-close"><i data-lucide="x"></i></button>
         </div>
         <div class="modal-body">
@@ -169,4 +204,5 @@
   <script src="../../api/escolaRS.js"></script>
   <script src="chamada.js"></script>
 </body>
+
 </html>

@@ -11,8 +11,8 @@
   --border: #e2e8f0;
   --radius-lg: 12px;
   --radius-md: 8px;
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.1);
-  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
 * {
@@ -56,7 +56,10 @@ body {
 }
 
 /* Lucide Icons */
-[data-lucide], .btn i, .btn-close i, .btn-icon i {
+[data-lucide],
+.btn i,
+.btn-close i,
+.btn-icon i {
   width: 16px;
   height: 16px;
   stroke-width: 2;
@@ -64,20 +67,24 @@ body {
   display: inline-block;
   flex-shrink: 0;
 }
+
 .btn-close i {
   width: 20px;
   height: 20px;
 }
+
 .btn-icon i {
   width: 14px;
   height: 14px;
 }
+
 .plano-drag-handle i {
   width: 16px;
   height: 16px;
   color: #ccc;
   vertical-align: middle;
 }
+
 .plano-sugestoes-label i {
   width: 14px;
   height: 14px;
@@ -98,10 +105,12 @@ body {
   background: var(--primary);
   color: white;
 }
+
 .btn-primary:hover:not(:disabled) {
   background: var(--primary-hover);
   transform: translateY(-1px);
 }
+
 .btn-primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -111,6 +120,7 @@ body {
   background: var(--secondary);
   color: var(--primary-hover);
 }
+
 .btn-secondary:hover {
   background: #90d381;
 }
@@ -122,6 +132,7 @@ body {
   gap: 24px;
   align-items: start;
 }
+
 .hidden {
   display: none !important;
 }
@@ -167,6 +178,7 @@ body {
   cursor: pointer;
   transition: background 0.2s;
 }
+
 .btn-icon:hover {
   background: var(--bg-color);
 }
@@ -198,30 +210,37 @@ body {
   transition: all 0.2s;
   position: relative;
 }
+
 .cal-day:hover:not(.empty) {
   background: var(--bg-color);
 }
+
 .cal-day.empty {
   cursor: default;
 }
+
 .cal-day.today {
   font-weight: bold;
   color: var(--primary);
   border: 2px solid var(--secondary);
 }
+
 .cal-day.selected {
   background: var(--primary);
   color: white;
   font-weight: bold;
 }
+
 .cal-day.disabled {
   color: #ccc;
   cursor: not-allowed;
   background: transparent !important;
 }
+
 .cal-day.disabled:hover {
   background: transparent;
 }
+
 .cal-day.has-class-complete::after {
   content: '';
   position: absolute;
@@ -231,6 +250,7 @@ body {
   background: var(--primary);
   border-radius: 50%;
 }
+
 .cal-day.has-class-pending::after {
   content: '';
   position: absolute;
@@ -240,6 +260,7 @@ body {
   background: var(--danger);
   border-radius: 50%;
 }
+
 .cal-day.selected.has-class-complete::after,
 .cal-day.selected.has-class-pending::after {
   background: white;
@@ -252,7 +273,8 @@ body {
   padding: 24px;
   box-shadow: var(--shadow-md);
   min-height: 400px;
-  min-width: 0; /* Impede o grid item de crescer além da coluna */
+  min-width: 0;
+  /* Impede o grid item de crescer além da coluna */
   overflow: hidden;
 }
 
@@ -283,9 +305,11 @@ body {
   background: #fafafa;
   transition: box-shadow 0.2s;
 }
+
 .class-card:hover {
   box-shadow: var(--shadow-sm);
 }
+
 .class-card.completed {
   background: #ebf7ec;
   border-color: #bfe3c6;
@@ -294,16 +318,21 @@ body {
 /* Modal Overlay */
 .modal-overlay {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.5);
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
 }
+
 .modal-overlay.hidden {
   display: none;
 }
+
 .modal-content {
   background: white;
   width: 90%;
@@ -315,6 +344,7 @@ body {
   display: flex;
   flex-direction: column;
 }
+
 .modal-header {
   padding: 20px;
   border-bottom: 1px solid var(--border);
@@ -322,6 +352,7 @@ body {
   justify-content: space-between;
   align-items: center;
 }
+
 .btn-close {
   background: none;
   border: none;
@@ -329,9 +360,11 @@ body {
   cursor: pointer;
   color: #666;
 }
+
 .modal-body {
   padding: 20px;
 }
+
 .settings-toolbar {
   display: flex;
   justify-content: space-between;
@@ -339,17 +372,20 @@ body {
   padding-bottom: 20px;
   border-bottom: 1px solid var(--border);
 }
+
 .schedules-list {
   display: flex;
   flex-direction: column;
   gap: 15px;
 }
+
 .schedule-item {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 15px;
   background: #fdfdfd;
 }
+
 .schedule-item-header {
   display: flex;
   justify-content: space-between;
@@ -357,6 +393,7 @@ body {
   margin-bottom: 10px;
   font-weight: bold;
 }
+
 .schedule-item-grid {
   font-size: 13px;
   color: #555;
@@ -364,6 +401,7 @@ body {
   padding: 10px;
   border-radius: 4px;
 }
+
 .form-grid-creator {
   background: #f7f9fa;
   padding: 15px;
@@ -371,21 +409,24 @@ body {
   border: 1px dashed var(--primary);
   margin-bottom: 20px;
 }
+
 .grid-row-creator {
   display: flex;
   gap: 10px;
   align-items: center;
   margin-top: 10px;
 }
+
 .grid-table {
   width: 100%;
   border-collapse: collapse;
   margin-top: 15px;
 }
-.grid-table th, .grid-table td {
+
+.grid-table th,
+.grid-table td {
   border: 1px solid var(--border);
   padding: 8px;
-  text-align: left;
 }
 
 .class-header {
@@ -393,11 +434,13 @@ body {
   justify-content: space-between;
   margin-bottom: 16px;
 }
+
 .class-title {
   font-weight: 600;
   font-size: 1.1rem;
   color: var(--primary-hover);
 }
+
 .class-meta {
   font-size: 0.85rem;
   color: var(--text-muted);
@@ -406,12 +449,14 @@ body {
 .form-group {
   margin-bottom: 16px;
 }
+
 .form-group label {
   display: block;
   font-size: 0.9rem;
   font-weight: 500;
   margin-bottom: 8px;
 }
+
 .form-control {
   width: 100%;
   padding: 10px;
@@ -420,6 +465,7 @@ body {
   font-family: inherit;
   resize: vertical;
 }
+
 .form-control:focus {
   outline: none;
   border-color: var(--primary);
@@ -441,14 +487,17 @@ body {
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
 }
+
 .student-row:last-child {
   border-bottom: none;
 }
+
 .student-info {
   display: flex;
   align-items: center;
   gap: 12px;
 }
+
 .student-number {
   font-size: 0.8rem;
   background: var(--bg-color);
@@ -456,14 +505,17 @@ body {
   border-radius: 4px;
   color: var(--text-muted);
 }
+
 .student-name {
   font-weight: 500;
   font-size: 0.95rem;
 }
+
 .attendance-toggle {
   display: flex;
   gap: 8px;
 }
+
 .attendance-btn {
   padding: 6px 12px;
   border-radius: 20px;
@@ -488,6 +540,7 @@ body {
   border-radius: 8px;
   overflow: hidden;
 }
+
 .turma-group-summary {
   background: #f8f9fa;
   padding: 12px 15px;
@@ -497,10 +550,12 @@ body {
   justify-content: space-between;
   align-items: center;
 }
+
 .turma-group-content {
   background: #fff;
   padding: 5px 0;
 }
+
 .turma-badge {
   background: #e2e8f0;
   padding: 2px 8px;
@@ -533,18 +588,22 @@ body {
   height: 18px;
   cursor: pointer;
 }
+
 .attendance-btn.present {
   color: var(--primary);
   border-color: var(--primary);
 }
+
 .attendance-btn.present.active {
   background: var(--primary);
   color: white;
 }
+
 .attendance-btn.absent {
   color: var(--danger);
   border-color: var(--danger);
 }
+
 .attendance-btn.absent.active {
   background: var(--danger);
   color: white;
@@ -563,6 +622,7 @@ body {
   text-align: center;
   padding: 60px 0;
 }
+
 .spinner {
   width: 40px;
   height: 40px;
@@ -572,7 +632,12 @@ body {
   animation: spin 1s linear infinite;
   margin: 0 auto 16px;
 }
-@keyframes spin { 100% { transform: rotate(360deg); } }
+
+@keyframes spin {
+  100% {
+    transform: rotate(360deg);
+  }
+}
 
 .toast-container {
   position: fixed;
@@ -583,6 +648,7 @@ body {
   gap: 10px;
   z-index: 1000;
 }
+
 .toast {
   padding: 12px 24px;
   border-radius: var(--radius-md);
@@ -591,10 +657,31 @@ body {
   box-shadow: var(--shadow-md);
   animation: slideIn 0.3s forwards, fadeOut 0.3s forwards 3s;
 }
-.toast.success { background: var(--primary); }
-.toast.error { background: var(--danger); }
-@keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
-@keyframes fadeOut { to { opacity: 0; visibility: hidden; } }
+
+.toast.success {
+  background: var(--primary);
+}
+
+.toast.error {
+  background: var(--danger);
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeOut {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
 
 /* ===== Planos de Aula ===== */
 .planos-toolbar {
@@ -624,14 +711,26 @@ body {
   align-items: center;
   gap: 8px;
 }
-.plano-disc-summary::-webkit-details-marker { display: none; }
-.plano-disc-summary::before { content: '▶'; transition: transform 0.2s; font-size: 0.75rem; }
-.plano-disc-group[open] > .plano-disc-summary::before { transform: rotate(90deg); }
+
+.plano-disc-summary::-webkit-details-marker {
+  display: none;
+}
+
+.plano-disc-summary::before {
+  content: '▶';
+  transition: transform 0.2s;
+  font-size: 0.75rem;
+}
+
+.plano-disc-group[open]>.plano-disc-summary::before {
+  transform: rotate(90deg);
+}
 
 .plano-serie-group {
   border-top: 1px solid var(--border);
   background: #fafafa;
 }
+
 .plano-serie-summary {
   padding: 10px 16px;
   font-weight: 600;
@@ -643,7 +742,10 @@ body {
   color: var(--primary-hover);
   gap: 4px;
 }
-.plano-serie-summary::-webkit-details-marker { display: none; }
+
+.plano-serie-summary::-webkit-details-marker {
+  display: none;
+}
 
 .plano-aulas-list {
   padding: 8px 12px;
@@ -663,9 +765,20 @@ body {
   cursor: grab;
   transition: box-shadow 0.15s, opacity 0.15s;
 }
-.plano-aula-item:hover { box-shadow: var(--shadow-sm); }
-.plano-item--dragging { opacity: 0.45; box-shadow: none; }
-.plano-item--dragover { border-color: var(--primary); box-shadow: 0 0 0 2px var(--secondary); }
+
+.plano-aula-item:hover {
+  box-shadow: var(--shadow-sm);
+}
+
+.plano-item--dragging {
+  opacity: 0.45;
+  box-shadow: none;
+}
+
+.plano-item--dragover {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--secondary);
+}
 
 .plano-drag-handle {
   font-size: 1.2rem;
@@ -689,9 +802,12 @@ body {
 
 /* Slider de Sugestões no Card de Aula */
 .plano-sugestoes-wrapper {
-  width: 100%;               /* Ocupa exatamente a largura do card pai */
-  box-sizing: border-box;    /* Padding não aumenta a largura */
-  overflow-x: auto;          /* Scroll lateral apenas aqui */
+  width: 100%;
+  /* Ocupa exatamente a largura do card pai */
+  box-sizing: border-box;
+  /* Padding não aumenta a largura */
+  overflow-x: auto;
+  /* Scroll lateral apenas aqui */
   overflow-y: hidden;
   margin-bottom: 14px;
   padding: 10px 12px;
@@ -702,13 +818,16 @@ body {
   cursor: grab;
   user-select: none;
 }
+
 .plano-sugestoes-wrapper.plano-grabbing,
 .plano-sugestoes-wrapper.plano-grabbing * {
   cursor: grabbing !important;
 }
+
 .plano-sugestoes-wrapper::-webkit-scrollbar {
   height: 3px;
 }
+
 .plano-sugestoes-wrapper::-webkit-scrollbar-thumb {
   background: var(--secondary);
   border-radius: 2px;
@@ -722,12 +841,14 @@ body {
   margin-bottom: 8px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  white-space: nowrap;      /* Label não quebra linha ao rolar */
+  white-space: nowrap;
+  /* Label não quebra linha ao rolar */
 }
 
 .plano-chips-slider {
   display: flex;
-  flex-wrap: nowrap;        /* Não quebra linha; overflow fica com o wrapper */
+  flex-wrap: nowrap;
+  /* Não quebra linha; overflow fica com o wrapper */
   gap: 8px;
   padding-bottom: 2px;
 }
@@ -746,19 +867,24 @@ body {
   transition: all 0.15s ease;
   scroll-snap-align: start;
 }
+
 .plano-chip:hover {
   background: var(--secondary);
   border-color: var(--primary);
   transform: translateY(-1px);
   box-shadow: var(--shadow-sm);
 }
+
 .plano-chip--active {
   background: var(--primary) !important;
   color: white !important;
   transform: scale(0.97);
 }
+
 .plano-chip--active .plano-chip-num,
-.plano-chip--active .plano-chip-text { color: white; }
+.plano-chip--active .plano-chip-text {
+  color: white;
+}
 
 .plano-chip-num {
   font-size: 0.72rem;
@@ -767,6 +893,7 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+
 .plano-chip-text {
   font-size: 0.82rem;
   color: var(--text-main);
@@ -782,8 +909,12 @@ body {
   padding: 4px 10px;
   font-size: 0.8rem;
 }
+
 .btn-danger {
   background: var(--danger);
   color: white;
 }
-.btn-danger:hover { background: var(--danger-hover); }
+
+.btn-danger:hover {
+  background: var(--danger-hover);
+}
