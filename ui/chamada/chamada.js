@@ -651,6 +651,17 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
   const alunos = disciplina.alunosEAulas?.alunos?.filter(a => a.situacao.id === 1 || a.situacao.id === 2) || [];
 
   alunos.sort((a, b) => {
+    const numA = parseInt(a.nroNaTurma, 10);
+    const numB = parseInt(b.nroNaTurma, 10);
+    
+    if (!isNaN(numA) && !isNaN(numB)) {
+      if (numA !== numB) return numA - numB;
+    } else if (!isNaN(numA)) {
+      return -1;
+    } else if (!isNaN(numB)) {
+      return 1;
+    }
+
     const nomeA = a.nomeAluno || a.nome || '';
     const nomeB = b.nomeAluno || b.nome || '';
     return nomeA.localeCompare(nomeB);

@@ -55,21 +55,17 @@ async function fetchEscolaRS(endpoint, token, options = {}, timeout = API_TIMEOU
       return response.json();
     }
 
-    // Se o token expirou (401) e esta é a primeira tentativa, tenta atualizar o token.
-    if (response.status === 401 && attempt === 1) {
-      console.warn('[EscolaRS API] Token expirado (401). Buscando token atualizado do storage...');
+    // Se o token expirou (401 ou 403) e esta é a primeira tentativa, tenta atualizar o token.
+    if ((response.status === 401 || response.status === 403) && attempt === 1) {
+      console.warn('[EscolaRS API] Token expirado ou inválido (401/403). Tentando renovação silenciosa...');
       try {
-        const storage = await chrome.storage.local.get("escolaRsToken");
-        const newToken = storage.escolaRsToken;
-
-        if (newToken && newToken !== currentToken) {
-          console.log('[EscolaRS API] Token atualizado encontrado. Retentando requisição...');
-          currentToken = newToken;
-          continue; // Pula para a próxima iteração do laço (tentativa 2)
+        currentToken = await trySilentTokenRefresh();
+        if (currentToken) {
+           console.log('[EscolaRS API] Token renovado com sucesso. Retentando requisição...');
+           continue; // Pula para a próxima iteração e tenta novamente
         }
       } catch (e) {
-        console.error('[EscolaRS API] Erro ao buscar token atualizado do storage:', e);
-        // Se falhar ao buscar o token, não tenta novamente e lança o erro da requisição original.
+        console.error('[EscolaRS API] Falha na renovação silenciosa do token:', e);
       }
     }
 
@@ -83,6 +79,52 @@ async function fetchEscolaRS(endpoint, token, options = {}, timeout = API_TIMEOU
     }
     throw new Error(`Erro na API (${response.status}: ${response.statusText}). Detalhes: ${errorBody}`);
   }
+}
+
+/**
+ * Tenta forçar a renovação do token de forma invisível.
+ * Cria um iframe oculto com o portal EscolaRS e aguarda a interceptação do webRequest atualizar o storage.
+ */
+async function trySilentTokenRefresh() {
+  return new Promise((resolve, reject) => {
+    let timeoutId;
+    let iframe;
+    let tabId;
+
+    const cleanup = () => {
+      chrome.storage.onChanged.removeListener(storageListener);
+      clearTimeout(timeoutId);
+      if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
+      if (tabId) chrome.tabs.remove(tabId).catch(() => {});
+    };
+
+    const storageListener = (changes, namespace) => {
+      if (namespace === 'local' && changes.escolaRsToken && changes.escolaRsToken.newValue) {
+        cleanup();
+        resolve(changes.escolaRsToken.newValue);
+      }
+    };
+
+    chrome.storage.onChanged.addListener(storageListener);
+
+    timeoutId = setTimeout(() => {
+      cleanup();
+      reject(new Error("Timeout ao aguardar renovação do token no background. Pode ser necessário login manual."));
+    }, 15000); // 15s de limite para a renovação silenciosa
+
+    // Se houver DOM (abas de UI como Dashboard e Chamada), usa iframe oculto
+    if (typeof document !== 'undefined') {
+      iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.src = 'https://professor.escola.rs.gov.br/';
+      document.body.appendChild(iframe);
+    } else {
+      // Contexto Service Worker (background scripts): precisa abrir aba inativa
+      chrome.tabs.create({ url: 'https://professor.escola.rs.gov.br/', active: false }, (tab) => {
+        tabId = tab.id;
+      });
+    }
+  });
 }
 
 
