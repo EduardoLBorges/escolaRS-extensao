@@ -151,9 +151,20 @@ async function loadData() {
   setLoading(true, 'Carregando autenticação...');
 
   try {
-    const authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc", "escolaRsIgnorados", "escolaRsHorariosCustomizados", "escolaRsInfrequentes", "escolaRsPlanosDeAula"]);
+    let authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc", "escolaRsIgnorados", "escolaRsHorariosCustomizados", "escolaRsInfrequentes", "escolaRsPlanosDeAula"]);
+    
+    if (!authData.escolaRsToken) {
+      console.log('[Chamada] Token ausente. Tentando renovação silenciosa inicial...');
+      try {
+        await trySilentTokenRefresh();
+        authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc", "escolaRsIgnorados", "escolaRsHorariosCustomizados", "escolaRsInfrequentes", "escolaRsPlanosDeAula"]);
+      } catch (e) {
+        console.warn('[Chamada] Renovação inicial falhou:', e);
+      }
+    }
+
     if (!authData.escolaRsToken || !authData.nrDoc) {
-      throw new Error('Usuário não autenticado.');
+      throw new Error('Usuário não autenticado. Por favor, acesse o portal EscolaRS primeiro.');
     }
 
     state.token = authData.escolaRsToken;
@@ -1881,8 +1892,10 @@ function setupDragAndDrop() {
       fromAula.ordem = toAula.ordem;
       toAula.ordem = tempOrdem;
 
-      await chrome.storage.local.set({ escolaRsPlanosDeAula: state.planosDeAula });
+      await savePlano(plano, false);
       renderPlanosList();
     });
   });
 }
+
+

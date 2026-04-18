@@ -76,11 +76,34 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
   ["requestHeaders"]
 );
 
+// Limpa cache em memória do background caso algum dado seja apagado manualmente no DevTools
+chrome.storage.onChanged.addListener((changes, namespace) => {
+  if (namespace === 'local') {
+    if (changes.escolaRsToken && !changes.escolaRsToken.newValue) {
+      ultimoToken = null;
+    }
+    if (changes.nrDoc && !changes.nrDoc.newValue) {
+      ultimoNrDoc = null;
+    }
+  }
+});
+
 
 // --- OUVINTES DE EVENTOS DA EXTENSÃO ---
 
 chrome.action.onClicked.addListener(async (tab) => {
-  const authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc"]);
+  let authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc"]);
+  
+  if (!authData.escolaRsToken) {
+    console.log('[Background] Token ausente no clique inicial. Tentando renovar silenciosamente...');
+    try {
+      await trySilentTokenRefresh();
+      authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc"]);
+    } catch (e) {
+      console.log('[Background] Renovação no clique falhou:', e);
+    }
+  }
+
   const dashboardUrl = chrome.runtime.getURL('ui/dashboard/dashboard.html');
 
   if (authData.escolaRsToken && authData.nrDoc) {

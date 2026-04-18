@@ -172,7 +172,17 @@ async function getDashboardData(token, nrDoc, onProgress = null) {
  * @returns {Promise<Object>} Dados do dashboard
  */
 async function buildDashboardFromStorage() {
-  const authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc"]);
+  let authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc"]);
+
+  if (!authData.escolaRsToken) {
+    console.log('[Dashboard] Token ausente. Tentando renovação silenciosa inicial...');
+    try {
+      await trySilentTokenRefresh();
+      authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc"]);
+    } catch (e) {
+      console.warn('[Dashboard] Renovação inicial falhou:', e);
+    }
+  }
 
   if (!authData.escolaRsToken || !authData.nrDoc) {
     throw new Error("Dados de autenticação não encontrados. Por favor, acesse o portal EscolaRS primeiro.");

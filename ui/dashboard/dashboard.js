@@ -785,3 +785,5 @@ function exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro) {
   const nomeArquivo = `${dashboardData.professor.replace(' ', '_')}_notas_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`;
   XLSX.writeFile(wb, nomeArquivo);
 }
+
+

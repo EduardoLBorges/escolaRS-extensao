@@ -112,18 +112,12 @@ async function trySilentTokenRefresh() {
       reject(new Error("Timeout ao aguardar renovação do token no background. Pode ser necessário login manual."));
     }, 15000); // 15s de limite para a renovação silenciosa
 
-    // Se houver DOM (abas de UI como Dashboard e Chamada), usa iframe oculto
-    if (typeof document !== 'undefined') {
-      iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      iframe.src = 'https://professor.escola.rs.gov.br/';
-      document.body.appendChild(iframe);
-    } else {
-      // Contexto Service Worker (background scripts): precisa abrir aba inativa
-      chrome.tabs.create({ url: 'https://professor.escola.rs.gov.br/', active: false }, (tab) => {
-        tabId = tab.id;
-      });
-    }
+    // O SPA do EscolaRS paralisa o carregamento inicial (Angular) se a aba iniciar em segundo plano (active: false).
+    // Precisamos abrir em primeiro plano (active: true) por breves segundos para as requisições API passarem 
+    // e o webRequest captar o token.
+    chrome.tabs.create({ url: 'https://professor.escola.rs.gov.br/', active: true }, (tab) => {
+      tabId = tab.id;
+    });
   });
 }
 
