@@ -19,14 +19,14 @@ const SELECTORS = {
   progressFill: '#progress-fill',
   progressText: '#progress-text',
   progressStatus: '#progress-status',
-  
+
   // Filters
   filterEscola: '#filter-escola',
   filterTurma: '#filter-turma',
   filterAluno: '#filter-aluno',
   clearFilters: '#clear-filters',
   exportXlsx: '#export-xlsx',
-  
+
   // Data cards
   escolaCard: '.escola-card',
   turmaCard: '.turma-card',
@@ -89,7 +89,7 @@ function getClasseBadge(media) {
 function loadDashboard(forceRefresh = false) {
   const loadingDiv = document.querySelector(SELECTORS.loading);
   const progressContainer = document.querySelector(SELECTORS.progressContainer);
-  
+
   let showProgressTimeout = null;
 
   if (forceRefresh) {
@@ -113,26 +113,26 @@ function loadDashboard(forceRefresh = false) {
     loadingDiv.style.display = 'none';
     progressContainer.style.display = 'none';
     document.querySelector('#refresh-progress').style.display = 'none';
-    
+
     if (!response || !response.success) {
       if (dashboardData && forceRefresh) {
         const pCont = document.querySelector('#refresh-progress');
         const pBar = document.querySelector('#refresh-progress-bar');
-        
+
         pCont.style.display = 'block';
         pBar.style.width = '100%';
         pBar.classList.add('blink-error');
-        
+
         setTimeout(() => {
           pCont.style.display = 'none';
           pBar.classList.remove('blink-error');
           pBar.style.width = '0%';
         }, 3000);
-        
+
         console.error('Falha ao atualizar dados:', response?.error);
         return;
       }
-      
+
       displayError(response?.error || 'Ocorreu um erro desconhecido.');
       return;
     }
@@ -153,16 +153,16 @@ function loadDashboard(forceRefresh = false) {
  */
 function renderApp() {
   const container = document.querySelector(SELECTORS.mainContainer);
-  
+
   // Salva estado atual (filtros e scroll)
   const escolaInput = document.querySelector(SELECTORS.filterEscola);
   const turmaInput = document.querySelector(SELECTORS.filterTurma);
   const alunoInput = document.querySelector(SELECTORS.filterAluno);
-  
+
   const currentEscola = escolaInput ? escolaInput.value : '';
   const currentTurma = turmaInput ? turmaInput.value : '';
   const currentAluno = alunoInput ? alunoInput.value : '';
-  
+
   const currentScrollY = window.scrollY;
 
   container.innerHTML = ''; // Limpa o container principal
@@ -171,23 +171,26 @@ function renderApp() {
     container.appendChild(createEl('p', {}, ['Nenhuma escola ou turma encontrada para este professor.']));
     return;
   }
-  
+
   // Renderiza Header
   document.querySelector(SELECTORS.professorInfo).textContent = `Professor: ${dashboardData.professor}`;
   document.querySelector(SELECTORS.exportDate).textContent = `Exportado em: ${new Date(dashboardData.data_exportacao).toLocaleString('pt-BR')}`;
 
   // Renderiza Componentes
   const stats = calculateStats(dashboardData);
-  
+
   container.appendChild(renderStats(stats));
   container.appendChild(renderControls(dashboardData));
-  
+
   dashboardData.escolas.forEach(escola => {
     container.appendChild(renderEscola(escola));
   });
 
   container.appendChild(renderFooter());
-  
+
+  // Inicializa ícones Lucide nos elementos recém-criados (scoped ao container para garantir re-scan)
+  lucide.createIcons({ nodes: [container] });
+
   // Associa eventos aos controles recém-criados
   attachControlEvents();
 
@@ -195,33 +198,33 @@ function renderApp() {
   const novoEscolaInput = document.querySelector(SELECTORS.filterEscola);
   const novoTurmaInput = document.querySelector(SELECTORS.filterTurma);
   const novoAlunoInput = document.querySelector(SELECTORS.filterAluno);
-  
+
   let filtrosAplicados = false;
-  
+
   if (novoEscolaInput && currentEscola) {
     const optionExiste = Array.from(novoEscolaInput.options).some(opt => opt.value === currentEscola);
     if (optionExiste) {
-       novoEscolaInput.value = currentEscola;
-       updateTurmaDropdown();
-       filtrosAplicados = true;
+      novoEscolaInput.value = currentEscola;
+      updateTurmaDropdown();
+      filtrosAplicados = true;
     }
   }
-  
+
   if (novoTurmaInput && currentTurma) {
     const optionExiste = Array.from(novoTurmaInput.options).some(opt => opt.value === currentTurma);
     if (optionExiste) {
-       novoTurmaInput.value = currentTurma;
-       filtrosAplicados = true;
+      novoTurmaInput.value = currentTurma;
+      filtrosAplicados = true;
     }
   }
-  
+
   if (novoAlunoInput && currentAluno) {
     novoAlunoInput.value = currentAluno;
     if (currentAluno.trim() !== '') {
-        filtrosAplicados = true;
+      filtrosAplicados = true;
     }
   }
-  
+
   if (filtrosAplicados) {
     applyFilters();
   }
@@ -235,14 +238,14 @@ function renderApp() {
 
 document.addEventListener('DOMContentLoaded', () => {
   lucide.createIcons();
-  
+
   // Listener para mensagens de progresso
   chrome.runtime.onMessage.addListener((request) => {
     if (request.action === 'updateProgress') {
       document.querySelector(SELECTORS.progressFill).style.width = request.percentage + '%';
       document.querySelector(SELECTORS.progressText).textContent = request.percentage + '%';
       document.querySelector(SELECTORS.progressStatus).textContent = request.status;
-      
+
       const refreshProgressBar = document.querySelector('#refresh-progress-bar');
       if (refreshProgressBar) {
         refreshProgressBar.style.width = request.percentage + '%';
@@ -264,7 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function displayError(errorMessage) {
   const container = document.querySelector(SELECTORS.mainContainer);
   container.innerHTML = '';
-  container.appendChild(createEl('div', { 
+  container.appendChild(createEl('div', {
     style: 'text-align: center; padding: 40px; color: #1b5e20; background-color: #c8e6c9; border-radius: 8px; margin: 20px;',
     innerHTML: `<h3>Erro ao carregar dados</h3><p>${errorMessage}</p><p><strong>Dica:</strong> Certifique-se de que você está logado no portal EscolaRS em outra aba e tente recarregar esta página.</p>`
   }));
@@ -300,13 +303,18 @@ function renderControls(data) {
   const escolaOptions = [createEl('option', { value: '' }, ['Todas as escolas']), ...escolas.map(e => createEl('option', { value: e }, [e]))];
   const turmaOptions = [createEl('option', { value: '' }, ['Todas as turmas']), ...turmas.map(t => createEl('option', { value: t }, [t]))];
 
-  return createEl('div', { className: 'controls' }, [
-    createEl('div', { className: 'control-group' }, [createEl('label', {}, ['Escola']), createEl('select', { id: SELECTORS.filterEscola.slice(1) }, escolaOptions)]),
-    createEl('div', { className: 'control-group' }, [createEl('label', {}, ['Turma']), createEl('select', { id: SELECTORS.filterTurma.slice(1) }, turmaOptions)]),
-    createEl('div', { className: 'control-group' }, [createEl('label', {}, ['Buscar Aluno']), createEl('input', { type: 'text', id: SELECTORS.filterAluno.slice(1), placeholder: 'Digite o nome...' })]),
-    createEl('div', { className: 'control-group' }, [createEl('label', {}, ['\u00A0']), createEl('button', { id: SELECTORS.clearFilters.slice(1), className: 'clearfilters' }, ['Limpar Filtros'])]),
-    createEl('div', { className: 'control-group' }, [createEl('label', {}, ['\u00A0']), createEl('button', { id: SELECTORS.exportXlsx.slice(1), className: 'clearfilters', style: 'background: #4caf50' }, ['Exportar XLSX'])])
+  const filtersGroup = createEl('div', { className: 'controls-filters' }, [
+    createEl('select', { id: SELECTORS.filterEscola.slice(1), className: 'filter-select' }, escolaOptions),
+    createEl('select', { id: SELECTORS.filterTurma.slice(1), className: 'filter-select' }, turmaOptions),
+    createEl('input', { type: 'text', id: SELECTORS.filterAluno.slice(1), className: 'filter-input', placeholder: '\uD83D\uDD0D Buscar aluno...' }),
   ]);
+
+  const actionsGroup = createEl('div', { className: 'controls-actions' }, [
+    createEl('button', { id: SELECTORS.clearFilters.slice(1), className: 'clearfilters' }, ['Limpar']),
+    createEl('button', { id: SELECTORS.exportXlsx.slice(1), className: 'export-btn', title: 'Exportar dados como planilha XLSX', innerHTML: '<i data-lucide="table"></i>' }),
+  ]);
+
+  return createEl('div', { className: 'controls' }, [filtersGroup, actionsGroup]);
 }
 
 function renderEscola(escola) {
@@ -320,32 +328,32 @@ function renderEscola(escola) {
 
 function renderTurma(turma, escolaNome) {
   const disciplinaCards = turma.disciplinas.map(disc => renderDisciplina(disc, turma.nome));
-  
+
   return createEl('div', { className: 'turma-card', dataset: { turmaNome: turma.nome, escolaNome: escolaNome } }, disciplinaCards);
 }
 
 function renderDisciplina(disc, turmaNome) {
-    const alunos = disc.alunos || [];
-    const disciplina = disc.disciplina || 'Disciplina';
+  const alunos = disc.alunos || [];
+  const disciplina = disc.disciplina || 'Disciplina';
 
-    if (disc.erro) {
-        return createEl('div', { className: 'turma-card-content', dataset: { disciplinaNome: disciplina, turmaNome: turmaNome }}, [
-            createEl('div', { className: 'turma-header', innerHTML: `<div style="flex: 1;"><div>${turmaNome} - ${disciplina}</div><div class="turma-info">Erro ao carregar turma</div></div>` }),
-            createEl('div', { className: 'erro-turma', innerHTML: `<div style="padding: 20px; background-color: #ffebee; border-left: 4px solid #c62828; border-radius: 4px; margin: 15px 0;"><strong style="color: #c62828;">⚠️ Erro ao carregar turma</strong><p style="margin: 8px 0 0 0; font-size: 13px; color: #b71c1c;">${disc.erro}</p></div>`})
-        ]);
-    }
+  if (disc.erro) {
+    return createEl('div', { className: 'turma-card-content', dataset: { disciplinaNome: disciplina, turmaNome: turmaNome } }, [
+      createEl('div', { className: 'turma-header', innerHTML: `<div style="flex: 1;"><div>${turmaNome} - ${disciplina}</div><div class="turma-info">Erro ao carregar turma</div></div>` }),
+      createEl('div', { className: 'erro-turma', innerHTML: `<div style="padding: 20px; background-color: #ffebee; border-left: 4px solid #c62828; border-radius: 4px; margin: 15px 0;"><strong style="color: #c62828;">⚠️ Erro ao carregar turma</strong><p style="margin: 8px 0 0 0; font-size: 13px; color: #b71c1c;">${disc.erro}</p></div>` })
+    ]);
+  }
 
-    if (alunos.length === 0) return createEl('div'); // Retorna um elemento vazio se não há alunos
-    
-    const alunosAtivos = getAlunosAtivos(alunos);
-    if (alunosAtivos.length === 0) return createEl('div');
+  if (alunos.length === 0) return createEl('div'); // Retorna um elemento vazio se não há alunos
 
-    const mediaTurma = (alunosAtivos.reduce((acc, a) => acc + (a.mediaFinal || 0), 0) / alunosAtivos.length).toFixed(1);
-    const aprovados = alunosAtivos.filter(a => a.mediaFinal >= 6).length;
-    const percentual = ((aprovados / alunosAtivos.length) * 100).toFixed(0);
-    const alunosInativos = alunos.length - alunosAtivos.length;
+  const alunosAtivos = getAlunosAtivos(alunos);
+  if (alunosAtivos.length === 0) return createEl('div');
 
-    const headerHTML = `
+  const mediaTurma = (alunosAtivos.reduce((acc, a) => acc + (a.mediaFinal || 0), 0) / alunosAtivos.length).toFixed(1);
+  const aprovados = alunosAtivos.filter(a => a.mediaFinal >= 6).length;
+  const percentual = ((aprovados / alunosAtivos.length) * 100).toFixed(0);
+  const alunosInativos = alunos.length - alunosAtivos.length;
+
+  const headerHTML = `
       <div style="flex: 1;">
         <div>${turmaNome} - ${disciplina}</div>
         <div class="turma-info">
@@ -354,22 +362,31 @@ function renderDisciplina(disc, turmaNome) {
       </div>
     `;
 
-    return createEl('div', { className: 'turma-card-content', dataset: { disciplinaNome: disciplina, turmaNome: turmaNome }}, [
-        createEl('div', { className: 'turma-header', innerHTML: headerHTML }),
-        createStudentsTable(alunos, disciplina)
-    ]);
+  return createEl('div', { className: 'turma-card-content', dataset: { disciplinaNome: disciplina, turmaNome: turmaNome } }, [
+    createEl('div', { className: 'turma-header', innerHTML: headerHTML }),
+    createStudentsTable(alunos, disciplina)
+  ]);
 }
 
 
 function createStudentsTable(alunos, disciplina) {
   const periodos = detectarTipoEPeriodos(alunos).periodos;
 
+  // Colgroup: Nº fixo | Nome flex | períodos fixos | Média fixo | Status fixo
+  const cols = [
+    createEl('col', { style: 'width: 48px;' }),
+    createEl('col', {}), // nome: expande
+    ...periodos.map(() => createEl('col', { style: 'width: 80px;' })),
+    createEl('col', { style: 'width: 90px;' }),
+    createEl('col', { style: 'width: 90px;' }),
+  ];
+
   const headerRow = createEl('tr', {}, [
-    createEl('th', {}, ['Nº']),
+    createEl('th', { style: 'text-align:center;' }, ['Nº']),
     createEl('th', {}, ['Nome']),
-    ...periodos.map(p => createEl('th', {}, [p])),
-    createEl('th', {}, ['Média Final']),
-    createEl('th', {}, ['Status']),
+    ...periodos.map(p => createEl('th', { style: 'text-align:center;' }, [p])),
+    createEl('th', { style: 'text-align:center;' }, ['Média']),
+    createEl('th', { style: 'text-align:center;' }, ['Status']),
   ]);
 
   const studentRows = alunos.map(aluno => {
@@ -377,44 +394,45 @@ function createStudentsTable(alunos, disciplina) {
     const todasAsNotasPreenchidas = notasPeriodos.every(nota => nota !== '--');
 
     let statusTexto = '', statusClass = '';
-    if(todasAsNotasPreenchidas){
+    if (todasAsNotasPreenchidas) {
       statusTexto = 'Reprovado'; statusClass = 'status-reprovado';
-      if (aluno.mediaFinal >= 6) { statusTexto = 'Aprovado'; statusClass = 'status-excellente'; } 
+      if (aluno.mediaFinal >= 6) { statusTexto = 'Aprovado'; statusClass = 'status-excellente'; }
       else if (aluno.mediaFinal >= 5) { statusTexto = 'Recuperação'; statusClass = 'status-recuperacao'; }
     }
-    
+
     const isInativo = aluno.situacao && aluno.situacao.ativo === false;
-    
+
     let cells = [
-      createEl('td', {}, [`${aluno.nroNaTurma}`]),
+      createEl('td', { style: 'text-align:center;' }, [`${aluno.nroNaTurma}`]),
       createEl('td', { innerHTML: `<strong>${getNomeComSituacao(aluno)}</strong>` }),
     ];
 
     if (isInativo) {
-      cells.push(...periodos.map(() => createEl('td', {}, [''])));
-      cells.push(createEl('td', {}, ['']), createEl('td', {}, ['']));
+      cells.push(...periodos.map(() => createEl('td', { style: 'text-align:center;' }, [''])));
+      cells.push(createEl('td', {}), createEl('td', {}));
     } else {
-      cells.push(...notasPeriodos.map(nota => createEl('td', { innerHTML: nota })));
+      cells.push(...notasPeriodos.map(nota => createEl('td', { innerHTML: nota, style: 'text-align:center;' })));
       cells.push(
-        createEl('td', {}, [createEl('span', { className: `nota-badge ${getClasseBadge(aluno.mediaFinal)}` }, [aluno.mediaFinal.toFixed(1).replace('.', ',')])]),
-        createEl('td', {}, [createEl('span', { className: statusClass }, [statusTexto])])
+        createEl('td', { style: 'text-align:center;' }, [createEl('span', { className: `nota-badge ${getClasseBadge(aluno.mediaFinal)}` }, [aluno.mediaFinal.toFixed(1).replace('.', ',')])]),
+        createEl('td', { style: 'text-align:center;' }, [createEl('span', { className: statusClass }, [statusTexto])])
       );
     }
-    
-    return createEl('tr', { 
-        className: isInativo ? 'aluno-inativo' : '', 
-        dataset: { alunoNome: aluno.nome.toLowerCase(), disciplinaNome: disciplina }
+
+    return createEl('tr', {
+      className: isInativo ? 'aluno-inativo' : '',
+      dataset: { alunoNome: aluno.nome.toLowerCase(), disciplinaNome: disciplina }
     }, cells);
   });
 
-  return createEl('table', {}, [
+  return createEl('table', { style: 'table-layout: fixed; width: 100%;' }, [
+    createEl('colgroup', {}, cols),
     createEl('thead', {}, [headerRow]),
     createEl('tbody', {}, studentRows)
   ]);
 }
 
 function renderFooter() {
-    return createEl('div', { className: 'footer', innerHTML: `<p>© 2026 Eduardo L. Borges · MIT License<br>Projeto independente. Não afiliado ao sistema EscolaRS.</p>` });
+  return createEl('div', { className: 'footer', innerHTML: `<p>© 2026 Eduardo L. Borges · MIT License<br>Projeto independente. Não afiliado ao sistema EscolaRS.</p>` });
 }
 
 
@@ -428,7 +446,7 @@ function attachControlEvents() {
     updateTurmaDropdown();
     applyFilters();
   });
-  
+
   document.querySelector(SELECTORS.filterTurma)?.addEventListener('change', applyFilters);
   document.querySelector(SELECTORS.filterAluno)?.addEventListener('input', applyFilters);
 
@@ -439,7 +457,7 @@ function attachControlEvents() {
     document.querySelector(SELECTORS.filterAluno).value = '';
     applyFilters();
   });
-  
+
   document.querySelector(SELECTORS.exportXlsx)?.addEventListener('click', () => {
     const escola = document.querySelector(SELECTORS.filterEscola).value;
     const turma = document.querySelector(SELECTORS.filterTurma).value;
@@ -452,93 +470,93 @@ function attachControlEvents() {
  * Atualiza o dropdown de turmas com base na escola selecionada.
  */
 function updateTurmaDropdown() {
-    const escolaSelecionada = document.querySelector(SELECTORS.filterEscola).value;
-    const turmaSelect = document.querySelector(SELECTORS.filterTurma);
-    const turmaAtual = turmaSelect.value; // Salva a seleção atual para tentar mantê-la
+  const escolaSelecionada = document.querySelector(SELECTORS.filterEscola).value;
+  const turmaSelect = document.querySelector(SELECTORS.filterTurma);
+  const turmaAtual = turmaSelect.value; // Salva a seleção atual para tentar mantê-la
 
-    let turmas = [];
+  let turmas = [];
 
-    if (escolaSelecionada === '') {
-        // Se nenhuma escola estiver selecionada, pega todas as turmas de todas as escolas
-        turmas = [...new Set(dashboardData.escolas.flatMap(e => e.turmas.map(t => t.nome)))];
-    } else {
-        // Pega apenas as turmas da escola selecionada
-        const escola = dashboardData.escolas.find(e => e.nome === escolaSelecionada);
-        if (escola) {
-            turmas = [...new Set(escola.turmas.map(t => t.nome))];
-        }
+  if (escolaSelecionada === '') {
+    // Se nenhuma escola estiver selecionada, pega todas as turmas de todas as escolas
+    turmas = [...new Set(dashboardData.escolas.flatMap(e => e.turmas.map(t => t.nome)))];
+  } else {
+    // Pega apenas as turmas da escola selecionada
+    const escola = dashboardData.escolas.find(e => e.nome === escolaSelecionada);
+    if (escola) {
+      turmas = [...new Set(escola.turmas.map(t => t.nome))];
     }
+  }
 
-    // Limpa as opções atuais
-    turmaSelect.innerHTML = '';
-    
-    // Recria a opção padrão e as novas opções filtradas
-    turmaSelect.appendChild(createEl('option', { value: '' }, ['Todas as turmas']));
-    turmas.forEach(t => {
-        turmaSelect.appendChild(createEl('option', { value: t }, [t]));
-    });
+  // Limpa as opções atuais
+  turmaSelect.innerHTML = '';
 
-    // Se a turma que estava selecionada antes ainda existir na nova lista, mantém ela.
-    // Se não existir, volta para "Todas as turmas".
-    if (turmas.includes(turmaAtual)) {
-        turmaSelect.value = turmaAtual;
-    } else {
-        turmaSelect.value = '';
-    }
+  // Recria a opção padrão e as novas opções filtradas
+  turmaSelect.appendChild(createEl('option', { value: '' }, ['Todas as turmas']));
+  turmas.forEach(t => {
+    turmaSelect.appendChild(createEl('option', { value: t }, [t]));
+  });
+
+  // Se a turma que estava selecionada antes ainda existir na nova lista, mantém ela.
+  // Se não existir, volta para "Todas as turmas".
+  if (turmas.includes(turmaAtual)) {
+    turmaSelect.value = turmaAtual;
+  } else {
+    turmaSelect.value = '';
+  }
 }
 
 /**
  * Aplica filtros de visibilidade aos elementos do DOM sem recriá-los.
  */
 function applyFilters() {
-    const escolaFiltro = document.querySelector(SELECTORS.filterEscola).value;
-    const turmaFiltro = document.querySelector(SELECTORS.filterTurma).value;
-    const alunoFiltro = document.querySelector(SELECTORS.filterAluno).value.toLowerCase();
+  const escolaFiltro = document.querySelector(SELECTORS.filterEscola).value;
+  const turmaFiltro = document.querySelector(SELECTORS.filterTurma).value;
+  const alunoFiltro = document.querySelector(SELECTORS.filterAluno).value.toLowerCase();
 
-    document.querySelectorAll(SELECTORS.escolaCard).forEach(escolaCard => {
-        const escolaNome = escolaCard.dataset.escolaNome;
-        const escolaMatch = !escolaFiltro || escolaNome === escolaFiltro;
-        
-        let algumaTurmaVisivelNaEscola = false;
-        
-        escolaCard.querySelectorAll('.turma-card').forEach(turmaCard => {
-            const turmaNome = turmaCard.dataset.turmaNome;
-            const turmaMatch = !turmaFiltro || turmaNome === turmaFiltro;
+  document.querySelectorAll(SELECTORS.escolaCard).forEach(escolaCard => {
+    const escolaNome = escolaCard.dataset.escolaNome;
+    const escolaMatch = !escolaFiltro || escolaNome === escolaFiltro;
 
-            let algumaDisciplinaVisivelNaTurma = false;
+    let algumaTurmaVisivelNaEscola = false;
 
-            turmaCard.querySelectorAll('.turma-card-content').forEach(disciplinaCard => {
-                let algumAlunoVisivelNaDisciplina = false;
-                
-                disciplinaCard.querySelectorAll(SELECTORS.alunoRow).forEach(alunoRow => {
-                    const alunoNome = alunoRow.dataset.alunoNome || '';
-                    const alunoMatch = !alunoFiltro || alunoNome.includes(alunoFiltro);
-                    
-                    alunoRow.style.display = alunoMatch ? '' : 'none';
-                    if (alunoMatch) {
-                        algumAlunoVisivelNaDisciplina = true;
-                    }
-                });
-                
-                // Uma disciplina é visível se ela pertence a uma turma que bate com o filtro E tem algum aluno visível
-                const disciplinaVisivel = turmaMatch && algumAlunoVisivelNaDisciplina;
-                disciplinaCard.style.display = disciplinaVisivel ? '' : 'none';
-                
-                if (disciplinaVisivel) {
-                     algumaDisciplinaVisivelNaTurma = true;
-                }
-            });
+    escolaCard.querySelectorAll('.turma-card').forEach(turmaCard => {
+      const turmaNome = turmaCard.dataset.turmaNome;
+      const turmaMatch = !turmaFiltro || turmaNome === turmaFiltro;
 
-            // Oculta a turma inteira caso nenhuma disciplina dela deva aparecer
-            turmaCard.style.display = algumaDisciplinaVisivelNaTurma ? '' : 'none';
+      let algumaDisciplinaVisivelNaTurma = false;
 
-            if (algumaDisciplinaVisivelNaTurma) {
-                 algumaTurmaVisivelNaEscola = true;
-            }
+      turmaCard.querySelectorAll('.turma-card-content').forEach(disciplinaCard => {
+        let algumAlunoVisivelNaDisciplina = false;
+
+        disciplinaCard.querySelectorAll(SELECTORS.alunoRow).forEach(alunoRow => {
+          const alunoNome = alunoRow.dataset.alunoNome || '';
+          const alunoMatch = !alunoFiltro || alunoNome.includes(alunoFiltro);
+
+          alunoRow.style.display = alunoMatch ? '' : 'none';
+          if (alunoMatch) {
+            algumAlunoVisivelNaDisciplina = true;
+          }
         });
 
-        escolaCard.style.display = escolaMatch && algumaTurmaVisivelNaEscola ? '' : 'none';
+        // Uma disciplina é visível se ela pertence a uma turma que bate com o filtro E tem algum aluno visível
+        const disciplinaVisivel = turmaMatch && algumAlunoVisivelNaDisciplina;
+        disciplinaCard.style.display = disciplinaVisivel ? '' : 'none';
+
+        if (disciplinaVisivel) {
+          algumaDisciplinaVisivelNaTurma = true;
+        }
+      });
+
+      // Oculta a turma inteira caso nenhuma disciplina dela deva aparecer
+      turmaCard.style.display = algumaDisciplinaVisivelNaTurma ? '' : 'none';
+
+      if (algumaDisciplinaVisivelNaTurma) {
+        algumaTurmaVisivelNaEscola = true;
+      }
     });
+
+    escolaCard.style.display = escolaMatch && algumaTurmaVisivelNaEscola ? '' : 'none';
+  });
 }
 
 
@@ -571,7 +589,7 @@ function calculateStats(data) {
       }
     }
   }
-  
+
   const mediaGeral = alunosComMedia > 0 ? (totalNotas / alunosComMedia).toFixed(1) : 0;
   const percentualAprovados = totalAlunos > 0 ? ((aprovados / totalAlunos) * 100).toFixed(1) : 0;
 
@@ -583,31 +601,31 @@ function detectarTipoEPeriodos(alunos) {
   const periodosSet = new Set();
   let temTrimestre = false;
   let temSemestre = false;
-  
+
   for (const aluno of alunos) {
     if (!aluno.notas) continue;
     for (const item of aluno.notas) {
       const nomePeriodo = (item.trimestre || item.nomePeriodo || '').toLowerCase();
       if (!nomePeriodo) continue;
-      
+
       if (nomePeriodo.includes('trim')) temTrimestre = true;
       if (nomePeriodo.includes('sem')) temSemestre = true;
-      
+
       const numMatch = nomePeriodo.match(/\d+/);
       if (numMatch) {
         periodosSet.add(numMatch[0]);
       }
     }
   }
-  
+
   const isSemestre = temSemestre && !temTrimestre;
   const numeros = Array.from(periodosSet).map(Number).sort((a, b) => a - b);
-  
+
   const periodos = numeros.map(num => {
     if (isSemestre) return `${num}° Sem`;
     return `${num}° Trim`;
   });
-  
+
   return { isSemestre, periodos };
 }
 
@@ -620,37 +638,37 @@ function normalizarNota(valor) {
 
 function getNotaTexto(lista, periodo) {
   if (!lista || lista.length === 0) return '--';
-  
+
   const periodoLower = periodo.toLowerCase();
   const numMatch = periodoLower.match(/\d+/);
   if (!numMatch) return '--';
-  
+
   const numPeriodo = numMatch[0];
   const isSemestre = periodoLower.includes('sem');
   const isTrimestre = periodoLower.includes('trim');
-  
+
   let periodoValor = null;
   for (const item of lista) {
     const nomePeriodo = (item.trimestre || item.nomePeriodo || '').toLowerCase();
     if (!nomePeriodo) continue;
-    
+
     const itemEhSemestre = nomePeriodo.includes('sem');
     const itemEhTrimestre = nomePeriodo.includes('trim');
-    
-    if ((isSemestre && itemEhSemestre || isTrimestre && itemEhTrimestre) && 
-        nomePeriodo.includes(numPeriodo) && !nomePeriodo.includes('er')) {
+
+    if ((isSemestre && itemEhSemestre || isTrimestre && itemEhTrimestre) &&
+      nomePeriodo.includes(numPeriodo) && !nomePeriodo.includes('er')) {
       if (item.nota && item.nota !== '--') {
         periodoValor = item.nota;
         break;
       }
     }
   }
-  
+
   let erValor = null;
   for (const item of lista) {
     const nomePeriodo = (item.trimestre || item.nomePeriodo || '').toLowerCase();
     if (!nomePeriodo) continue;
-    
+
     if (nomePeriodo.includes('er') && nomePeriodo.includes(numPeriodo)) {
       if (item.nota && item.nota !== '--') {
         erValor = item.nota;
@@ -658,40 +676,40 @@ function getNotaTexto(lista, periodo) {
       }
     }
   }
-  
+
   if (periodoValor === null && erValor === null) return '--';
   if (periodoValor === null) return `${normalizarNota(erValor)}*`;
   if (erValor === null) return normalizarNota(periodoValor);
-  
+
   const periodoNum = parseFloat(String(periodoValor).replace(',', '.'));
   const erNum = parseFloat(String(erValor).replace(',', '.'));
-  
+
   return (erNum > periodoNum) ? `${normalizarNota(erValor)}*` : normalizarNota(periodoValor);
 }
 
 function getNotaValorBruto(lista, periodo, isER) {
   if (!lista || lista.length === 0) return '--';
-  
+
   const periodoLower = periodo.toLowerCase();
   const numMatch = periodoLower.match(/\d+/);
   if (!numMatch) return '--';
-  
+
   const numPeriodo = numMatch[0];
   const isSemestre = periodoLower.includes('sem');
   const isTrimestre = periodoLower.includes('trim');
-  
+
   for (const item of lista) {
     const nomePeriodo = (item.trimestre || item.nomePeriodo || '').toLowerCase();
     const itemEhSemestre = nomePeriodo.includes('sem');
     const itemEhTrimestre = nomePeriodo.includes('trim');
-    
+
     if (isER) {
       if (nomePeriodo.includes('er') && nomePeriodo.includes(numPeriodo)) {
         return item.nota && item.nota !== '--' ? normalizarNota(item.nota) : '--';
       }
     } else {
-      if ((isSemestre && itemEhSemestre || isTrimestre && itemEhTrimestre) && 
-          nomePeriodo.includes(numPeriodo) && !nomePeriodo.includes('er')) {
+      if ((isSemestre && itemEhSemestre || isTrimestre && itemEhTrimestre) &&
+        nomePeriodo.includes(numPeriodo) && !nomePeriodo.includes('er')) {
         return item.nota && item.nota !== '--' ? normalizarNota(item.nota) : '--';
       }
     }
@@ -702,22 +720,22 @@ function getNotaValorBruto(lista, periodo, isER) {
 function exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro) {
   const wb = XLSX.utils.book_new();
   let temDados = false;
-  
+
   for (const escola of dashboardData.escolas) {
     if (escolaSelecionada && escola.nome !== escolaSelecionada) continue;
-    
+
     for (const turma of escola.turmas) {
       if (turmaSelecionada && turma.nome !== turmaSelecionada) continue;
-      
+
       let todosOsAlunos = [];
       for (const disc of turma.disciplinas) {
         todosOsAlunos = todosOsAlunos.concat(disc.alunos || []);
       }
       if (todosOsAlunos.length === 0) continue;
-      
+
       const { periodos, isSemestre } = detectarTipoEPeriodos(todosOsAlunos);
       const dados = [];
-      
+
       const cabecalho = ['Matrícula', 'Nome'];
       for (const periodo of periodos) {
         cabecalho.push(periodo);
@@ -728,32 +746,32 @@ function exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro) {
       }
       cabecalho.push('Disciplina', 'Média Final', 'Status');
       dados.push(cabecalho);
-      
+
       let temAlunosTurma = false;
-      
+
       for (const disc of turma.disciplinas) {
         const alunosFiltrados = getAlunosAtivos(disc.alunos || []).filter(a => a.nome.toLowerCase().includes(alunoFiltro));
-        
+
         for (const aluno of alunosFiltrados) {
           temAlunosTurma = true;
           temDados = true;
-          
+
           const linha = [aluno.matricula || '', getNomeComSituacao(aluno)];
-          
+
           for (const periodo of periodos) {
             linha.push(getNotaValorBruto(aluno.notas, periodo, false));
             if (!isSemestre) {
               linha.push(getNotaValorBruto(aluno.notas, periodo, true));
             }
           }
-          
+
           let status = 'Sem Notas';
           if (aluno.mediaFinal > 0) {
             if (aluno.mediaFinal >= 6) status = 'Aprovado';
             else if (aluno.mediaFinal >= 5) status = 'Recuperação';
             else status = 'Reprovado';
           }
-          
+
           linha.push(
             disc.disciplina || '',
             aluno.mediaFinal > 0 ? aluno.mediaFinal.toFixed(1).replace('.', ',') : '--',
@@ -762,11 +780,11 @@ function exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro) {
           dados.push(linha);
         }
       }
-      
+
       if (temAlunosTurma && dados.length > 1) {
         const nomeAba = turma.nome.substring(0, 31);
         const ws = XLSX.utils.aoa_to_sheet(dados);
-        
+
         const colWidths = [{ wch: 12 }, { wch: 25 }];
         for (const _ of periodos) {
           colWidths.push({ wch: 10 });
@@ -778,12 +796,12 @@ function exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro) {
       }
     }
   }
-  
+
   if (!temDados) {
     alert('Nenhum dado para exportar com os filtros selecionados.');
     return;
   }
-  
+
   const nomeArquivo = `${dashboardData.professor.replace(' ', '_')}_notas_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`;
   XLSX.writeFile(wb, nomeArquivo);
 }
