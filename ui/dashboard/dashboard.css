@@ -361,6 +361,95 @@ button:hover {
 }
 
 /* ========================================
+   FILTERED STATS ROW
+   ======================================== */
+.filtered-stats-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+
+.fstat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 16px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 80px;
+}
+
+.fstat-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.fstat-value {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--primary);
+  line-height: 1;
+}
+
+/* Distribuição */
+.fstat-dist {
+  flex: 1;
+  min-width: 220px;
+}
+
+.fstat-dist-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--border);
+  gap: 1px;
+  margin: 2px 0 6px;
+}
+
+.fstat-seg {
+  height: 100%;
+  transition: width 0.4s ease;
+  min-width: 0;
+}
+
+.fstat-seg.fstat-aprov  { background: #16a34a; }
+.fstat-seg.fstat-recup  { background: #d97706; }
+.fstat-seg.fstat-reprov { background: #dc2626; }
+
+.fstat-dist-legend {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.fstat-leg-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.fstat-leg-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.fstat-leg-dot.fstat-aprov  { background: #16a34a; }
+.fstat-leg-dot.fstat-recup  { background: #d97706; }
+.fstat-leg-dot.fstat-reprov { background: #dc2626; }
+
+/* ========================================
    ESCOLA CARD
    ======================================== */
 .escola-card {

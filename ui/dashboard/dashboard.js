@@ -181,6 +181,7 @@ function renderApp() {
 
   container.appendChild(renderStats(stats));
   container.appendChild(renderControls(dashboardData));
+  container.appendChild(createEl('div', { id: 'filtered-stats-row', className: 'filtered-stats-row' }));
 
   dashboardData.escolas.forEach(escola => {
     container.appendChild(renderEscola(escola));
@@ -225,9 +226,8 @@ function renderApp() {
     }
   }
 
-  if (filtrosAplicados) {
-    applyFilters();
-  }
+  // Aplica filtros (mesmo que vazios) para inicializar as estatísticas filtradas e visibilidade
+  applyFilters();
 
   // Restaura o scroll
   setTimeout(() => {
@@ -276,12 +276,13 @@ function displayError(errorMessage) {
 function renderStats(stats) {
   return createEl('div', { className: 'stats-row' }, [
     createEl('div', { className: 'stat-card' }, [
-      createEl('h3', {}, ['Total de Alunos']),
-      createEl('div', { className: 'value' }, [`${stats.totalAlunos}`])
-    ]),
-    createEl('div', { className: 'stat-card' }, [
       createEl('h3', {}, ['Escolas']),
       createEl('div', { className: 'value' }, [`${dashboardData.escolas.length}`])
+    ]),
+    createEl('div', { className: 'stat-card' }, [
+      createEl('h3', {}, ['Turmas']),
+      createEl('div', { className: 'value' }, [`${stats.totalTurmas}`]),
+      createEl('div', { className: 'sublabel' }, [`${stats.totalAlunos} alunos`])
     ]),
     createEl('div', { className: 'stat-card' }, [
       createEl('h3', {}, ['Média Geral']),
@@ -403,7 +404,7 @@ function createStudentsTable(alunos, disciplina) {
     const isInativo = aluno.situacao && aluno.situacao.ativo === false;
 
     let cells = [
-      createEl('td', { style: 'text-align:center;' }, [`${aluno.nroNaTurma}`]),
+      createEl('td', { style: 'text-align:center;' }, [isNaN(parseInt(aluno.nroNaTurma, 10)) ? '' : `${aluno.nroNaTurma}`]),
       createEl('td', { innerHTML: `<strong>${getNomeComSituacao(aluno)}</strong>` }),
     ];
 
@@ -557,6 +558,130 @@ function applyFilters() {
 
     escolaCard.style.display = escolaMatch && algumaTurmaVisivelNaEscola ? '' : 'none';
   });
+
+  updateFilteredStats();
+}
+
+
+function calculateFilteredStats(escolaFiltro, turmaFiltro, alunoFiltro) {
+  let totalAlunos = 0;
+  let aprovados = 0, emRecuperacao = 0, reprovados = 0;
+  const periodoNotas = {}; // { '1° Trim': [notas], '2° Trim': [notas], ... }
+  let allAlunos = [];
+
+  for (const escola of dashboardData.escolas) {
+    if (escolaFiltro && escola.nome !== escolaFiltro) continue;
+    for (const turma of escola.turmas) {
+      if (turmaFiltro && turma.nome !== turmaFiltro) continue;
+      for (const disc of turma.disciplinas) {
+        for (const aluno of getAlunosAtivos(disc.alunos || [])) {
+          if (alunoFiltro && !aluno.nome.toLowerCase().includes(alunoFiltro)) continue;
+          allAlunos.push(aluno);
+        }
+      }
+    }
+  }
+
+  totalAlunos = allAlunos.length;
+  if (totalAlunos === 0) return null;
+
+  const { periodos } = detectarTipoEPeriodos(allAlunos);
+
+  for (const aluno of allAlunos) {
+    // Conta status
+    if (aluno.mediaFinal > 0) {
+      if (aluno.mediaFinal >= 6) aprovados++;
+      else if (aluno.mediaFinal >= 5) emRecuperacao++;
+      else reprovados++;
+    }
+    // Coleta notas por periodo
+    for (const per of periodos) {
+      const nota = parseFloat(String(getNotaTexto(aluno.notas, per)).replace('*', '').replace(',', '.'));
+      if (!isNaN(nota)) {
+        if (!periodoNotas[per]) periodoNotas[per] = [];
+        periodoNotas[per].push(nota);
+      }
+    }
+  }
+
+  const periodAverages = periodos.map((per, i) => {
+    const lista = periodoNotas[per] || [];
+    const media = lista.length > 0 ? (lista.reduce((a, b) => a + b, 0) / lista.length) : null;
+    return { label: per, media };
+  });
+
+  return { totalAlunos, aprovados, emRecuperacao, reprovados, periodAverages };
+}
+
+function updateFilteredStats() {
+  const container = document.getElementById('filtered-stats-row');
+  if (!container) return;
+
+  const escolaFiltro = document.querySelector(SELECTORS.filterEscola)?.value || '';
+  const turmaFiltro = document.querySelector(SELECTORS.filterTurma)?.value || '';
+  const alunoFiltro = document.querySelector(SELECTORS.filterAluno)?.value.toLowerCase() || '';
+
+  if (alunoFiltro.trim() !== '') {
+    container.style.display = 'none';
+    return;
+  }
+
+  container.style.display = 'flex';
+  const stats = calculateFilteredStats(escolaFiltro, turmaFiltro, alunoFiltro);
+  container.innerHTML = '';
+
+  if (!stats) return;
+
+  // Trend indicator comparing to previous period
+  const periodCards = stats.periodAverages.map((p, i) => {
+    const prev = i > 0 ? stats.periodAverages[i - 1].media : null;
+    let trend = '';
+    if (p.media !== null && prev !== null) {
+      trend = p.media > prev ? ' <span style="color:#16a34a;">&#x2191;</span>' : p.media < prev ? ' <span style="color:#dc2626;">&#x2193;</span>' : '';
+    }
+    const mediaStr = p.media !== null ? p.media.toFixed(1).replace('.', ',') : '—';
+    return createEl('div', { className: 'fstat-card' }, [
+      createEl('div', { className: 'fstat-label' }, [p.label]),
+      createEl('div', { className: 'fstat-value', innerHTML: mediaStr + trend }),
+    ]);
+  });
+
+  const totalAprovados = stats.aprovados + stats.emRecuperacao + stats.reprovados;
+  const pAprov = totalAprovados > 0 ? ((stats.aprovados / totalAprovados) * 100).toFixed(0) : 0;
+  const pRecup = totalAprovados > 0 ? ((stats.emRecuperacao / totalAprovados) * 100).toFixed(0) : 0;
+  const pReprov = totalAprovados > 0 ? ((stats.reprovados / totalAprovados) * 100).toFixed(0) : 0;
+
+  const distribuicaoCard = createEl('div', { className: 'fstat-card fstat-dist' }, [
+    createEl('div', { className: 'fstat-label' }, ['Distribuição']),
+    createEl('div', { className: 'fstat-dist-bar' }, [
+      createEl('div', { className: 'fstat-seg fstat-aprov', style: `width:${pAprov}%`, title: `Aprovados: ${stats.aprovados} (${pAprov}%)` }),
+      createEl('div', { className: 'fstat-seg fstat-recup', style: `width:${pRecup}%`, title: `Recuperação: ${stats.emRecuperacao} (${pRecup}%)` }),
+      createEl('div', { className: 'fstat-seg fstat-reprov', style: `width:${pReprov}%`, title: `Reprovados: ${stats.reprovados} (${pReprov}%)` }),
+    ]),
+    createEl('div', { className: 'fstat-dist-legend' }, [
+      createEl('span', { className: 'fstat-leg-item' }, [
+        createEl('span', { className: 'fstat-leg-dot fstat-aprov' }),
+        `Aprov. ${pAprov}%`
+      ]),
+      createEl('span', { className: 'fstat-leg-item' }, [
+        createEl('span', { className: 'fstat-leg-dot fstat-recup' }),
+        `Recup. ${pRecup}%`
+      ]),
+      createEl('span', { className: 'fstat-leg-item' }, [
+        createEl('span', { className: 'fstat-leg-dot fstat-reprov' }),
+        `Reprov. ${pReprov}%`
+      ]),
+    ]),
+  ]);
+
+  const alunosCard = createEl('div', { className: 'fstat-card' }, [
+    createEl('div', { className: 'fstat-label' }, ['Alunos']),
+    createEl('div', { className: 'fstat-value' }, [`${stats.totalAlunos}`]),
+  ]);
+
+  container.appendChild(alunosCard);
+  periodCards.forEach(c => container.appendChild(c));
+  container.appendChild(distribuicaoCard);
 }
 
 
@@ -570,12 +695,14 @@ function applyFilters() {
 
 function calculateStats(data) {
   let totalAlunos = 0;
+  let totalTurmas = 0;
   let totalNotas = 0;
   let alunosComMedia = 0;
   let aprovados = 0;
 
   for (const escola of data.escolas) {
     for (const turma of escola.turmas) {
+      totalTurmas++;
       for (const disc of turma.disciplinas) {
         const alunosAtivos = getAlunosAtivos(disc.alunos);
         totalAlunos += alunosAtivos.length;
@@ -593,7 +720,7 @@ function calculateStats(data) {
   const mediaGeral = alunosComMedia > 0 ? (totalNotas / alunosComMedia).toFixed(1) : 0;
   const percentualAprovados = totalAlunos > 0 ? ((aprovados / totalAlunos) * 100).toFixed(1) : 0;
 
-  return { totalAlunos, mediaGeral, aprovados, percentualAprovados };
+  return { totalAlunos, totalTurmas, mediaGeral, aprovados, percentualAprovados };
 }
 
 
