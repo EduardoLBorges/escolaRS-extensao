@@ -447,9 +447,38 @@ function createStudentsTable(alunos, disciplina) {
       );
     }
 
+    const ds = {
+      alunoNome: aluno.nome.toLowerCase(),
+      disciplinaNome: disciplina
+    };
+
+    const getStatusCat = (val) => {
+      if (val === undefined || val === null || isNaN(val) || val === '--') return 'semnota';
+      if (val >= 6) return 'aprov';
+      if (val >= 5) return 'recup';
+      return 'reprov';
+    };
+
+    let statusAno = 'semnota';
+    if (todasAsNotasPreenchidas || aluno.mediaFinal > 0) {
+      statusAno = getStatusCat(aluno.mediaFinal);
+    }
+    ds.statusMedia = statusAno;
+
+    periodos.forEach(p => {
+      const notaStr = String(getNotaTexto(aluno.notas, p));
+      let pStatus = 'semnota';
+      if (notaStr !== '--') {
+        const nota = parseFloat(notaStr.replace('*', '').replace(',', '.'));
+        pStatus = getStatusCat(nota);
+      }
+      const sanitizeP = p.replace(/\s+/g, '').replace(/[°º]/g, '');
+      ds[`periodo${sanitizeP}`] = pStatus;
+    });
+
     return createEl('tr', {
       className: isInativo ? 'aluno-inativo' : '',
-      dataset: { alunoNome: aluno.nome.toLowerCase(), disciplinaNome: disciplina }
+      dataset: ds
     }, cells);
   });
 
@@ -484,6 +513,7 @@ function attachControlEvents() {
     updateTurmaDropdown(); // Restaura todas as turmas no select
     document.querySelector(SELECTORS.filterTurma).value = '';
     document.querySelector(SELECTORS.filterAluno).value = '';
+    fstatCategoryFilter = null;
     applyFilters();
   });
 
@@ -561,8 +591,19 @@ function applyFilters() {
           const alunoNome = alunoRow.dataset.alunoNome || '';
           const alunoMatch = !alunoFiltro || alunoNome.includes(alunoFiltro);
 
-          alunoRow.style.display = alunoMatch ? '' : 'none';
-          if (alunoMatch) {
+          let filterMatch = true;
+          if (fstatCategoryFilter) {
+            let statusCheck = alunoRow.dataset.statusMedia;
+            if (fstatSelectedPeriod) {
+              const sanitizeP = fstatSelectedPeriod.replace(/\s+/g, '').replace(/[°º]/g, '');
+              statusCheck = alunoRow.dataset[`periodo${sanitizeP}`];
+            }
+            if (statusCheck !== fstatCategoryFilter) filterMatch = false;
+          }
+
+          const isVisible = alunoMatch && filterMatch;
+          alunoRow.style.display = isVisible ? '' : 'none';
+          if (isVisible) {
             algumAlunoVisivelNaDisciplina = true;
           }
         });
@@ -593,7 +634,7 @@ function applyFilters() {
 
 function calculateFilteredStats(escolaFiltro, turmaFiltro, alunoFiltro) {
   let totalAlunos = 0;
-  let aprovados = 0, emRecuperacao = 0, reprovados = 0;
+  let aprovados = 0, emRecuperacao = 0, reprovados = 0, semNota = 0;
   const periodoNotas = {}; // { '1° Trim': [notas], '2° Trim': [notas], ... }
   let allAlunos = [];
 
@@ -641,13 +682,17 @@ function calculateFilteredStats(escolaFiltro, turmaFiltro, alunoFiltro) {
       else if (nota >= 5) rec++;
       else rep++;
     }
-    return { label: per, media, aprovados: ap, emRecuperacao: rec, reprovados: rep };
+    const sn = totalAlunos - (ap + rec + rep);
+    return { label: per, media, aprovados: ap, emRecuperacao: rec, reprovados: rep, semNota: sn };
   });
 
-  return { totalAlunos, aprovados, emRecuperacao, reprovados, periodAverages };
+  semNota = totalAlunos - (aprovados + emRecuperacao + reprovados);
+
+  return { totalAlunos, aprovados, emRecuperacao, reprovados, semNota, periodAverages };
 }
 
 let fstatSelectedPeriod = null;
+let fstatCategoryFilter = null;
 
 function updateFilteredStats() {
   const container = document.getElementById('filtered-stats-row');
@@ -702,18 +747,40 @@ function updateFilteredStats() {
     return { card, label: p.label };
   });
 
-  let distData = { label: 'Distribuição (Ano)', aprovados: stats.aprovados, emRecuperacao: stats.emRecuperacao, reprovados: stats.reprovados };
+  let distData = { label: 'Distribuição (Ano)', aprovados: stats.aprovados, emRecuperacao: stats.emRecuperacao, reprovados: stats.reprovados, semNota: stats.semNota };
   if (fstatSelectedPeriod) {
     const pStats = stats.periodAverages.find(p => p.label === fstatSelectedPeriod);
     if (pStats) {
-      distData = { label: `Distribuição (${pStats.label})`, aprovados: pStats.aprovados, emRecuperacao: pStats.emRecuperacao, reprovados: pStats.reprovados };
+      distData = { label: `Distribuição (${pStats.label})`, aprovados: pStats.aprovados, emRecuperacao: pStats.emRecuperacao, reprovados: pStats.reprovados, semNota: pStats.semNota };
     }
   }
 
-  const totalAprovados = distData.aprovados + distData.emRecuperacao + distData.reprovados;
+  const totalAprovados = distData.aprovados + distData.emRecuperacao + distData.reprovados + distData.semNota;
   const pAprov = totalAprovados > 0 ? ((distData.aprovados / totalAprovados) * 100).toFixed(0) : 0;
   const pRecup = totalAprovados > 0 ? ((distData.emRecuperacao / totalAprovados) * 100).toFixed(0) : 0;
   const pReprov = totalAprovados > 0 ? ((distData.reprovados / totalAprovados) * 100).toFixed(0) : 0;
+  const pSemNota = totalAprovados > 0 ? ((distData.semNota / totalAprovados) * 100).toFixed(0) : 0;
+
+  const createLegItem = (catKey, label, pct, count) => {
+    const isSelected = fstatCategoryFilter === catKey;
+    const el = createEl('span', { 
+      className: `fstat-leg-item${isSelected ? ' fstat-leg-selected' : ''}`,
+      title: `${label}: ${count} (${pct}%)`,
+      style: 'cursor: pointer; user-select: none;'
+    }, [
+      createEl('span', { className: `fstat-leg-dot fstat-${catKey}` }),
+      `${label} ${pct}%`
+    ]);
+    el.addEventListener('click', () => {
+      if (fstatCategoryFilter === catKey) {
+        fstatCategoryFilter = null;
+      } else {
+        fstatCategoryFilter = catKey;
+      }
+      applyFilters();
+    });
+    return el;
+  };
 
   const distribuicaoCard = createEl('div', { className: 'fstat-card fstat-dist' }, [
     createEl('div', { className: 'fstat-label' }, [distData.label]),
@@ -721,20 +788,13 @@ function updateFilteredStats() {
       createEl('div', { className: 'fstat-seg fstat-aprov', style: `width:${pAprov}%`, title: `Aprovados: ${distData.aprovados} (${pAprov}%)` }),
       createEl('div', { className: 'fstat-seg fstat-recup', style: `width:${pRecup}%`, title: `Recuperação: ${distData.emRecuperacao} (${pRecup}%)` }),
       createEl('div', { className: 'fstat-seg fstat-reprov', style: `width:${pReprov}%`, title: `Reprovados: ${distData.reprovados} (${pReprov}%)` }),
+      createEl('div', { className: 'fstat-seg fstat-semnota', style: `width:${pSemNota}%`, title: `Sem Nota: ${distData.semNota} (${pSemNota}%)` }),
     ]),
     createEl('div', { className: 'fstat-dist-legend' }, [
-      createEl('span', { className: 'fstat-leg-item' }, [
-        createEl('span', { className: 'fstat-leg-dot fstat-aprov' }),
-        `Aprov. ${pAprov}%`
-      ]),
-      createEl('span', { className: 'fstat-leg-item' }, [
-        createEl('span', { className: 'fstat-leg-dot fstat-recup' }),
-        `Recup. ${pRecup}%`
-      ]),
-      createEl('span', { className: 'fstat-leg-item' }, [
-        createEl('span', { className: 'fstat-leg-dot fstat-reprov' }),
-        `Reprov. ${pReprov}%`
-      ]),
+      createLegItem('aprov', 'Aprov.', pAprov, distData.aprovados),
+      createLegItem('recup', 'Recup.', pRecup, distData.emRecuperacao),
+      createLegItem('reprov', 'Reprov.', pReprov, distData.reprovados),
+      createLegItem('semnota', 'Sem Nota', pSemNota, distData.semNota),
     ]),
   ]);
 
