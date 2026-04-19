@@ -1,13 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "EscolaRS Export",
-  "version": "0.3.4",
+  "name": "Extensão EscolaRS",
+  "version": "0.4.0",
   "icons": {
     "16": "images/icons/icon16.png",
     "48": "images/icons/icon48.png",
     "128": "images/icons/icon128.png"
   },
-  "description": "Exporta notas do EscolaRS para Excel.",
+  "description": "Auxilia o professor na gestão de notas.",
   "permissions": [
     "storage",
     "tabs",

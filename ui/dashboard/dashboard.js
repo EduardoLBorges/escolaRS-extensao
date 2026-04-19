@@ -607,11 +607,19 @@ function calculateFilteredStats(escolaFiltro, turmaFiltro, alunoFiltro) {
   const periodAverages = periodos.map((per, i) => {
     const lista = periodoNotas[per] || [];
     const media = lista.length > 0 ? (lista.reduce((a, b) => a + b, 0) / lista.length) : null;
-    return { label: per, media };
+    let ap = 0, rec = 0, rep = 0;
+    for (const nota of lista) {
+      if (nota >= 6) ap++;
+      else if (nota >= 5) rec++;
+      else rep++;
+    }
+    return { label: per, media, aprovados: ap, emRecuperacao: rec, reprovados: rep };
   });
 
   return { totalAlunos, aprovados, emRecuperacao, reprovados, periodAverages };
 }
+
+let fstatSelectedPeriod = null;
 
 function updateFilteredStats() {
   const container = document.getElementById('filtered-stats-row');
@@ -632,6 +640,10 @@ function updateFilteredStats() {
 
   if (!stats) return;
 
+  if (fstatSelectedPeriod && !stats.periodAverages.some(p => p.label === fstatSelectedPeriod)) {
+    fstatSelectedPeriod = null;
+  }
+
   // Trend indicator comparing to previous period
   const periodCards = stats.periodAverages.map((p, i) => {
     const prev = i > 0 ? stats.periodAverages[i - 1].media : null;
@@ -640,23 +652,47 @@ function updateFilteredStats() {
       trend = p.media > prev ? ' <span style="color:#16a34a;">&#x2191;</span>' : p.media < prev ? ' <span style="color:#dc2626;">&#x2193;</span>' : '';
     }
     const mediaStr = p.media !== null ? p.media.toFixed(1).replace('.', ',') : '—';
-    return createEl('div', { className: 'fstat-card' }, [
+    const isSelected = fstatSelectedPeriod === p.label;
+    
+    const card = createEl('div', { 
+        className: 'fstat-card' + (isSelected ? ' fstat-selected' : ''), 
+        style: 'cursor: pointer; transition: all 0.2s;' 
+    }, [
       createEl('div', { className: 'fstat-label' }, [p.label]),
       createEl('div', { className: 'fstat-value', innerHTML: mediaStr + trend }),
     ]);
+
+    card.addEventListener('click', () => {
+       if (fstatSelectedPeriod === p.label) {
+           fstatSelectedPeriod = null;
+       } else {
+           fstatSelectedPeriod = p.label;
+       }
+       updateFilteredStats();
+    });
+
+    return { card, label: p.label };
   });
 
-  const totalAprovados = stats.aprovados + stats.emRecuperacao + stats.reprovados;
-  const pAprov = totalAprovados > 0 ? ((stats.aprovados / totalAprovados) * 100).toFixed(0) : 0;
-  const pRecup = totalAprovados > 0 ? ((stats.emRecuperacao / totalAprovados) * 100).toFixed(0) : 0;
-  const pReprov = totalAprovados > 0 ? ((stats.reprovados / totalAprovados) * 100).toFixed(0) : 0;
+  let distData = { label: 'Distribuição (Ano)', aprovados: stats.aprovados, emRecuperacao: stats.emRecuperacao, reprovados: stats.reprovados };
+  if (fstatSelectedPeriod) {
+      const pStats = stats.periodAverages.find(p => p.label === fstatSelectedPeriod);
+      if (pStats) {
+          distData = { label: `Distribuição (${pStats.label})`, aprovados: pStats.aprovados, emRecuperacao: pStats.emRecuperacao, reprovados: pStats.reprovados };
+      }
+  }
+
+  const totalAprovados = distData.aprovados + distData.emRecuperacao + distData.reprovados;
+  const pAprov = totalAprovados > 0 ? ((distData.aprovados / totalAprovados) * 100).toFixed(0) : 0;
+  const pRecup = totalAprovados > 0 ? ((distData.emRecuperacao / totalAprovados) * 100).toFixed(0) : 0;
+  const pReprov = totalAprovados > 0 ? ((distData.reprovados / totalAprovados) * 100).toFixed(0) : 0;
 
   const distribuicaoCard = createEl('div', { className: 'fstat-card fstat-dist' }, [
-    createEl('div', { className: 'fstat-label' }, ['Distribuição']),
+    createEl('div', { className: 'fstat-label' }, [distData.label]),
     createEl('div', { className: 'fstat-dist-bar' }, [
-      createEl('div', { className: 'fstat-seg fstat-aprov', style: `width:${pAprov}%`, title: `Aprovados: ${stats.aprovados} (${pAprov}%)` }),
-      createEl('div', { className: 'fstat-seg fstat-recup', style: `width:${pRecup}%`, title: `Recuperação: ${stats.emRecuperacao} (${pRecup}%)` }),
-      createEl('div', { className: 'fstat-seg fstat-reprov', style: `width:${pReprov}%`, title: `Reprovados: ${stats.reprovados} (${pReprov}%)` }),
+      createEl('div', { className: 'fstat-seg fstat-aprov', style: `width:${pAprov}%`, title: `Aprovados: ${distData.aprovados} (${pAprov}%)` }),
+      createEl('div', { className: 'fstat-seg fstat-recup', style: `width:${pRecup}%`, title: `Recuperação: ${distData.emRecuperacao} (${pRecup}%)` }),
+      createEl('div', { className: 'fstat-seg fstat-reprov', style: `width:${pReprov}%`, title: `Reprovados: ${distData.reprovados} (${pReprov}%)` }),
     ]),
     createEl('div', { className: 'fstat-dist-legend' }, [
       createEl('span', { className: 'fstat-leg-item' }, [
@@ -680,9 +716,18 @@ function updateFilteredStats() {
   ]);
 
   container.appendChild(alunosCard);
-  periodCards.forEach(c => container.appendChild(c));
-  container.appendChild(distribuicaoCard);
-}
+  
+  for (const pc of periodCards) {
+      container.appendChild(pc.card);
+      if (fstatSelectedPeriod === pc.label) {
+          container.appendChild(distribuicaoCard);
+      }
+  }
+
+  if (!fstatSelectedPeriod) {
+      container.appendChild(distribuicaoCard);
+  }
+} // <---- end updateFilteredStats
 
 
 // =================================================================================

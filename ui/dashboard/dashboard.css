@@ -383,6 +383,16 @@ button:hover {
   min-width: 80px;
 }
 
+.fstat-card:hover {
+  border-color: #cbd5e1;
+}
+
+.fstat-selected {
+  border-color: var(--primary);
+  background: #f0fdf4; /* faint green to indicate selection */
+  box-shadow: 0 0 0 2px rgba(31, 130, 43, 0.2);
+}
+
 .fstat-label {
   font-size: 0.68rem;
   font-weight: 600;
