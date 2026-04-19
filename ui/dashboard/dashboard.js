@@ -68,11 +68,11 @@ function createEl(tag, attributes = {}, children = []) {
 }
 
 function getAlunosAtivos(alunos) {
-  return alunos.filter(aluno => !aluno.situacao || aluno.situacao.ativo !== false);
+  return (alunos || []).filter(aluno => aluno.situacao?.ativo === true);
 }
 
 function getNomeComSituacao(aluno) {
-  if (aluno.situacao && aluno.situacao.ativo === false && aluno.situacao.descricao) {
+  if (aluno.situacao && aluno.situacao.ativo !== true && aluno.situacao.descricao) {
     return `${aluno.nome} <span class="aluno-inativo-descricao">(${aluno.situacao.descricao})</span>`;
   }
   return aluno.nome;
@@ -150,6 +150,7 @@ function loadDashboard(forceRefresh = false) {
     }
 
     dashboardData = response.data;
+    fstatInitialized = false;
     renderApp();
   });
 }
@@ -411,7 +412,8 @@ function createStudentsTable(alunos, disciplina) {
       else if (aluno.mediaFinal >= 5) { statusTexto = 'Recuperação'; statusClass = 'status-recuperacao'; }
     }
 
-    const isInativo = aluno.situacao && aluno.situacao.ativo === false;
+    const isAtivo = aluno.situacao?.ativo === true;
+    const isInativo = !isAtivo;
 
     let avatarCellContent;
     if (aluno.fotoBase64Thumbnail && aluno.fotoBase64Thumbnail.length > 20) {
@@ -449,7 +451,8 @@ function createStudentsTable(alunos, disciplina) {
 
     const ds = {
       alunoNome: aluno.nome.toLowerCase(),
-      disciplinaNome: disciplina
+      disciplinaNome: disciplina,
+      alunoAtivo: isAtivo ? 'true' : 'false'
     };
 
     const getStatusCat = (val) => {
@@ -590,15 +593,20 @@ function applyFilters() {
         disciplinaCard.querySelectorAll(SELECTORS.alunoRow).forEach(alunoRow => {
           const alunoNome = alunoRow.dataset.alunoNome || '';
           const alunoMatch = !alunoFiltro || alunoNome.includes(alunoFiltro);
+          const isAtivo = alunoRow.dataset.alunoAtivo === 'true';
 
           let filterMatch = true;
           if (fstatCategoryFilter) {
-            let statusCheck = alunoRow.dataset.statusMedia;
-            if (fstatSelectedPeriod) {
-              const sanitizeP = fstatSelectedPeriod.replace(/\s+/g, '').replace(/[°º]/g, '');
-              statusCheck = alunoRow.dataset[`periodo${sanitizeP}`];
+            if (!isAtivo) {
+              filterMatch = false;
+            } else {
+              let statusCheck = alunoRow.dataset.statusMedia;
+              if (fstatSelectedPeriod) {
+                const sanitizeP = fstatSelectedPeriod.replace(/\s+/g, '').replace(/[°º]/g, '');
+                statusCheck = alunoRow.dataset[`periodo${sanitizeP}`];
+              }
+              if (statusCheck !== fstatCategoryFilter) filterMatch = false;
             }
-            if (statusCheck !== fstatCategoryFilter) filterMatch = false;
           }
 
           const isVisible = alunoMatch && filterMatch;
@@ -693,6 +701,7 @@ function calculateFilteredStats(escolaFiltro, turmaFiltro, alunoFiltro) {
 
 let fstatSelectedPeriod = null;
 let fstatCategoryFilter = null;
+let fstatInitialized = false;
 
 function updateFilteredStats() {
   const container = document.getElementById('filtered-stats-row');
@@ -715,6 +724,17 @@ function updateFilteredStats() {
 
   if (fstatSelectedPeriod && !stats.periodAverages.some(p => p.label === fstatSelectedPeriod)) {
     fstatSelectedPeriod = null;
+  }
+
+  // Inicialização padrão: último período com nota, ou ano se todos preenchidos
+  if (!fstatInitialized) {
+    const withNotes = stats.periodAverages.filter(p => p.media !== null);
+    if (withNotes.length > 0 && withNotes.length < stats.periodAverages.length) {
+      fstatSelectedPeriod = withNotes[withNotes.length - 1].label;
+    } else {
+      fstatSelectedPeriod = null;
+    }
+    fstatInitialized = true;
   }
 
   // Trend indicator comparing to previous period
