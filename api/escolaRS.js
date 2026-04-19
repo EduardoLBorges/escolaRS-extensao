@@ -81,21 +81,27 @@ async function fetchEscolaRS(endpoint, token, options = {}, timeout = API_TIMEOU
   }
 }
 
+let activeTokenRefreshPromise = null;
+
 /**
- * Tenta forçar a renovação do token de forma invisível.
- * Cria um iframe oculto com o portal EscolaRS e aguarda a interceptação do webRequest atualizar o storage.
+ * Tenta forçar a renovação do token de forma invisível/rápida.
+ * Cria uma aba com o portal EscolaRS e aguarda a interceptação do webRequest atualizar o storage.
+ * Múltiplas chamadas simultâneas aguardarão a mesma aba/Promise.
  */
-async function trySilentTokenRefresh() {
-  return new Promise((resolve, reject) => {
+function trySilentTokenRefresh() {
+  if (activeTokenRefreshPromise) {
+    return activeTokenRefreshPromise;
+  }
+
+  activeTokenRefreshPromise = new Promise((resolve, reject) => {
     let timeoutId;
-    let iframe;
-    let tabId;
+    let windowId;
 
     const cleanup = () => {
       chrome.storage.onChanged.removeListener(storageListener);
       clearTimeout(timeoutId);
-      if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
-      if (tabId) chrome.tabs.remove(tabId).catch(() => {});
+      if (windowId) chrome.windows.remove(windowId).catch(() => {});
+      activeTokenRefreshPromise = null;
     };
 
     const storageListener = (changes, namespace) => {
@@ -112,13 +118,20 @@ async function trySilentTokenRefresh() {
       reject(new Error("Timeout ao aguardar renovação do token no background. Pode ser necessário login manual."));
     }, 15000); // 15s de limite para a renovação silenciosa
 
-    // O SPA do EscolaRS paralisa o carregamento inicial (Angular) se a aba iniciar em segundo plano (active: false).
-    // Precisamos abrir em primeiro plano (active: true) por breves segundos para as requisições API passarem 
-    // e o webRequest captar o token.
-    chrome.tabs.create({ url: 'https://professor.escola.rs.gov.br/', active: true }, (tab) => {
-      tabId = tab.id;
+    // Abre uma janela extra pequena e minimizada para não atrapalhar o fluxo do usuário,
+    // mas que permite ao Chrome executar os scripts em primeiro plano nessa nova janela
+    // e renovar o token.
+    chrome.windows.create({
+      url: 'https://professor.escola.rs.gov.br/',
+      state: 'minimized',
+      focused: false,
+      type: 'popup'
+    }, (windowInfo) => {
+      windowId = windowInfo.id;
     });
   });
+
+  return activeTokenRefreshPromise;
 }
 
 
