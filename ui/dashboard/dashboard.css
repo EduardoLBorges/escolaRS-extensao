@@ -599,8 +599,8 @@ td:nth-child(1) {
   text-align: center;
 }
 
-th:nth-child(n+3):nth-child(-n+9),
-td:nth-child(n+3):nth-child(-n+9) {
+th:nth-child(n+4):nth-child(-n+10),
+td:nth-child(n+4):nth-child(-n+10) {
   text-align: center;
 }
 
@@ -634,13 +634,28 @@ tr:hover td {
 /* ========================================
    FOTO DO ALUNO
    ======================================== */
-.foto-aluno {
-  width: 36px;
-  height: 36px;
+.aluno-foto,
+.aluno-foto-placeholder {
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   object-fit: cover;
-  border: 2px solid var(--secondary);
-  background: var(--bg-color);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.aluno-foto-placeholder {
+  background-color: var(--surface);
+  color: var(--text-muted);
+}
+
+.aluno-foto-placeholder i {
+  width: 16px;
+  height: 16px;
 }
 
 /* ========================================
@@ -735,6 +750,69 @@ tr:hover td {
 .blink-error {
   background: var(--danger) !important;
   animation: blink-error-anim 0.5s ease-in-out 6;
+}
+
+/* ========================================
+   MODAL / ZOOM
+   ======================================== */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.05); /* Overlay quase invisível */
+  z-index: 1000;
+  display: flex;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.modal-content {
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.2s;
+  animation: popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  border: 1px solid var(--border);
+}
+
+.modal-header {
+  padding: 6px 12px;
+  background: var(--bg-color);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.modal-image {
+  display: block;
+  background: white;
+}
+
+@keyframes popIn {
+  from { transform: scale(0.5); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* ========================================

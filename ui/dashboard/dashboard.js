@@ -51,8 +51,14 @@ function createEl(tag, attributes = {}, children = []) {
       for (const dataKey in attributes.dataset) {
         element.dataset[dataKey] = attributes.dataset[dataKey];
       }
-    } else {
+    } else if (key === 'className') {
+      element.className = attributes[key];
+    } else if (key === 'innerHTML') {
+      element.innerHTML = attributes[key];
+    } else if (key in element && key !== 'style') {
       element[key] = attributes[key];
+    } else {
+      element.setAttribute(key, attributes[key]);
     }
   }
   for (const child of children) {
@@ -375,9 +381,10 @@ function renderDisciplina(disc, turmaNome) {
 function createStudentsTable(alunos, disciplina) {
   const periodos = detectarTipoEPeriodos(alunos).periodos;
 
-  // Colgroup: Nº fixo | Nome flex | períodos fixos | Média fixo | Status fixo
+  // Colgroup: Nº fixo | Foto fixo | Nome flex | períodos fixos | Média fixo | Status fixo
   const cols = [
     createEl('col', { style: 'width: 48px;' }),
+    createEl('col', { style: 'width: 52px;' }),
     createEl('col', {}), // nome: expande
     ...periodos.map(() => createEl('col', { style: 'width: 80px;' })),
     createEl('col', { style: 'width: 90px;' }),
@@ -386,6 +393,7 @@ function createStudentsTable(alunos, disciplina) {
 
   const headerRow = createEl('tr', {}, [
     createEl('th', { style: 'text-align:center;' }, ['Nº']),
+    createEl('th', { style: 'text-align:center;' }, ['']), // foto
     createEl('th', {}, ['Nome']),
     ...periodos.map(p => createEl('th', { style: 'text-align:center;' }, [p])),
     createEl('th', { style: 'text-align:center;' }, ['Média']),
@@ -405,8 +413,26 @@ function createStudentsTable(alunos, disciplina) {
 
     const isInativo = aluno.situacao && aluno.situacao.ativo === false;
 
+    let avatarCellContent;
+    if (aluno.fotoBase64Thumbnail && aluno.fotoBase64Thumbnail.length > 20) {
+      const src = aluno.fotoBase64Thumbnail.startsWith('data:') ? aluno.fotoBase64Thumbnail : 'data:image/jpeg;base64,' + aluno.fotoBase64Thumbnail;
+      const img = createEl('img', {
+        src: src,
+        className: 'aluno-foto',
+        alt: 'Foto',
+        style: 'cursor: zoom-in;'
+      });
+      img.onclick = (e) => showImageModal(e, src, aluno.nome);
+      avatarCellContent = [img];
+    } else {
+      avatarCellContent = [createEl('div', { className: 'aluno-foto-placeholder' }, [
+        createEl('i', { 'data-lucide': 'user' })
+      ])];
+    }
+
     let cells = [
       createEl('td', { style: 'text-align:center;' }, [isNaN(parseInt(aluno.nroNaTurma, 10)) ? '' : `${aluno.nroNaTurma}`]),
+      createEl('td', { style: 'text-align:center; padding: 4px;' }, avatarCellContent),
       createEl('td', { innerHTML: `<strong>${getNomeComSituacao(aluno)}</strong>` }),
     ];
 
@@ -976,8 +1002,50 @@ function exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro) {
     return;
   }
 
-  const nomeArquivo = `${dashboardData.professor.replace(' ', '_')}_notas_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`;
+    const nomeArquivo = `${dashboardData.professor.replace(' ', '_')}_notas_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`;
   XLSX.writeFile(wb, nomeArquivo);
 }
 
 
+function showImageModal(e, src, name) {
+  const rect = e.target.getBoundingClientRect();
+  const overlay = createEl('div', { className: 'modal-overlay', style: 'background: rgba(0,0,0,0.1); backdrop-filter: none;' });
+  
+  const maxImgHeight = window.innerHeight - 80;
+  let left = rect.left;
+  
+  // Impede vazamento para a direita
+  if (left + 240 > window.innerWidth - 10) {
+    left = window.innerWidth - 250;
+  }
+  if (left < 10) left = 10;
+
+  const content = createEl('div', { 
+    className: 'modal-content',
+    style: `position: fixed; top: 50%; left: ${left}px; translate: 0 -50%; width: 240px; z-index: 1001;`
+  }, [
+    createEl('div', { className: 'modal-header' }, [
+      createEl('span', { style: 'font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px;' }, [name]),
+      createEl('button', { className: 'modal-close', innerHTML: '&times;' })
+    ]),
+    createEl('img', { 
+        src: src, 
+        className: 'modal-image', 
+        style: `width: 100%; height: auto; display: block; max-height: ${maxImgHeight}px; object-fit: contain;`
+    })
+  ]);
+  
+  overlay.appendChild(content);
+  document.body.appendChild(overlay);
+  
+  const closeModal = () => {
+    overlay.classList.add('fade-out');
+    content.style.opacity = '0';
+    setTimeout(() => {
+      if (overlay.parentNode) document.body.removeChild(overlay);
+    }, 200);
+  };
+  
+  overlay.onclick = (ev) => { if (ev.target === overlay) closeModal(); };
+  content.querySelector('.modal-close').onclick = closeModal;
+}
