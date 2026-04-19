@@ -173,8 +173,10 @@ function renderApp() {
   }
 
   // Renderiza Header
-  document.querySelector(SELECTORS.professorInfo).textContent = `Professor: ${dashboardData.professor}`;
-  document.querySelector(SELECTORS.exportDate).textContent = `Exportado em: ${new Date(dashboardData.data_exportacao).toLocaleString('pt-BR')}`;
+  document.querySelector('#professor-info').textContent = dashboardData.professor || 'Desconhecido';
+
+  const dataExportacao = new Date(dashboardData.data_exportacao);
+  document.querySelector('#export-date').innerHTML = `<i data-lucide="clock"></i> <span>Exportado em: ${dataExportacao.toLocaleString('pt-BR')}</span>`;
 
   // Renderiza Componentes
   const stats = calculateStats(dashboardData);
@@ -189,8 +191,8 @@ function renderApp() {
 
   container.appendChild(renderFooter());
 
-  // Inicializa ícones Lucide nos elementos recém-criados (scoped ao container para garantir re-scan)
-  lucide.createIcons({ nodes: [container] });
+  // Inicializa ícones Lucide nos elementos recém-criados
+  lucide.createIcons({ nodes: [container, document.querySelector('header')] });
 
   // Associa eventos aos controles recém-criados
   attachControlEvents();
@@ -653,22 +655,22 @@ function updateFilteredStats() {
     }
     const mediaStr = p.media !== null ? p.media.toFixed(1).replace('.', ',') : '—';
     const isSelected = fstatSelectedPeriod === p.label;
-    
-    const card = createEl('div', { 
-        className: 'fstat-card' + (isSelected ? ' fstat-selected' : ''), 
-        style: 'cursor: pointer; transition: all 0.2s;' 
+
+    const card = createEl('div', {
+      className: 'fstat-card' + (isSelected ? ' fstat-selected' : ''),
+      style: 'cursor: pointer; transition: all 0.2s;'
     }, [
       createEl('div', { className: 'fstat-label' }, [p.label]),
       createEl('div', { className: 'fstat-value', innerHTML: mediaStr + trend }),
     ]);
 
     card.addEventListener('click', () => {
-       if (fstatSelectedPeriod === p.label) {
-           fstatSelectedPeriod = null;
-       } else {
-           fstatSelectedPeriod = p.label;
-       }
-       updateFilteredStats();
+      if (fstatSelectedPeriod === p.label) {
+        fstatSelectedPeriod = null;
+      } else {
+        fstatSelectedPeriod = p.label;
+      }
+      updateFilteredStats();
     });
 
     return { card, label: p.label };
@@ -676,10 +678,10 @@ function updateFilteredStats() {
 
   let distData = { label: 'Distribuição (Ano)', aprovados: stats.aprovados, emRecuperacao: stats.emRecuperacao, reprovados: stats.reprovados };
   if (fstatSelectedPeriod) {
-      const pStats = stats.periodAverages.find(p => p.label === fstatSelectedPeriod);
-      if (pStats) {
-          distData = { label: `Distribuição (${pStats.label})`, aprovados: pStats.aprovados, emRecuperacao: pStats.emRecuperacao, reprovados: pStats.reprovados };
-      }
+    const pStats = stats.periodAverages.find(p => p.label === fstatSelectedPeriod);
+    if (pStats) {
+      distData = { label: `Distribuição (${pStats.label})`, aprovados: pStats.aprovados, emRecuperacao: pStats.emRecuperacao, reprovados: pStats.reprovados };
+    }
   }
 
   const totalAprovados = distData.aprovados + distData.emRecuperacao + distData.reprovados;
@@ -716,16 +718,16 @@ function updateFilteredStats() {
   ]);
 
   container.appendChild(alunosCard);
-  
+
   for (const pc of periodCards) {
-      container.appendChild(pc.card);
-      if (fstatSelectedPeriod === pc.label) {
-          container.appendChild(distribuicaoCard);
-      }
+    container.appendChild(pc.card);
+    if (fstatSelectedPeriod === pc.label) {
+      container.appendChild(distribuicaoCard);
+    }
   }
 
   if (!fstatSelectedPeriod) {
-      container.appendChild(distribuicaoCard);
+    container.appendChild(distribuicaoCard);
   }
 } // <---- end updateFilteredStats
 

@@ -48,41 +48,62 @@ header {
   box-shadow: var(--shadow-sm);
 }
 
-.header-top {
+.header-main {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
 }
 
+.header-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.header-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-avatar {
+  width: 28px;
+  height: 28px;
+  color: var(--primary);
+  opacity: 0.9;
+}
+
 header h1 {
-  font-size: 1.35rem;
+  font-size: 1.4rem;
   font-weight: 700;
   color: var(--primary);
   letter-spacing: -0.02em;
 }
 
-header p {
-  margin: 4px 0 0 0;
-  font-size: 0.82rem;
+.header-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   color: var(--text-muted);
-}
-
-#professor-info {
-  font-weight: 500;
-  color: var(--text-main);
-  font-size: 0.9rem;
-  margin-top: 8px;
-}
-
-#export-date {
   font-size: 0.8rem;
-  color: var(--text-muted);
+  font-weight: 500;
 }
 
-#cache-info {
-  font-size: 0.75rem;
-  color: var(--text-muted);
+.header-meta span[id] {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.header-meta i {
+  width: 14px;
+  height: 14px;
+  opacity: 0.7;
+}
+
+.meta-divider {
+  opacity: 0.5;
 }
 
 /* ========================================
@@ -389,7 +410,8 @@ button:hover {
 
 .fstat-selected {
   border-color: var(--primary);
-  background: #f0fdf4; /* faint green to indicate selection */
+  background: #f0fdf4;
+  /* faint green to indicate selection */
   box-shadow: 0 0 0 2px rgba(31, 130, 43, 0.2);
 }
 
@@ -430,9 +452,17 @@ button:hover {
   min-width: 0;
 }
 
-.fstat-seg.fstat-aprov  { background: #16a34a; }
-.fstat-seg.fstat-recup  { background: #d97706; }
-.fstat-seg.fstat-reprov { background: #dc2626; }
+.fstat-seg.fstat-aprov {
+  background: #16a34a;
+}
+
+.fstat-seg.fstat-recup {
+  background: #d97706;
+}
+
+.fstat-seg.fstat-reprov {
+  background: #dc2626;
+}
 
 .fstat-dist-legend {
   display: flex;
@@ -455,9 +485,17 @@ button:hover {
   flex-shrink: 0;
 }
 
-.fstat-leg-dot.fstat-aprov  { background: #16a34a; }
-.fstat-leg-dot.fstat-recup  { background: #d97706; }
-.fstat-leg-dot.fstat-reprov { background: #dc2626; }
+.fstat-leg-dot.fstat-aprov {
+  background: #16a34a;
+}
+
+.fstat-leg-dot.fstat-recup {
+  background: #d97706;
+}
+
+.fstat-leg-dot.fstat-reprov {
+  background: #dc2626;
+}
 
 /* ========================================
    ESCOLA CARD
