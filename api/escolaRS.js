@@ -59,7 +59,7 @@ async function fetchEscolaRS(endpoint, token, options = {}, timeout = API_TIMEOU
     if ((response.status === 401 || response.status === 403) && attempt === 1) {
       console.warn('[EscolaRS API] Token expirado ou inválido (401/403). Tentando renovação silenciosa...');
       try {
-        currentToken = await trySilentTokenRefresh();
+        currentToken = await trySilentTokenRefresh(currentToken);
         if (currentToken) {
            console.log('[EscolaRS API] Token renovado com sucesso. Retentando requisição...');
            continue; // Pula para a próxima iteração e tenta novamente
@@ -87,8 +87,24 @@ let activeTokenRefreshPromise = null;
  * Tenta forçar a renovação do token de forma invisível/rápida.
  * Cria uma aba com o portal EscolaRS e aguarda a interceptação do webRequest atualizar o storage.
  * Múltiplas chamadas simultâneas aguardarão a mesma aba/Promise.
+ * @param {string} [staleToken=null] - O token que falhou, usado para checar se já houve renovação por outra requisição.
  */
-function trySilentTokenRefresh() {
+async function trySilentTokenRefresh(staleToken = null) {
+  if (activeTokenRefreshPromise) {
+    return activeTokenRefreshPromise;
+  }
+
+  // 1. Antes de mais nada, checa se o token no storage já é diferente do que falhou.
+  // Se for, significa que outra requisição paralela já renovou o token com sucesso.
+  if (staleToken) {
+    const authData = await chrome.storage.local.get("escolaRsToken");
+    if (authData.escolaRsToken && authData.escolaRsToken !== staleToken) {
+      console.log('[EscolaRS API] Token no storage já foi renovado por outra requisição. Ignorando abertura de janela.');
+      return authData.escolaRsToken;
+    }
+  }
+
+  // 2. Re-checagem após o await (pode ter iniciado uma renovação enquanto esperávamos o storage)
   if (activeTokenRefreshPromise) {
     return activeTokenRefreshPromise;
   }
@@ -118,9 +134,6 @@ function trySilentTokenRefresh() {
       reject(new Error("Timeout ao aguardar renovação do token no background. Pode ser necessário login manual."));
     }, 15000); // 15s de limite para a renovação silenciosa
 
-    // Abre uma janela extra pequena e minimizada para não atrapalhar o fluxo do usuário,
-    // mas que permite ao Chrome executar os scripts em primeiro plano nessa nova janela
-    // e renovar o token.
     chrome.windows.create({
       url: 'https://professor.escola.rs.gov.br/',
       state: 'minimized',

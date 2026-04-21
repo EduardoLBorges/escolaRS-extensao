@@ -177,7 +177,7 @@ async function buildDashboardFromStorage() {
   if (!authData.escolaRsToken) {
     console.log('[Dashboard] Token ausente. Tentando renovação silenciosa inicial...');
     try {
-      await trySilentTokenRefresh();
+      await trySilentTokenRefresh(authData.escolaRsToken);
       authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc"]);
     } catch (e) {
       console.warn('[Dashboard] Renovação inicial falhou:', e);

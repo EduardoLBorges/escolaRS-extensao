@@ -94,10 +94,24 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
 chrome.action.onClicked.addListener(async (tab) => {
   let authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc"]);
   
-  if (!authData.escolaRsToken) {
+  // Se já temos token e nrDoc, valida se ainda é funcional
+  if (authData.escolaRsToken && authData.nrDoc) {
+    console.log('[Background] Validando token existente...');
+    try {
+      // Uma chamada simples para testar o token. Se falhar com 401, o fetchEscolaRS
+      // disparará o trySilentTokenRefresh automaticamente.
+      await listarEscolasProfessor(authData.nrDoc, authData.escolaRsToken);
+      console.log('[Background] Token validado com sucesso.');
+      authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc"]); // Pega o token possivelmente renovado
+    } catch (e) {
+      console.warn('[Background] Token inválido ou erro na validação. Renovação disparada:', e);
+      // O fetchEscolaRS já deve ter disparado a renovação, mas por segurança garantimos aqui
+      authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc"]);
+    }
+  } else if (!authData.escolaRsToken) {
     console.log('[Background] Token ausente no clique inicial. Tentando renovar silenciosamente...');
     try {
-      await trySilentTokenRefresh();
+      await trySilentTokenRefresh(null);
       authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc"]);
     } catch (e) {
       console.log('[Background] Renovação no clique falhou:', e);
