@@ -136,8 +136,10 @@ async function trySilentTokenRefresh(staleToken = null) {
 
     chrome.windows.create({
       url: 'https://professor.escola.rs.gov.br/',
-      state: 'minimized',
-      focused: false,
+      state: 'normal',
+      width: 400,
+      height: 600,
+      focused: true,
       type: 'popup'
     }, (windowInfo) => {
       windowId = windowInfo.id;
