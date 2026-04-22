@@ -19,7 +19,6 @@ async function fetchEscolaRS(endpoint, token, options = {}, timeout = API_TIMEOU
   const url = `${API_BASE_URL}/${endpoint}`;
   let currentToken = token;
 
-  // Tenta a requisição até 2 vezes (a segunda vez ocorre apenas se o token for atualizado)
   for (let attempt = 1; attempt <= 2; attempt++) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -45,38 +44,35 @@ async function fetchEscolaRS(endpoint, token, options = {}, timeout = API_TIMEOU
       if (error.name === 'AbortError') {
         throw new Error(`Timeout na requisição (${timeout}ms) para: ${endpoint}`);
       }
-      throw error; // Outros erros de rede (ex: sem conexão)
+      throw error;
     } finally {
       clearTimeout(timeoutId);
     }
 
-    // Se a requisição foi bem-sucedida, retorna o JSON.
     if (response.ok) {
       return response.json();
     }
 
-    // Se o token expirou (401 ou 403) e esta é a primeira tentativa, tenta atualizar o token.
     if ((response.status === 401 || response.status === 403) && attempt === 1) {
       console.warn('[EscolaRS API] Token expirado ou inválido (401/403). Tentando renovação silenciosa...');
       try {
-        currentToken = await trySilentTokenRefresh(currentToken);
+        await trySilentTokenRefresh(currentToken);
+        // 👇 IMPORTANTE: Pega o token ATUAL do storage, não o que a Promise retornou
+        const authData = await chrome.storage.local.get("escolaRsToken");
+        currentToken = authData.escolaRsToken;
         if (currentToken) {
-           console.log('[EscolaRS API] Token renovado com sucesso. Retentando requisição...');
-           continue; // Pula para a próxima iteração e tenta novamente
+          console.log('[EscolaRS API] Token renovado com sucesso. Retentando requisição...');
+          continue;
         }
       } catch (e) {
         console.error('[EscolaRS API] Falha na renovação silenciosa do token:', e);
       }
     }
 
-    // Se a requisição falhou por outro motivo, ou se a segunda tentativa também falhou.
     let errorBody = '';
     try {
-      // Tenta ler o corpo da resposta para obter mais detalhes do erro.
       errorBody = await response.text();
-    } catch {
-      // Ignora se o corpo não puder ser lido.
-    }
+    } catch {}
     throw new Error(`Erro na API (${response.status}: ${response.statusText}). Detalhes: ${errorBody}`);
   }
 }
