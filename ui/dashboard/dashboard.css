@@ -50,7 +50,7 @@ header {
 
 .header-main {
   display: flex;
-  align-items: flex-start;
+  align-items: center; /* Alinha verticalmente com o botão sincronizar */
   justify-content: space-between;
   gap: 16px;
 }
@@ -58,52 +58,57 @@ header {
 .header-titles {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px; /* Reduzi o gap para aproximar o nome da data de exportação */
 }
 
 .header-user {
   display: flex;
   align-items: center;
-  gap: 10px;
 }
 
 .header-avatar {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   color: var(--primary);
   opacity: 0.9;
+  stroke-width: 2.2;
+  flex-shrink: 0;
+  margin-right: 12px; /* Espaço fixo idêntico ao de baixo */
 }
 
 header h1 {
-  font-size: 1.4rem;
+  font-size: 1.35rem;
   font-weight: 700;
   color: var(--primary);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
+  margin: 0;
+  line-height: normal;
 }
 
 .header-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
   color: var(--text-muted);
   font-size: 0.8rem;
   font-weight: 500;
+  margin-top: 4px;
 }
 
-.header-meta span[id] {
+.header-meta span {
   display: flex;
   align-items: center;
-  gap: 4px;
 }
 
 .header-meta i {
-  width: 14px;
-  height: 14px;
-  opacity: 0.7;
-}
-
-.meta-divider {
-  opacity: 0.5;
+  width: 24px;
+  height: 16px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  opacity: 0.8;
+  stroke-width: 2.2;
+  flex-shrink: 0;
+  margin-right: 12px; /* Espaço fixo idêntico ao de cima */
 }
 
 /* ========================================
@@ -713,22 +718,24 @@ tr:hover td {
 /* ========================================
    STATUS TEXT
    ======================================== */
+.status-excellente,
+.status-recuperacao,
+.status-reprovado {
+  font-weight: 600;
+  font-size: 0.77rem;
+  white-space: nowrap;
+}
+
 .status-excellente {
   color: #15803d;
-  font-weight: 600;
-  font-size: 0.8rem;
 }
 
 .status-recuperacao {
   color: #d97706;
-  font-weight: 600;
-  font-size: 0.8rem;
 }
 
 .status-reprovado {
   color: #b91c1c;
-  font-weight: 600;
-  font-size: 0.8rem;
 }
 
 /* ========================================

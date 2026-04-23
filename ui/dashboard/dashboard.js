@@ -453,8 +453,8 @@ function createStudentsTable(alunos, disciplina) {
     createEl('col', { style: 'width: 52px;' }),
     createEl('col', {}), // nome: expande
     ...periodos.map(() => createEl('col', { style: 'width: 80px;' })),
-    createEl('col', { style: 'width: 90px;' }),
-    createEl('col', { style: 'width: 90px;' }),
+    createEl('col', { style: 'width: 80px;' }), // média: 80px é suficiente para "10,0"
+    createEl('col', { style: 'width: 110px;' }), // status: 110px para "Recuperação"
   ];
 
   const headerRow = createEl('tr', {}, [
@@ -790,7 +790,8 @@ function updateFilteredStats() {
       } else {
         fstatSelectedPeriod = p.label;
       }
-      updateFilteredStats();
+      fstatCategoryFilter = null;
+      applyFilters();
     });
 
     return { card, label: p.label };
@@ -812,7 +813,7 @@ function updateFilteredStats() {
 
   const createLegItem = (catKey, label, pct, count) => {
     const isSelected = fstatCategoryFilter === catKey;
-    const el = createEl('span', { 
+    const el = createEl('span', {
       className: `fstat-leg-item${isSelected ? ' fstat-leg-selected' : ''}`,
       title: `${label}: ${count} (${pct}%)`,
       style: 'cursor: pointer; user-select: none;'
@@ -1171,10 +1172,10 @@ function showImageModal(e, src, name) {
     ]),
     modalImg
   ]);
-  
+
   overlay.appendChild(content);
   document.body.appendChild(overlay);
-  
+
   const closeModal = () => {
     overlay.classList.add('fade-out');
     content.style.opacity = '0';
@@ -1182,7 +1183,7 @@ function showImageModal(e, src, name) {
       if (overlay.parentNode) document.body.removeChild(overlay);
     }, 200);
   };
-  
+
   overlay.onclick = (ev) => { if (ev.target === overlay) closeModal(); };
   content.querySelector('.modal-close').onclick = closeModal;
 }
