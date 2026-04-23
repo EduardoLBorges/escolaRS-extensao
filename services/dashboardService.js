@@ -161,7 +161,12 @@ async function getDashboardData(token, nrDoc, onProgress = null) {
   const allResults = await processInBatches(
     allTasks,
     async (task) => {
-      const resultados = await listarResultadosTurma(task.turmaId, task.discId, idRecHumano, currentToken);
+      // autoRefreshToken: false — o token já foi validado na chamada inicial.
+      // Se falhar aqui, não deve abrir popup; será reportado como erro da disciplina.
+      const resultados = await listarResultadosTurma(
+        task.turmaId, task.discId, idRecHumano, currentToken,
+        { autoRefreshToken: false }
+      );
       return {
         ...task,
         alunos: resultados.alunos.map(processarAluno),
@@ -174,7 +179,14 @@ async function getDashboardData(token, nrDoc, onProgress = null) {
 
   // Se TODAS as requisições falharem, aborta para não sobrescrever o cache com erros
   if (allResults.length > 0 && allResults.every((r) => r.status === 'rejected')) {
-    throw new Error('Sem conexão com a internet ou portal indisponível. A atualização foi cancelada para preservar seus dados salvos.');
+    const firstError = allResults[0].reason?.message || 'Erro desconhecido';
+    console.error('[Dashboard Service] Todas as requisições do batch falharam. Primeiro erro:', firstError);
+    
+    if (firstError.includes('401') || firstError.includes('403')) {
+      throw new Error('Sua sessão expirou ou o token é inválido. Por favor, faça login novamente no portal EscolaRS.');
+    }
+    
+    throw new Error(`Falha ao carregar dados: ${firstError}. Verifique sua conexão ou se o portal está acessível.`);
   }
 
   // 4. Reconstruir a estrutura de dados aninhada
@@ -190,34 +202,44 @@ async function getDashboardData(token, nrDoc, onProgress = null) {
   };
 }
 
-// ─── Storage Entry Point ────────────────────────────────────────────
+let activeDashboardBuildPromise = null;
 
 /**
- * Wrapper que lê autenticação do storage e constrói o dashboard
+ * Wrapper que lê autenticação do storage e constrói o dashboard.
+ * Usa um singleton para evitar múltiplos builds simultâneos.
  * @returns {Promise<Object>} Dados do dashboard
  */
 async function buildDashboardFromStorage() {
-  let authData = await chrome.storage.local.get(['escolaRsToken', 'nrDoc']);
+  if (activeDashboardBuildPromise) {
+    console.log('[Dashboard Service] Já existe um build em progresso. Aguardando...');
+    return activeDashboardBuildPromise;
+  }
 
-  if (!authData.escolaRsToken) {
-    console.log('[Dashboard] Token ausente. Tentando renovação silenciosa inicial...');
+  activeDashboardBuildPromise = (async () => {
     try {
-      await trySilentTokenRefresh(authData.escolaRsToken);
-      authData = await chrome.storage.local.get(['escolaRsToken', 'nrDoc']);
-    } catch (e) {
-      console.warn('[Dashboard] Renovação inicial falhou:', e);
+      let authData = await chrome.storage.local.get(['escolaRsToken', 'nrDoc']);
+
+      if (!authData.escolaRsToken) {
+        console.log('[Dashboard Service] Token ausente. Tentando renovação inicial...');
+        await trySilentTokenRefresh(null);
+        authData = await chrome.storage.local.get(['escolaRsToken', 'nrDoc']);
+      }
+
+      if (!authData.escolaRsToken || !authData.nrDoc) {
+        throw new Error(AUTH_MISSING_ERROR);
+      }
+
+      return await getDashboardData(authData.escolaRsToken, authData.nrDoc, (progress) => {
+        chrome.runtime.sendMessage({
+          action: 'updateProgress',
+          percentage: progress.percentage,
+          status: progress.status,
+        }).catch(() => {});
+      });
+    } finally {
+      activeDashboardBuildPromise = null;
     }
-  }
+  })();
 
-  if (!authData.escolaRsToken || !authData.nrDoc) {
-    throw new Error(AUTH_MISSING_ERROR);
-  }
-
-  return getDashboardData(authData.escolaRsToken, authData.nrDoc, (progress) => {
-    chrome.runtime.sendMessage({
-      action: 'updateProgress',
-      percentage: progress.percentage,
-      status: progress.status,
-    }).catch(() => {});
-  });
+  return activeDashboardBuildPromise;
 }

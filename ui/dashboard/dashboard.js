@@ -84,6 +84,62 @@ function getClasseBadge(media) {
   return 'badge-ruim';
 }
 
+/**
+ * Classifica um valor de nota em uma categoria para filtragem.
+ * @param {*} value - Nota numérica ou placeholder.
+ * @returns {'aprov'|'recup'|'reprov'|'semnota'}
+ */
+function getStatusCategory(value) {
+  if (value === undefined || value === null || isNaN(value) || value === '--') return 'semnota';
+  if (value >= 6) return 'aprov';
+  if (value >= 5) return 'recup';
+  return 'reprov';
+}
+
+/**
+ * Retorna o texto e classe CSS de status de um aluno.
+ * @param {number} mediaFinal - Média final do aluno.
+ * @param {boolean} hasGrades - Se o aluno tem notas suficientes para avaliação.
+ * @returns {{ texto: string, classe: string }}
+ */
+function getAlunoStatus(mediaFinal, hasGrades) {
+  if (!hasGrades) return { texto: '', classe: '' };
+  if (mediaFinal >= 6) return { texto: 'Aprovado', classe: 'status-excellente' };
+  if (mediaFinal >= 5) return { texto: 'Recuperação', classe: 'status-recuperacao' };
+  return { texto: 'Reprovado', classe: 'status-reprovado' };
+}
+
+/**
+ * Sanitiza o nome do período para uso como chave de dataset HTML.
+ * @param {string} periodo - Ex: "1° Trim"
+ * @returns {string} - Ex: "1Trim"
+ */
+function sanitizePeriodoKey(periodo) {
+  return periodo.replace(/\s+/g, '').replace(/[°º]/g, '');
+}
+
+/**
+ * Cria a célula <td> de avatar do aluno (foto ou placeholder).
+ * @param {Object} aluno - Objeto do aluno.
+ * @returns {HTMLElement}
+ */
+function createAvatarCell(aluno) {
+  if (aluno.fotoBase64Thumbnail && aluno.fotoBase64Thumbnail.length > 20) {
+    const src = aluno.fotoBase64Thumbnail.startsWith('data:')
+      ? aluno.fotoBase64Thumbnail
+      : 'data:image/jpeg;base64,' + aluno.fotoBase64Thumbnail;
+    const img = createEl('img', { src, className: 'aluno-foto', alt: 'Foto', style: 'cursor: zoom-in;' });
+    img.onclick = (e) => showImageModal(e, src, aluno.nome);
+    return createEl('td', { style: 'text-align:center; padding: 4px;' }, [img]);
+  }
+
+  return createEl('td', { style: 'text-align:center; padding: 4px;' }, [
+    createEl('div', { className: 'aluno-foto-placeholder' }, [
+      createEl('i', { 'data-lucide': 'user' }),
+    ]),
+  ]);
+}
+
 // =================================================================================
 // DATA LOADING & MAIN FLOW
 // =================================================================================
@@ -404,37 +460,14 @@ function createStudentsTable(alunos, disciplina) {
   const studentRows = alunos.map(aluno => {
     const notasPeriodos = periodos.map(p => getNotaTexto(aluno.notas, p));
     const todasAsNotasPreenchidas = notasPeriodos.every(nota => nota !== '--');
-
-    let statusTexto = '', statusClass = '';
-    if (todasAsNotasPreenchidas) {
-      statusTexto = 'Reprovado'; statusClass = 'status-reprovado';
-      if (aluno.mediaFinal >= 6) { statusTexto = 'Aprovado'; statusClass = 'status-excellente'; }
-      else if (aluno.mediaFinal >= 5) { statusTexto = 'Recuperação'; statusClass = 'status-recuperacao'; }
-    }
+    const { texto: statusTexto, classe: statusClass } = getAlunoStatus(aluno.mediaFinal, todasAsNotasPreenchidas);
 
     const isAtivo = aluno.situacao?.ativo === true;
     const isInativo = !isAtivo;
 
-    let avatarCellContent;
-    if (aluno.fotoBase64Thumbnail && aluno.fotoBase64Thumbnail.length > 20) {
-      const src = aluno.fotoBase64Thumbnail.startsWith('data:') ? aluno.fotoBase64Thumbnail : 'data:image/jpeg;base64,' + aluno.fotoBase64Thumbnail;
-      const img = createEl('img', {
-        src: src,
-        className: 'aluno-foto',
-        alt: 'Foto',
-        style: 'cursor: zoom-in;'
-      });
-      img.onclick = (e) => showImageModal(e, src, aluno.nome);
-      avatarCellContent = [img];
-    } else {
-      avatarCellContent = [createEl('div', { className: 'aluno-foto-placeholder' }, [
-        createEl('i', { 'data-lucide': 'user' })
-      ])];
-    }
-
     let cells = [
       createEl('td', { style: 'text-align:center;' }, [isNaN(parseInt(aluno.nroNaTurma, 10)) ? '' : `${aluno.nroNaTurma}`]),
-      createEl('td', { style: 'text-align:center; padding: 4px;' }, avatarCellContent),
+      createAvatarCell(aluno),
       createEl('td', { innerHTML: `<strong>${getNomeComSituacao(aluno)}</strong>` }),
     ];
 
@@ -452,31 +485,19 @@ function createStudentsTable(alunos, disciplina) {
     const ds = {
       alunoNome: aluno.nome.toLowerCase(),
       disciplinaNome: disciplina,
-      alunoAtivo: isAtivo ? 'true' : 'false'
+      alunoAtivo: isAtivo ? 'true' : 'false',
+      statusMedia: (todasAsNotasPreenchidas || aluno.mediaFinal > 0)
+        ? getStatusCategory(aluno.mediaFinal)
+        : 'semnota',
     };
-
-    const getStatusCat = (val) => {
-      if (val === undefined || val === null || isNaN(val) || val === '--') return 'semnota';
-      if (val >= 6) return 'aprov';
-      if (val >= 5) return 'recup';
-      return 'reprov';
-    };
-
-    let statusAno = 'semnota';
-    if (todasAsNotasPreenchidas || aluno.mediaFinal > 0) {
-      statusAno = getStatusCat(aluno.mediaFinal);
-    }
-    ds.statusMedia = statusAno;
 
     periodos.forEach(p => {
       const notaStr = String(getNotaTexto(aluno.notas, p));
       let pStatus = 'semnota';
       if (notaStr !== '--') {
-        const nota = parseFloat(notaStr.replace('*', '').replace(',', '.'));
-        pStatus = getStatusCat(nota);
+        pStatus = getStatusCategory(parseFloat(notaStr.replace('*', '').replace(',', '.')));
       }
-      const sanitizeP = p.replace(/\s+/g, '').replace(/[°º]/g, '');
-      ds[`periodo${sanitizeP}`] = pStatus;
+      ds[`periodo${sanitizePeriodoKey(p)}`] = pStatus;
     });
 
     return createEl('tr', {
@@ -602,8 +623,7 @@ function applyFilters() {
             } else {
               let statusCheck = alunoRow.dataset.statusMedia;
               if (fstatSelectedPeriod) {
-                const sanitizeP = fstatSelectedPeriod.replace(/\s+/g, '').replace(/[°º]/g, '');
-                statusCheck = alunoRow.dataset[`periodo${sanitizeP}`];
+                statusCheck = alunoRow.dataset[`periodo${sanitizePeriodoKey(fstatSelectedPeriod)}`];
               }
               if (statusCheck !== fstatCategoryFilter) filterMatch = false;
             }
@@ -1045,12 +1065,8 @@ function exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro) {
             }
           }
 
-          let status = 'Sem Notas';
-          if (aluno.mediaFinal > 0) {
-            if (aluno.mediaFinal >= 6) status = 'Aprovado';
-            else if (aluno.mediaFinal >= 5) status = 'Recuperação';
-            else status = 'Reprovado';
-          }
+          const { texto } = getAlunoStatus(aluno.mediaFinal, aluno.mediaFinal > 0);
+          const status = texto || 'Sem Notas';
 
           linha.push(
             disc.disciplina || '',
@@ -1082,7 +1098,7 @@ function exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro) {
     return;
   }
 
-    const nomeArquivo = `${dashboardData.professor.replace(' ', '_')}_notas_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`;
+  const nomeArquivo = `${dashboardData.professor.replace(' ', '_')}_notas_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`;
   XLSX.writeFile(wb, nomeArquivo);
 }
 
