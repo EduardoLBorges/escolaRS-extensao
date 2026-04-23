@@ -188,6 +188,20 @@ chrome.action.onClicked.addListener(async (tab) => {
 });
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'getStudentPhoto') {
+    (async () => {
+      try {
+        const { escolaRsToken } = await chrome.storage.local.get('escolaRsToken');
+        const result = await buscarFotoDoAluno(request.matricula, request.idTurma, escolaRsToken);
+        sendResponse({ success: true, data: result });
+      } catch (error) {
+        console.error('[Background] Erro ao buscar foto do aluno:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
   if (request.action !== 'getDashboardData' && request.action !== 'refreshDashboardData') {
     return;
   }

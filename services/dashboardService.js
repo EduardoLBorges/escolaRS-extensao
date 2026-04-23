@@ -169,7 +169,7 @@ async function getDashboardData(token, nrDoc, onProgress = null) {
       );
       return {
         ...task,
-        alunos: resultados.alunos.map(processarAluno),
+        alunos: resultados.alunos.map(aluno => processarAluno({ ...aluno, idTurma: task.turmaId })),
         erro: null,
       };
     },

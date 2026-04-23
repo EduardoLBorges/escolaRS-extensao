@@ -128,7 +128,16 @@ function createAvatarCell(aluno) {
     const src = aluno.fotoBase64Thumbnail.startsWith('data:')
       ? aluno.fotoBase64Thumbnail
       : 'data:image/jpeg;base64,' + aluno.fotoBase64Thumbnail;
-    const img = createEl('img', { src, className: 'aluno-foto', alt: 'Foto', style: 'cursor: zoom-in;' });
+    const img = createEl('img', {
+      src,
+      className: 'aluno-foto',
+      alt: 'Foto',
+      style: 'cursor: zoom-in;',
+      dataset: {
+        matricula: aluno.matricula,
+        idTurma: aluno.idTurma
+      }
+    });
     img.onclick = (e) => showImageModal(e, src, aluno.nome);
     return createEl('td', { style: 'text-align:center; padding: 4px;' }, [img]);
   }
@@ -1104,19 +1113,55 @@ function exportarXLSX(escolaSelecionada, turmaSelecionada, alunoFiltro) {
 
 
 function showImageModal(e, src, name) {
-  const rect = e.target.getBoundingClientRect();
+  const imgTarget = e.target;
+  const { matricula, idTurma } = imgTarget.dataset;
+
+  const rect = imgTarget.getBoundingClientRect();
   const overlay = createEl('div', { className: 'modal-overlay', style: 'background: rgba(0,0,0,0.1); backdrop-filter: none;' });
-  
+
   const maxImgHeight = window.innerHeight - 80;
   let left = rect.left;
-  
+
   // Impede vazamento para a direita
   if (left + 240 > window.innerWidth - 10) {
     left = window.innerWidth - 250;
   }
   if (left < 10) left = 10;
 
-  const content = createEl('div', { 
+  const modalImg = createEl('img', {
+    src: src,
+    className: 'modal-image',
+    style: `width: 100%; height: auto; display: block; max-height: ${maxImgHeight}px; object-fit: contain;`
+  });
+
+  if (matricula && idTurma) {
+    chrome.runtime.sendMessage({ action: 'getStudentPhoto', matricula, idTurma }, (response) => {
+      if (response && response.success && response.data && response.data.fotoBase64) {
+        const fullSrc = response.data.fotoBase64.startsWith('data:')
+          ? response.data.fotoBase64
+          : 'data:image/jpeg;base64,' + response.data.fotoBase64;
+
+        modalImg.src = fullSrc;
+        imgTarget.src = fullSrc;
+
+        // Atualiza no cache em memória (dashboardData) para persistir re-filtros
+        if (dashboardData && dashboardData.escolas) {
+          dashboardData.escolas.forEach(escola => {
+            escola.turmas.forEach(turma => {
+              turma.disciplinas.forEach(disc => {
+                const aluno = disc.alunos?.find(a => a.matricula == matricula);
+                if (aluno) {
+                  aluno.fotoBase64Thumbnail = response.data.fotoBase64;
+                }
+              });
+            });
+          });
+        }
+      }
+    });
+  }
+
+  const content = createEl('div', {
     className: 'modal-content',
     style: `position: fixed; top: 50%; left: ${left}px; translate: 0 -50%; width: 240px; z-index: 1001;`
   }, [
@@ -1124,11 +1169,7 @@ function showImageModal(e, src, name) {
       createEl('span', { style: 'font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px;' }, [name]),
       createEl('button', { className: 'modal-close', innerHTML: '&times;' })
     ]),
-    createEl('img', { 
-        src: src, 
-        className: 'modal-image', 
-        style: `width: 100%; height: auto; display: block; max-height: ${maxImgHeight}px; object-fit: contain;`
-    })
+    modalImg
   ]);
   
   overlay.appendChild(content);

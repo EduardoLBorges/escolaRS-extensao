@@ -226,3 +226,7 @@ async function listarResultadosTurma(turmaId, discId, idRecHumano, token, option
 async function registrarChamadaAula(turmaId, discId, data, idRecHumano, payload, token) {
   return fetchEscolaRS(`chamada`, token, { method: 'POST', body: payload });
 }
+
+async function buscarFotoDoAluno(matricula, idTurma, token) {
+  return fetchEscolaRS(`buscarFotoDoAluno/${matricula}/${idTurma}`, token);
+}
