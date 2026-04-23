@@ -2,30 +2,33 @@
 importScripts('api/escolaRS.js', 'utils/notas.js', 'services/dashboardService.js');
 
 
-// --- INTERCEPTAÇÃO DE AUTENTICAÇÃO VIA webRequest ---
-// Captura o token Bearer e o nrDoc de requisições feitas pelo navegador
-// às URLs do EscolaRS — funciona independente de contexto ou framework do SPA
+// ─── Constantes & Estado ────────────────────────────────────────────
+
+const DASHBOARD_CACHE_KEY = 'dashboardCache';
+const NOTIFICATION_ICON = 'images/icons/icon128.png';
+const NOTIFICATION_TITLE = 'EscolaRS Export';
+const PORTAL_MATCH_URL = 'https://professor.escola.rs.gov.br/*';
+const API_URL_PATTERNS = [
+  'https://*.procergs.com.br/*',
+  'https://professor.escola.rs.gov.br/*',
+];
 
 let ultimoToken = null;
 let ultimoNrDoc = null;
 
-const DASHBOARD_CACHE_KEY = 'dashboardCache';
+// ─── Cache Helpers ──────────────────────────────────────────────────
 
-function getCachedDashboardData() {
-  return new Promise((resolve) => {
-    chrome.storage.local.get([DASHBOARD_CACHE_KEY], (result) => {
-      const cached = result[DASHBOARD_CACHE_KEY] || null;
-      resolve(cached);
-    });
-  });
+async function getCachedDashboardData() {
+  const result = await chrome.storage.local.get([DASHBOARD_CACHE_KEY]);
+  return result[DASHBOARD_CACHE_KEY] || null;
 }
 
 function setCachedDashboardData(data) {
   chrome.storage.local.set({
     [DASHBOARD_CACHE_KEY]: {
       data,
-      fetchedAt: new Date().toISOString()
-    }
+      fetchedAt: new Date().toISOString(),
+    },
   });
 }
 
@@ -33,67 +36,126 @@ function clearCachedDashboardData() {
   chrome.storage.local.remove([DASHBOARD_CACHE_KEY]);
 }
 
+// ─── Auth Helpers ───────────────────────────────────────────────────
+
+/**
+ * Lê token e nrDoc do chrome.storage.
+ * @returns {Promise<{escolaRsToken: string|null, nrDoc: string|null}>}
+ */
+async function getAuthData() {
+  return chrome.storage.local.get(['escolaRsToken', 'nrDoc']);
+}
+
+/**
+ * Exibe uma notificação ao usuário.
+ * @param {string} message - Mensagem da notificação.
+ */
+function notifyUser(message) {
+  chrome.notifications.create({
+    type: 'basic',
+    iconUrl: NOTIFICATION_ICON,
+    title: NOTIFICATION_TITLE,
+    message,
+  });
+}
+
+// ─── Dashboard Tab Management ───────────────────────────────────────
+
+/**
+ * Abre ou foca a aba do dashboard.
+ */
+async function openOrFocusDashboard() {
+  const dashboardUrl = chrome.runtime.getURL('ui/dashboard/dashboard.html');
+  const existingTabs = await chrome.tabs.query({ url: dashboardUrl });
+
+  if (existingTabs.length > 0) {
+    chrome.tabs.update(existingTabs[0].id, { active: true });
+    chrome.windows.update(existingTabs[0].windowId, { focused: true });
+  } else {
+    chrome.tabs.create({ url: dashboardUrl });
+  }
+}
+
+/**
+ * Lida com o caso em que não há autenticação disponível.
+ * Foca a aba do portal existente ou abre uma nova e notifica o usuário.
+ */
+async function handleMissingAuth() {
+  const portalTabs = await chrome.tabs.query({ url: PORTAL_MATCH_URL });
+
+  if (portalTabs.length > 0) {
+    chrome.tabs.update(portalTabs[0].id, { active: true });
+    chrome.windows.update(portalTabs[0].windowId, { focused: true });
+    notifyUser('Autenticação não realizada. Por favor, atualize a página e clique no ícone da extensão novamente.');
+  } else {
+    chrome.tabs.create({ url: 'https://professor.escola.rs.gov.br/' });
+    notifyUser('Por favor, faça o login no portal EscolaRS. Depois de logado, clique no ícone da extensão novamente.');
+  }
+}
+
+// ─── INTERCEPTAÇÃO DE AUTENTICAÇÃO VIA webRequest ───────────────────
+// Captura o token Bearer e o nrDoc de requisições feitas pelo navegador
+// às URLs do EscolaRS — funciona independente de contexto ou framework do SPA
+
 chrome.webRequest.onBeforeSendHeaders.addListener(
   (details) => {
-    // 1. Capturar Token de Autenticação
-    const authHeader = details.requestHeaders.find(
-      (h) => h.name.toLowerCase() === 'authorization'
-    );
-
-    if (authHeader && authHeader.value) {
-      const match = authHeader.value.match(/^Bearer\s+(.+)$/i);
-      if (match) {
-        const tokenCapturado = authHeader.value;
-        if (tokenCapturado !== ultimoToken) {
-          ultimoToken = tokenCapturado;
-          chrome.storage.local.set({ escolaRsToken: tokenCapturado }, () => {
-            console.log('[Background] Token atualizado via webRequest.');
-          });
-        }
-      }
-    }
-
-    // 2. Capturar nrDoc da URL
-    const nrDocRegex = /listarEscolasDoProfessorEChamadas\/(\d+)/;
-    const urlMatch = details.url.match(nrDocRegex);
-
-    if (urlMatch && urlMatch[1]) {
-      const nrDocCapturado = urlMatch[1];
-      if (nrDocCapturado !== ultimoNrDoc) {
-        ultimoNrDoc = nrDocCapturado;
-        chrome.storage.local.set({ nrDoc: nrDocCapturado }, () => {
-          console.log('[Background] nrDoc atualizado via webRequest.');
-        });
-      }
-    }
+    captureTokenFromHeaders(details.requestHeaders);
+    captureNrDocFromUrl(details.url);
   },
-  {
-    urls: [
-      "https://*.procergs.com.br/*",
-      "https://professor.escola.rs.gov.br/*"
-    ]
-  },
-  ["requestHeaders"]
+  { urls: API_URL_PATTERNS },
+  ['requestHeaders']
 );
+
+/**
+ * Extrai e persiste o token Bearer dos headers da requisição.
+ * @param {Array} headers - Lista de headers da requisição.
+ */
+function captureTokenFromHeaders(headers) {
+  const authHeader = headers.find((h) => h.name.toLowerCase() === 'authorization');
+  if (!authHeader?.value) return;
+
+  const match = authHeader.value.match(/^Bearer\s+(.+)$/i);
+  if (!match) return;
+
+  const tokenCapturado = authHeader.value;
+  if (tokenCapturado === ultimoToken) return;
+
+  ultimoToken = tokenCapturado;
+  chrome.storage.local.set({ escolaRsToken: tokenCapturado }, () => {
+    console.log('[Background] Token atualizado via webRequest.');
+  });
+}
+
+/**
+ * Extrai e persiste o nrDoc da URL da requisição.
+ * @param {string} url - URL da requisição interceptada.
+ */
+function captureNrDocFromUrl(url) {
+  const urlMatch = url.match(/listarEscolasDoProfessorEChamadas\/(\d+)/);
+  if (!urlMatch?.[1]) return;
+
+  const nrDocCapturado = urlMatch[1];
+  if (nrDocCapturado === ultimoNrDoc) return;
+
+  ultimoNrDoc = nrDocCapturado;
+  chrome.storage.local.set({ nrDoc: nrDocCapturado }, () => {
+    console.log('[Background] nrDoc atualizado via webRequest.');
+  });
+}
 
 // Limpa cache em memória do background caso algum dado seja apagado manualmente no DevTools
 chrome.storage.onChanged.addListener((changes, namespace) => {
-  if (namespace === 'local') {
-    if (changes.escolaRsToken && !changes.escolaRsToken.newValue) {
-      ultimoToken = null;
-    }
-    if (changes.nrDoc && !changes.nrDoc.newValue) {
-      ultimoNrDoc = null;
-    }
-  }
+  if (namespace !== 'local') return;
+  if (changes.escolaRsToken && !changes.escolaRsToken.newValue) ultimoToken = null;
+  if (changes.nrDoc && !changes.nrDoc.newValue) ultimoNrDoc = null;
 });
 
 
-// --- OUVINTES DE EVENTOS DA EXTENSÃO ---
+// ─── OUVINTES DE EVENTOS DA EXTENSÃO ────────────────────────────────
 
 chrome.action.onClicked.addListener(async (tab) => {
-  let authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc"]);
-  
+  let authData = await getAuthData();
+
   // Se já temos token e nrDoc, valida se ainda é funcional
   if (authData.escolaRsToken && authData.nrDoc) {
     console.log('[Background] Validando token existente...');
@@ -102,87 +164,53 @@ chrome.action.onClicked.addListener(async (tab) => {
       // disparará o trySilentTokenRefresh automaticamente.
       await listarEscolasProfessor(authData.nrDoc, authData.escolaRsToken);
       console.log('[Background] Token validado com sucesso.');
-      authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc"]); // Pega o token possivelmente renovado
+      authData = await getAuthData(); // Pega o token possivelmente renovado
     } catch (e) {
       console.warn('[Background] Token inválido ou erro na validação. Renovação disparada:', e);
-      // O fetchEscolaRS já deve ter disparado a renovação, mas por segurança garantimos aqui
-      authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc"]);
+      authData = await getAuthData();
     }
   } else if (!authData.escolaRsToken) {
     console.log('[Background] Token ausente no clique inicial. Tentando renovar silenciosamente...');
     try {
       await trySilentTokenRefresh(null);
-      authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc"]);
+      authData = await getAuthData();
     } catch (e) {
       console.log('[Background] Renovação no clique falhou:', e);
     }
   }
 
-  const dashboardUrl = chrome.runtime.getURL('ui/dashboard/dashboard.html');
-
   if (authData.escolaRsToken && authData.nrDoc) {
-    const existingTabs = await chrome.tabs.query({ url: dashboardUrl });
-    if (existingTabs.length > 0) {
-      chrome.tabs.update(existingTabs[0].id, { active: true });
-      chrome.windows.update(existingTabs[0].windowId, { focused: true });
-    } else {
-      chrome.tabs.create({ url: dashboardUrl });
-    }
+    await openOrFocusDashboard();
     return;
   }
 
-  const portalTabs = await chrome.tabs.query({ url: "https://professor.escola.rs.gov.br/*" });
-
-  if (portalTabs.length > 0) {
-    const targetTab = portalTabs[0];
-    chrome.tabs.update(targetTab.id, { active: true });
-    chrome.windows.update(targetTab.windowId, { focused: true });
-    chrome.notifications.create({
-      type: 'basic',
-      iconUrl: 'images/icons/icon128.png',
-      title: 'EscolaRS Export',
-      message: 'Autenticação não realizada. Por favor, atualize a página e clique no ícone da extensão novamente.'
-    });
-  } else {
-    chrome.tabs.create({ url: "https://professor.escola.rs.gov.br/" });
-    chrome.notifications.create({
-      type: 'basic',
-      iconUrl: 'images/icons/icon128.png',
-      title: 'EscolaRS Export',
-      message: 'Por favor, faça o login no portal EscolaRS. Depois de logado, clique no ícone da extensão novamente.'
-    });
-  }
+  await handleMissingAuth();
 });
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "getDashboardData" || request.action === "refreshDashboardData") {
-    (async () => {
-      try {
+  if (request.action !== 'getDashboardData' && request.action !== 'refreshDashboardData') {
+    return;
+  }
+
+  (async () => {
+    try {
+      const isRefresh = request.action === 'refreshDashboardData' || request.forceRefresh;
+
+      if (!isRefresh) {
         const cached = await getCachedDashboardData();
-        if (cached && request.action !== "refreshDashboardData" && !request.forceRefresh) {
-          sendResponse({
-            success: true,
-            data: cached.data,
-            cached: true,
-            cachedAt: cached.fetchedAt
-          });
+        if (cached) {
+          sendResponse({ success: true, data: cached.data, cached: true, cachedAt: cached.fetchedAt });
           return;
         }
-
-        const data = await buildDashboardFromStorage();
-        setCachedDashboardData(data);
-
-        sendResponse({
-          success: true,
-          data,
-          cached: false,
-          cachedAt: new Date().toISOString()
-        });
-      } catch (error) {
-        console.error('[Background] Erro ao construir dados do dashboard:', error);
-        sendResponse({ success: false, error: error.message });
       }
-    })();
-    return true;
-  }
+
+      const data = await buildDashboardFromStorage();
+      setCachedDashboardData(data);
+      sendResponse({ success: true, data, cached: false, cachedAt: new Date().toISOString() });
+    } catch (error) {
+      console.error('[Background] Erro ao construir dados do dashboard:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+  })();
+  return true;
 });

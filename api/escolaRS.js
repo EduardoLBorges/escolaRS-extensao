@@ -5,6 +5,47 @@
 
 const API_BASE_URL = 'https://secweb.procergs.com.br/ise-escolars-professor/rest/professor';
 const API_TIMEOUT = 30000; // 30 segundos de timeout
+const MAX_RETRY_ATTEMPTS = 2;
+const TOKEN_REFRESH_TIMEOUT = 15000; // 15 segundos para renovação silenciosa
+const PORTAL_URL = 'https://professor.escola.rs.gov.br/';
+const LOG_PREFIX = '[EscolaRS API]';
+
+// ─── Helpers ────────────────────────────────────────────────────────
+
+/**
+ * Lê o token atual do chrome.storage.local.
+ * @returns {Promise<string|null>}
+ */
+async function getTokenFromStorage() {
+  const { escolaRsToken } = await chrome.storage.local.get('escolaRsToken');
+  return escolaRsToken || null;
+}
+
+/**
+ * Monta o objeto de opções para o fetch.
+ * @param {string} token - Token de autenticação.
+ * @param {Object} options - Opções customizadas (method, body).
+ * @param {AbortSignal} signal - Sinal de cancelamento.
+ * @returns {Object}
+ */
+function buildFetchOptions(token, options, signal) {
+  const fetchOpts = {
+    method: options.method || 'GET',
+    headers: {
+      'Authorization': token,
+      'Content-Type': 'application/json',
+    },
+    signal,
+  };
+
+  if (options.body) {
+    fetchOpts.body = JSON.stringify(options.body);
+  }
+
+  return fetchOpts;
+}
+
+// ─── Core Fetch ─────────────────────────────────────────────────────
 
 /**
  * Faz uma chamada genérica à API do EscolaRS com timeout e lógica de repetição para token expirado.
@@ -19,28 +60,14 @@ async function fetchEscolaRS(endpoint, token, options = {}, timeout = API_TIMEOU
   const url = `${API_BASE_URL}/${endpoint}`;
   let currentToken = token;
 
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  for (let attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
     let response;
     try {
-      const fetchOptions = {
-        method: options.method || 'GET',
-        headers: {
-          "Authorization": currentToken,
-          "Content-Type": "application/json"
-        },
-        signal: controller.signal
-      };
-      
-      if (options.body) {
-        fetchOptions.body = JSON.stringify(options.body);
-      }
-
-      response = await fetch(url, fetchOptions);
+      response = await fetch(url, buildFetchOptions(currentToken, options, controller.signal));
     } catch (error) {
-      clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
         throw new Error(`Timeout na requisição (${timeout}ms) para: ${endpoint}`);
       }
@@ -53,98 +80,158 @@ async function fetchEscolaRS(endpoint, token, options = {}, timeout = API_TIMEOU
       return response.json();
     }
 
-    if ((response.status === 401 || response.status === 403) && attempt === 1) {
-      console.warn('[EscolaRS API] Token expirado ou inválido (401/403). Tentando renovação silenciosa...');
-      try {
-        await trySilentTokenRefresh(currentToken);
-        // 👇 IMPORTANTE: Pega o token ATUAL do storage, não o que a Promise retornou
-        const authData = await chrome.storage.local.get("escolaRsToken");
-        currentToken = authData.escolaRsToken;
-        if (currentToken) {
-          console.log('[EscolaRS API] Token renovado com sucesso. Retentando requisição...');
-          continue;
-        }
-      } catch (e) {
-        console.error('[EscolaRS API] Falha na renovação silenciosa do token:', e);
+    // Tenta renovar o token apenas na primeira tentativa
+    if (isAuthError(response.status) && attempt === 1) {
+      const refreshedToken = await tryRecoverToken(currentToken, endpoint);
+      if (refreshedToken) {
+        currentToken = refreshedToken;
+        continue;
       }
     }
 
-    let errorBody = '';
-    try {
-      errorBody = await response.text();
-    } catch {}
+    const errorBody = await readErrorBody(response);
     throw new Error(`Erro na API (${response.status}: ${response.statusText}). Detalhes: ${errorBody}`);
   }
 }
+
+/**
+ * Verifica se o status HTTP indica erro de autenticação.
+ * @param {number} status
+ * @returns {boolean}
+ */
+function isAuthError(status) {
+  return status === 401 || status === 403;
+}
+
+/**
+ * Lê o corpo da resposta de erro de forma segura.
+ * @param {Response} response
+ * @returns {Promise<string>}
+ */
+async function readErrorBody(response) {
+  try {
+    return await response.text();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Tenta recuperar um token válido — primeiro do storage, depois via renovação silenciosa.
+ * @param {string} staleToken - O token que falhou.
+ * @param {string} endpoint - Endpoint para log.
+ * @returns {Promise<string|null>} Novo token ou null se falhar.
+ */
+async function tryRecoverToken(staleToken, endpoint) {
+  console.warn(`${LOG_PREFIX} Erro de auth em: ${endpoint}. Verificando renovação...`);
+
+  try {
+    // 1. Checa se outra requisição paralela já renovou o token
+    const storedToken = await getTokenFromStorage();
+    if (storedToken && storedToken !== staleToken) {
+      console.log(`${LOG_PREFIX} Token novo detectado no storage. Retentando imediatamente...`);
+      return storedToken;
+    }
+
+    // 2. Se o token no storage ainda é o mesmo (velho), dispara a renovação
+    console.log(`${LOG_PREFIX} Token ainda é o mesmo. Iniciando renovação única...`);
+    await trySilentTokenRefresh(staleToken);
+
+    // 3. Pega o token atualizado após a renovação
+    const updatedToken = await getTokenFromStorage();
+    if (updatedToken) {
+      console.log(`${LOG_PREFIX} Continuando após renovação...`);
+      return updatedToken;
+    }
+  } catch (e) {
+    console.error(`${LOG_PREFIX} Falha no processo de renovação:`, e);
+  }
+
+  return null;
+}
+
+// ─── Token Refresh Singleton ────────────────────────────────────────
 
 let activeTokenRefreshPromise = null;
 
 /**
  * Tenta forçar a renovação do token de forma invisível/rápida.
  * Cria uma aba com o portal EscolaRS e aguarda a interceptação do webRequest atualizar o storage.
- * Múltiplas chamadas simultâneas aguardarão a mesma aba/Promise.
- * @param {string} [staleToken=null] - O token que falhou, usado para checar se já houve renovação por outra requisição.
+ * Múltiplas chamadas simultâneas aguardarão a mesma Promise (singleton).
+ * @param {string} [staleToken=null] - O token que falhou.
  */
 async function trySilentTokenRefresh(staleToken = null) {
+  // Se já tem uma renovação rolando, só pega a carona
   if (activeTokenRefreshPromise) {
+    console.log(`${LOG_PREFIX} Já existe renovação em curso. Await singleton...`);
     return activeTokenRefreshPromise;
   }
 
-  // 1. Antes de mais nada, checa se o token no storage já é diferente do que falhou.
-  // Se for, significa que outra requisição paralela já renovou o token com sucesso.
-  if (staleToken) {
-    const authData = await chrome.storage.local.get("escolaRsToken");
-    if (authData.escolaRsToken && authData.escolaRsToken !== staleToken) {
-      console.log('[EscolaRS API] Token no storage já foi renovado por outra requisição. Ignorando abertura de janela.');
-      return authData.escolaRsToken;
-    }
-  }
-
-  // 2. Re-checagem após o await (pode ter iniciado uma renovação enquanto esperávamos o storage)
-  if (activeTokenRefreshPromise) {
-    return activeTokenRefreshPromise;
-  }
-
-  activeTokenRefreshPromise = new Promise((resolve, reject) => {
-    let timeoutId;
-    let windowId;
+  // Define a lógica de renovação e atribui IMEDIATAMENTE ao singleton
+  activeTokenRefreshPromise = (async () => {
+    let windowId = null;
+    let storageListener = null;
+    let timeoutId = null;
 
     const cleanup = () => {
-      chrome.storage.onChanged.removeListener(storageListener);
-      clearTimeout(timeoutId);
+      console.log(`${LOG_PREFIX} Cleanup de renovação...`);
+      if (storageListener) chrome.storage.onChanged.removeListener(storageListener);
+      if (timeoutId) clearTimeout(timeoutId);
       if (windowId) chrome.windows.remove(windowId).catch(() => {});
-      activeTokenRefreshPromise = null;
     };
 
-    const storageListener = (changes, namespace) => {
-      if (namespace === 'local' && changes.escolaRsToken && changes.escolaRsToken.newValue) {
-        cleanup();
-        resolve(changes.escolaRsToken.newValue);
+    try {
+      // 1. Checagem atômica de storage logo no início
+      const storedToken = await getTokenFromStorage();
+      if (staleToken && storedToken && storedToken !== staleToken) {
+        console.log(`${LOG_PREFIX} Singleton detectou token já renovado no storage.`);
+        return storedToken;
       }
-    };
 
-    chrome.storage.onChanged.addListener(storageListener);
+      // 2. Abre a janela e espera
+      return await new Promise((resolve, reject) => {
+        storageListener = (changes, namespace) => {
+          if (namespace === 'local' && changes.escolaRsToken?.newValue) {
+            const newToken = changes.escolaRsToken.newValue;
+            console.log(`${LOG_PREFIX} Sucesso! Novo token capturado via Storage Observer.`);
+            cleanup();
+            resolve(newToken);
+          }
+        };
 
-    timeoutId = setTimeout(() => {
+        chrome.storage.onChanged.addListener(storageListener);
+
+        timeoutId = setTimeout(() => {
+          console.warn(`${LOG_PREFIX} Timeout na renovação silenciosa.`);
+          cleanup();
+          reject(new Error('Timeout ao aguardar renovação do token.'));
+        }, TOKEN_REFRESH_TIMEOUT);
+
+        chrome.windows.create(
+          { url: PORTAL_URL, state: 'normal', width: 400, height: 600, focused: true, type: 'popup' },
+          (win) => {
+            if (chrome.runtime.lastError) {
+              cleanup();
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              windowId = win.id;
+              console.log(`${LOG_PREFIX} Janela de renovação aberta:`, windowId);
+            }
+          }
+        );
+      });
+    } catch (err) {
       cleanup();
-      reject(new Error("Timeout ao aguardar renovação do token no background. Pode ser necessário login manual."));
-    }, 15000); // 15s de limite para a renovação silenciosa
-
-    chrome.windows.create({
-      url: 'https://professor.escola.rs.gov.br/',
-      state: 'normal',
-      width: 400,
-      height: 600,
-      focused: true,
-      type: 'popup'
-    }, (windowInfo) => {
-      windowId = windowInfo.id;
-    });
-  });
+      throw err;
+    } finally {
+      activeTokenRefreshPromise = null;
+    }
+  })();
 
   return activeTokenRefreshPromise;
 }
 
+// ─── Public API Functions ───────────────────────────────────────────
 
 /**
  * Lista escolas, turmas e disciplinas do professor

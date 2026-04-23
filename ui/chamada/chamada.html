@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Registro de Aulas e Chamadas</title>
+  <link rel="stylesheet" href="chamada.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+  <div class="app-container">
+    <header class="header">
+      <div class="header-content">
+        <h1>Registro de Aulas e Chamada</h1>
+        <div class="header-actions">
+          <button id="btnPlanosAula" class="btn btn-secondary" style="margin-right: 10px;">
+            <i data-lucide="book-open"></i> Planos de Aula
+          </button>
+          <button id="btnViewSchedule" class="btn btn-primary" style="margin-right: 10px;">
+            <i data-lucide="calendar"></i> Horários
+          </button>
+          <button id="btnInfrequentes" class="btn btn-secondary" style="margin-right: 10px;">
+            <i data-lucide="users"></i> Infrequentes
+          </button>
+          <button id="btnVoltar" class="btn btn-secondary">
+            <i data-lucide="arrow-left"></i> Dashboard
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="main-content">
+      <div id="loading" class="loading-state">
+        <div class="spinner"></div>
+        <p id="loadingText">Sincronizando dados das turmas...</p>
+      </div>
+
+
+      <div id="calendarContainer" class="calendar-layout hidden">
+        <!-- Esquerda: Calendário -->
+        <div class="calendar-sidebar">
+          <div class="calendar-header">
+            <button id="prevMonth" class="btn-icon"><i data-lucide="chevron-left"></i></button>
+            <h2 id="currentMonthYear">Abril 2026</h2>
+            <button id="nextMonth" class="btn-icon"><i data-lucide="chevron-right"></i></button>
+          </div>
+          <div class="calendar-grid-header">
+            <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
+          </div>
+          <div id="calendarDays" class="calendar-days">
+            <!-- Dias injetados via JS -->
+          </div>
+
+          <div style="margin-top: 15px; text-align: center;">
+            <label
+              style="cursor: pointer; font-size: 0.95rem; font-weight: 500; display: inline-flex; align-items: center; gap: 6px;">
+              <input type="checkbox" id="chkWeekView">
+              Selecionar Semana Inteira
+            </label>
+          </div>
+
+          <div id="filterContainer" class="view-filters hidden">
+            <div style="display:flex; flex-direction:column; gap: 10px;">
+              <label
+                style="font-weight:600; font-size:0.9rem; margin-bottom:-4px; display:inline-flex; align-items:center; gap:6px;">
+                <i data-lucide="history"></i> Histórico Contínuo
+              </label>
+              <select id="filterTurma" class="form-control" style="padding: 6px;">
+                <option value="">Nenhuma turma selecionada...</option>
+              </select>
+              <button id="btnClearFilters" class="btn btn-sm hidden" style="background:#e2e8f0; color:#555;">Limpar
+                Visão</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Direita: Aulas do Dia e Formulário -->
+        <div class="daily-classes">
+          <div class="day-header">
+            <h2 id="selectedDayTitle">Selecione um dia</h2>
+          </div>
+
+          <div id="classesList" class="classes-list">
+            <!-- Lista de aulas do dia e formulário -->
+            <p class="empty-state">Nenhuma aula programada para este dia.</p>
+          </div>
+        </div>
+      </div>
+
+      <div id="toastContainer" class="toast-container"></div>
+
+      <!-- Modal Overlay de Quadro Atual -->
+      <div id="viewScheduleModal" class="modal-overlay hidden">
+        <div class="modal-content" style="max-width: 900px; width: 95vw;">
+          <div class="modal-header">
+            <h2 style="display:inline-flex;align-items:center;gap:8px;"><i data-lucide="calendar"></i> Meu Horário da
+              Semana</h2>
+            <button id="btnCloseViewScheduleModal" class="btn-close"><i data-lucide="x"></i></button>
+          </div>
+          <div class="modal-body">
+            <div style="display:flex; justify-content:space-between; margin-bottom: 20px;">
+              <p style="color: #64748b;">Abaixo os horários programados a partir da configuração vigente para hoje.</p>
+              <button id="btnSettings" class="btn btn-secondary">
+                <i data-lucide="settings"></i> Configurar / Ajustar Grades
+              </button>
+            </div>
+
+            <div id="activeScheduleGridContainer">
+              <!-- JS injeta visualização aqui -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Overlay de Configuração -->
+      <div id="settingsModal" class="modal-overlay hidden">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button id="btnBackToSchedule" class="btn btn-secondary" title="Voltar ao Quadro Geral">
+              <i data-lucide="arrow-left"></i>
+            </button>
+            <h2>Gestão de Horários Customizados</h2>
+            <button id="btnCloseModal" class="btn-close"><i data-lucide="x"></i></button>
+          </div>
+          <div class="modal-body">
+
+            <div class="settings-toolbar">
+              <button id="btnNewSchedule" class="btn btn-primary">
+                <i data-lucide="plus"></i> Novo Quadro de Horário
+              </button>
+              <div>
+                <button id="btnExport" class="btn btn-secondary">
+                  <i data-lucide="download"></i> Exportar
+                </button>
+                <input type="file" id="btnImportFile" style="display: none;" accept=".json">
+                <button id="btnImport" class="btn btn-secondary">
+                  <i data-lucide="upload"></i> Importar
+                </button>
+              </div>
+            </div>
+
+            <div id="scheduleFormContainer" class="hidden">
+              <!-- JS Injects the Form here -->
+            </div>
+
+            <div id="schedulesList" class="schedules-list">
+              <!-- JS Injects active schedules here -->
+            </div>
+
+          </div>
+        </div>
+      </div>
+      <!-- Modal Overlay de Infrequentes -->
+      <div id="infrequentesModal" class="modal-overlay hidden">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2>Gestão de Alunos Infrequentes</h2>
+            <button id="btnCloseInfrequentesModal" class="btn-close"><i data-lucide="x"></i></button>
+          </div>
+          <div class="modal-body">
+            <p style="margin-bottom: 15px; color: #555;">Marque os alunos que costumam faltar. O sistema pré-marcará
+              <strong>Falta</strong> automaticamente para eles nos novos registros de chamada de suas turmas.
+            </p>
+            <div class="form-group">
+              <input type="text" id="searchInfrequente" class="form-control"
+                placeholder="Buscar aluno por nome, turma ou escola...">
+            </div>
+
+            <div id="listaTodosAlunos" class="alunos-infrequentes-list">
+              <!-- Checkboxes JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Modal Planos de Aula -->
+    <div id="planosAulaModal" class="modal-overlay hidden">
+      <div class="modal-content" style="max-width: 860px;">
+        <div class="modal-header">
+          <h2 style="display:inline-flex;align-items:center;gap:8px;"><i data-lucide="book-open"></i> Planos de Aula
+          </h2>
+          <button id="btnClosePlanosModal" class="btn-close"><i data-lucide="x"></i></button>
+        </div>
+        <div class="modal-body">
+          <div class="planos-toolbar">
+            <button id="btnNovoPlanoDisciplina" class="btn btn-primary">
+              <i data-lucide="plus"></i> Novo Plano
+            </button>
+          </div>
+          <div id="planosFormContainer" class="hidden" style="margin-bottom:20px;">
+            <!-- JS injeta aqui -->
+          </div>
+          <div id="planosListContainer">
+            <!-- JS injeta planos agrupados aqui -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../libs/lucide.min.js"></script>
+  <script src="../../api/escolaRS.js"></script>
+  <script src="chamada.js"></script>
+</body>
+
+</html>

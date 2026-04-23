@@ -3,6 +3,61 @@
  * Responsável por regras de cálculo de médias e validação de notas
  */
 
+// ─── Constantes ─────────────────────────────────────────────────────
+
+const PESOS_TRIMESTRE = [3, 3, 4];
+const SOMA_PESOS_TRIMESTRE = PESOS_TRIMESTRE.reduce((a, b) => a + b, 0);
+
+// ─── Helpers de Período ─────────────────────────────────────────────
+
+/**
+ * Verifica se um valor de nota é válido (não vazio e não placeholder).
+ * @param {*} valor
+ * @returns {boolean}
+ */
+function isNotaValida(valor) {
+  return valor && valor !== '--' && valor !== '-';
+}
+
+/**
+ * Converte uma string de nota para número (tratando vírgula como separador decimal).
+ * @param {*} valor
+ * @returns {number}
+ */
+function parseNota(valor) {
+  return parseFloat(String(valor).replace(',', '.'));
+}
+
+/**
+ * Extrai as notas dos períodos a partir de um mapa de períodos.
+ * Busca padrões como "1° trim", "trim 1", "1° sem", etc.
+ *
+ * @param {Object} periodos - Mapa { nomePeríodo: notaNumérica }
+ * @param {string} tipo - Tipo de período para buscar ('trim' ou 'sem')
+ * @param {number[]} indices - Índices dos períodos a buscar (ex: [1, 2, 3])
+ * @returns {number[]} Array de notas encontradas (-1 para períodos não encontrados)
+ */
+function extrairNotasPorPeriodo(periodos, tipo, indices) {
+  return indices.map((num) => {
+    const numStr = String(num);
+    let melhorNota = -1;
+
+    for (const [chave, valor] of Object.entries(periodos)) {
+      const matchTipo = chave.includes(tipo);
+      const matchNum = chave.includes(numStr);
+      const isER = chave.includes('er');
+
+      if (matchTipo && matchNum && !isER) {
+        melhorNota = Math.max(melhorNota, valor);
+      }
+    }
+
+    return melhorNota;
+  });
+}
+
+// ─── Cálculo de Média ───────────────────────────────────────────────
+
 /**
  * Calcula a média final de um aluno baseado em sua lista de resultados
  * Suporta tanto sistema trimestral (3 trimestres) quanto semestral (EJA - 2 semestres)
@@ -11,87 +66,39 @@
  * @returns {number} Média final (1 casa decimal) ou 0 se incompleto
  */
 function calcularMediaFinal(listaResultados) {
-  // --- Constantes para os Cálculos ---
-  const PESOS_TRIMESTRE = [3, 3, 4];
-  const SOMA_PESOS_TRIMESTRE = PESOS_TRIMESTRE.reduce((a, b) => a + b, 0);
-
   // Cria um mapa dos períodos encontrados para fácil acesso
   const periodos = {};
   let temTrimestre = false;
   let temSemestre = false;
   
   for (const resultado of listaResultados) {
-    const nomePeriodo = (resultado.nomePeriodo || "").toLowerCase().trim();
+    const nomePeriodo = (resultado.nomePeriodo || '').toLowerCase().trim();
     const valor = resultado.resultado;
     
-    // Armazena apenas se o valor não é "-"
-    if (valor && valor !== "--" && valor !== "-") {
-      periodos[nomePeriodo] = parseFloat(String(valor).replace(",", "."));
+    if (isNotaValida(valor)) {
+      periodos[nomePeriodo] = parseNota(valor);
       
-      // Detectar tipo de período
-      if (nomePeriodo.includes("trim")) temTrimestre = true;
-      if (nomePeriodo.includes("sem")) temSemestre = true;
+      if (nomePeriodo.includes('trim')) temTrimestre = true;
+      if (nomePeriodo.includes('sem')) temSemestre = true;
     }
   }
   
-  // Se for SEMESTRE (EJA)
+  // Se for SEMESTRE (EJA): média simples de 2 semestres
   if (temSemestre && !temTrimestre) {
-    let sem1 = -1, sem2 = -1;
-    
-    // Procura pelos semestres
-    for (const [chave, valor] of Object.entries(periodos)) {
-      if (chave.includes("sem") && chave.includes("1") && !chave.includes("er")) {
-        sem1 = Math.max(sem1, valor);
-      }
-      
-      if (chave.includes("sem") && chave.includes("2") && !chave.includes("er")) {
-        sem2 = Math.max(sem2, valor);
-      }
-    }
-    
-    // Se algum semestre não foi encontrado, retorna 0
-    if (sem1 < 0 || sem2 < 0) {
-      return 0;
-    }
-    
-    // Fórmula para semestres: média simples
-    const media = (sem1 + sem2) / 2;
-    return parseFloat(media.toFixed(1));
+    const [sem1, sem2] = extrairNotasPorPeriodo(periodos, 'sem', [1, 2]);
+    if (sem1 < 0 || sem2 < 0) return 0;
+    return parseFloat(((sem1 + sem2) / 2).toFixed(1));
   }
   
-  // Se for TRIMESTRE (modalidade regular)
-  let trim1 = -1, trim2 = -1, trim3 = -1;
-  
-  // Procura pelos padrões dos períodos (case-insensitive)
-  for (const [chave, valor] of Object.entries(periodos)) {
-    if (chave.includes("trim") && chave.includes("1") && !chave.includes("er")) {
-      trim1 = Math.max(trim1, valor);
-    } else if (chave.includes("1") && chave.includes("tri")) {
-      trim1 = Math.max(trim1, valor);
-    }
-    
-    if (chave.includes("trim") && chave.includes("2") && !chave.includes("er")) {
-      trim2 = Math.max(trim2, valor);
-    } else if (chave.includes("2") && chave.includes("tri")) {
-      trim2 = Math.max(trim2, valor);
-    }
-    
-    if (chave.includes("trim") && chave.includes("3") && !chave.includes("er")) {
-      trim3 = Math.max(trim3, valor);
-    } else if (chave.includes("3") && chave.includes("tri")) {
-      trim3 = Math.max(trim3, valor);
-    }
-  }
-  
-  // Se algum trimestre não foi encontrado, retorna 0
-  if (trim1 < 0 || trim2 < 0 || trim3 < 0) {
-    return 0;
-  }
+  // Se for TRIMESTRE (regular): média ponderada com pesos [3, 3, 4]
+  const [trim1, trim2, trim3] = extrairNotasPorPeriodo(periodos, 'tri', [1, 2, 3]);
+  if (trim1 < 0 || trim2 < 0 || trim3 < 0) return 0;
 
-  // Fórmula para trimestres: (T1*P1 + T2*P2 + T3*P3) / Soma dos Pesos
-  const media = ((trim1 * PESOS_TRIMESTRE[0]) + (trim2 * PESOS_TRIMESTRE[1]) + (trim3 * PESOS_TRIMESTRE[2])) / SOMA_PESOS_TRIMESTRE;
+  const media = (trim1 * PESOS_TRIMESTRE[0] + trim2 * PESOS_TRIMESTRE[1] + trim3 * PESOS_TRIMESTRE[2]) / SOMA_PESOS_TRIMESTRE;
   return parseFloat(media.toFixed(1));
 }
+
+// ─── Processamento de Aluno ─────────────────────────────────────────
 
 /**
  * Processa aluno adicionando cálculos de média e notas
@@ -99,13 +106,15 @@ function calcularMediaFinal(listaResultados) {
  * @returns {Object} Aluno com media e notas processadas
  */
 function processarAluno(aluno) {
+  const listaResultados = aluno.listaResultados || [];
+
   return {
     ...aluno,
-    mediaFinal: calcularMediaFinal(aluno.listaResultados || []),
+    mediaFinal: calcularMediaFinal(listaResultados),
     // Mapeia as notas para o formato esperado pelo dashboard
-    notas: (aluno.listaResultados || []).map(res => ({
+    notas: listaResultados.map((res) => ({
       trimestre: res.nomePeriodo,
-      nota: res.resultado
-    }))
+      nota: res.resultado,
+    })),
   };
 }

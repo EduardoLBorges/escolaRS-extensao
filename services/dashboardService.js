@@ -4,66 +4,53 @@
  */
 
 const CONCURRENCY_LIMIT = 5; // Limite de requisições simultâneas
+const AUTH_MISSING_ERROR = 'Dados de autenticação não encontrados. Por favor, acesse o portal EscolaRS primeiro.';
+
+// ─── Batch Processing ───────────────────────────────────────────────
 
 /**
  * Processa uma lista de itens em lotes para controlar a concorrência.
  * @param {Array} items - Lista de itens para processar.
  * @param {Function} task - Função que retorna uma Promise para cada item.
  * @param {number} batchSize - Tamanho de cada lote.
+ * @param {Function} [onProgress=null] - Callback de progresso.
  * @returns {Promise<Array>} Retorna os resultados no formato de Promise.allSettled.
  */
 async function processInBatches(items, task, batchSize, onProgress = null) {
-  let position = 0;
-  let allResults = [];
-  while (position < items.length) {
-    const itemsForBatch = items.slice(position, position + batchSize);
-    
-    // O mapeamento para a task deve ocorrer dentro do allSettled
-    const batchPromises = itemsForBatch.map(item => task(item));
-    const batchResults = await Promise.allSettled(batchPromises);
+  const allResults = [];
 
-    allResults = [...allResults, ...batchResults];
-    position += batchSize;
+  for (let position = 0; position < items.length; position += batchSize) {
+    const batch = items.slice(position, position + batchSize);
+    const batchResults = await Promise.allSettled(batch.map(task));
+
+    allResults.push(...batchResults);
 
     if (onProgress) {
-      const percentage = Math.round((position / items.length) * 100);
+      const processed = Math.min(position + batchSize, items.length);
       onProgress({
-        percentage: Math.min(100, percentage), // Garante que não passe de 100%
-        status: `Processando turmas... (${position > items.length ? items.length : position}/${items.length})`
+        percentage: Math.round((processed / items.length) * 100),
+        status: `Processando turmas... (${processed}/${items.length})`,
       });
     }
   }
+
   return allResults;
 }
 
+// ─── Data Transformation Helpers ────────────────────────────────────
 
 /**
- * Constrói o objeto completo do dashboard com todos os dados do professor.
- * Aplica um limite de concorrência global para todas as chamadas de API.
- *
- * @param {string} token - Token de autenticação
- * @param {string} nrDoc - Número de documento do professor
- * @param {Function} onProgress - Callback para atualizar progresso (opcional)
- * @returns {Promise<Object>} Objeto com estrutura: { professor, cpf, data_exportacao, escolas[] }
- * @throws {Error} Se falhar na autenticação ou API
+ * Achata a estrutura aninhada de escolas/turmas/disciplinas em uma lista plana de tarefas.
+ * @param {Array} escolas - Lista de escolas com turmas e disciplinas.
+ * @returns {Array<Object>} Lista plana de tarefas, uma por disciplina.
  */
-async function getDashboardData(token, nrDoc, onProgress = null) {
-  if (!token || !nrDoc) {
-    throw new Error("Dados de autenticação não encontrados. Por favor, acesse o portal EscolaRS primeiro.");
-  }
+function flattenDisciplineTasks(escolas) {
+  const tasks = [];
 
-  // 1. Buscar dados iniciais (escolas, turmas, etc.)
-  const infoInicial = await listarEscolasProfessor(nrDoc, token);
-  const idRecHumano = infoInicial.idRecHumano;
-
-  if (onProgress) onProgress({ percentage: 0, status: 'Iniciando busca de turmas...' });
-
-  // 2. Criar uma lista plana de todas as disciplinas a serem buscadas
-  const allDisciplineTasks = [];
-  infoInicial.escolas.forEach(escola => {
-    escola.turmas.forEach(turma => {
-      turma.disciplinas.forEach(disc => {
-        allDisciplineTasks.push({
+  for (const escola of escolas) {
+    for (const turma of escola.turmas) {
+      for (const disc of turma.disciplinas) {
+        tasks.push({
           escolaId: escola.id,
           escolaNome: escola.nome,
           turmaId: turma.id,
@@ -71,91 +58,127 @@ async function getDashboardData(token, nrDoc, onProgress = null) {
           turmaSerie: turma.idSerie,
           discId: disc.id,
           discNome: disc.nome,
-          discCargaHoraria: disc.qtAulasPrevistas
+          discCargaHoraria: disc.qtAulasPrevistas,
         });
+      }
+    }
+  }
+
+  return tasks;
+}
+
+/**
+ * Reconstrói a estrutura aninhada de escolas a partir dos resultados das tarefas.
+ * @param {Array<Object>} tasks - Lista original de tarefas (para metadados).
+ * @param {Array<PromiseSettledResult>} results - Resultados do processamento em lote.
+ * @returns {Array<Object>} Lista de escolas com turmas e disciplinas preenchidas.
+ */
+function buildEscolasFromResults(tasks, results) {
+  const escolasMap = new Map();
+
+  results.forEach((result, idx) => {
+    const task = tasks[idx];
+
+    // Garantir que a escola exista no Map
+    if (!escolasMap.has(task.escolaNome)) {
+      escolasMap.set(task.escolaNome, { nome: task.escolaNome, turmas: new Map() });
+    }
+    const escola = escolasMap.get(task.escolaNome);
+
+    // Garantir que a turma exista no Map da escola
+    if (!escola.turmas.has(task.turmaNome)) {
+      escola.turmas.set(task.turmaNome, {
+        nome: task.turmaNome,
+        serie: task.turmaSerie,
+        disciplinas: [],
       });
-    });
+    }
+    const turma = escola.turmas.get(task.turmaNome);
+
+    // Adicionar a disciplina (com sucesso ou com erro)
+    if (result.status === 'fulfilled') {
+      turma.disciplinas.push({
+        disciplina: result.value.discNome,
+        carga_horaria: result.value.discCargaHoraria,
+        alunos: result.value.alunos,
+        erro: null,
+      });
+    } else {
+      const mensagemErro = result.reason?.message || 'Erro desconhecido ao carregar disciplina';
+      console.warn(`[Dashboard] Erro ao carregar ${task.turmaNome} - ${task.discNome}:`, mensagemErro);
+      turma.disciplinas.push({
+        disciplina: task.discNome,
+        carga_horaria: task.discCargaHoraria,
+        alunos: [],
+        erro: mensagemErro,
+      });
+    }
   });
+
+  // Converter os Maps para arrays para o payload final
+  return Array.from(escolasMap.values()).map((escola) => ({
+    ...escola,
+    turmas: Array.from(escola.turmas.values()),
+  }));
+}
+
+// ─── Main Dashboard Builder ─────────────────────────────────────────
+
+/**
+ * Constrói o objeto completo do dashboard com todos os dados do professor.
+ * Aplica um limite de concorrência global para todas as chamadas de API.
+ *
+ * @param {string} token - Token de autenticação
+ * @param {string} nrDoc - Número de documento do professor
+ * @param {Function} [onProgress=null] - Callback para atualizar progresso
+ * @returns {Promise<Object>} Objeto com estrutura: { professor, cpf, data_exportacao, escolas[] }
+ * @throws {Error} Se falhar na autenticação ou API
+ */
+async function getDashboardData(token, nrDoc, onProgress = null) {
+  if (!token || !nrDoc) {
+    throw new Error(AUTH_MISSING_ERROR);
+  }
+
+  // 1. Buscar dados iniciais (escolas, turmas, etc.)
+  const infoInicial = await listarEscolasProfessor(nrDoc, token);
+
+  // Se a chamada acima disparou uma renovação, precisamos do token novo
+  // para as próximas chamadas paralelas no processInBatches.
+  const currentToken = await getTokenFromStorage() || token;
+
+  if (currentToken !== token) {
+    console.log('[Dashboard Service] Token atualizado após chamada inicial.');
+  }
+
+  const { idRecHumano } = infoInicial;
+
+  if (onProgress) onProgress({ percentage: 0, status: 'Iniciando busca de turmas...' });
+
+  // 2. Criar uma lista plana de todas as disciplinas a serem buscadas
+  const allTasks = flattenDisciplineTasks(infoInicial.escolas);
 
   // 3. Processar a lista plana com limite de concorrência
   const allResults = await processInBatches(
-    allDisciplineTasks,
+    allTasks,
     async (task) => {
-      const resultados = await listarResultadosTurma(
-        task.turmaId,
-        task.discId,
-        idRecHumano,
-        token
-      );
-      const alunosComMedia = resultados.alunos.map(processarAluno);
+      const resultados = await listarResultadosTurma(task.turmaId, task.discId, idRecHumano, currentToken);
       return {
-        ...task, // Passar os dados da tarefa para a próxima fase
-        alunos: alunosComMedia,
-        erro: null
+        ...task,
+        alunos: resultados.alunos.map(processarAluno),
+        erro: null,
       };
     },
     CONCURRENCY_LIMIT,
     onProgress
   );
 
-  // Se todas as requisições falharem (ex: sem conexão), aborta tudo para não sobrescrever o cache com erros
-  if (allResults.length > 0) {
-    const allRejected = allResults.every(r => r.status === 'rejected');
-    if (allRejected) {
-      throw new Error("Sem conexão com a internet ou portal indisponível. A atualização foi cancelada para preservar seus dados salvos.");
-    }
+  // Se TODAS as requisições falharem, aborta para não sobrescrever o cache com erros
+  if (allResults.length > 0 && allResults.every((r) => r.status === 'rejected')) {
+    throw new Error('Sem conexão com a internet ou portal indisponível. A atualização foi cancelada para preservar seus dados salvos.');
   }
 
   // 4. Reconstruir a estrutura de dados aninhada
-  const escolasMap = new Map();
-
-  allResults.forEach((resultado, idx) => {
-    const taskOriginal = allDisciplineTasks[idx];
-
-    // Garantir que a escola exista no Map
-    if (!escolasMap.has(taskOriginal.escolaNome)) {
-      escolasMap.set(taskOriginal.escolaNome, {
-        nome: taskOriginal.escolaNome,
-        turmas: new Map()
-      });
-    }
-    const escolaNoMapa = escolasMap.get(taskOriginal.escolaNome);
-
-    // Garantir que a turma exista no Map da escola
-    if (!escolaNoMapa.turmas.has(taskOriginal.turmaNome)) {
-      escolaNoMapa.turmas.set(taskOriginal.turmaNome, {
-        nome: taskOriginal.turmaNome,
-        serie: taskOriginal.turmaSerie,
-        disciplinas: []
-      });
-    }
-    const turmaNoMapa = escolaNoMapa.turmas.get(taskOriginal.turmaNome);
-    
-    // Adicionar a disciplina (com sucesso ou com erro)
-    if (resultado.status === 'fulfilled') {
-      turmaNoMapa.disciplinas.push({
-        disciplina: resultado.value.discNome,
-        carga_horaria: resultado.value.discCargaHoraria,
-        alunos: resultado.value.alunos,
-        erro: null
-      });
-    } else {
-      const mensagemErro = resultado.reason?.message || 'Erro desconhecido ao carregar disciplina';
-      console.warn(`[Dashboard] Erro ao carregar ${taskOriginal.turmaNome} - ${taskOriginal.discNome}:`, mensagemErro);
-      turmaNoMapa.disciplinas.push({
-        disciplina: taskOriginal.discNome,
-        carga_horaria: taskOriginal.discCargaHoraria,
-        alunos: [],
-        erro: mensagemErro
-      });
-    }
-  });
-
-  // 5. Converter os Maps para arrays para o payload final
-  const escolasFinal = Array.from(escolasMap.values()).map(escola => ({
-    ...escola,
-    turmas: Array.from(escola.turmas.values())
-  }));
+  const escolas = buildEscolasFromResults(allTasks, allResults);
 
   if (onProgress) onProgress({ percentage: 100, status: 'Finalizado!' });
 
@@ -163,36 +186,38 @@ async function getDashboardData(token, nrDoc, onProgress = null) {
     professor: infoInicial.nome,
     cpf: nrDoc,
     data_exportacao: new Date().toISOString(),
-    escolas: escolasFinal
+    escolas,
   };
 }
+
+// ─── Storage Entry Point ────────────────────────────────────────────
 
 /**
  * Wrapper que lê autenticação do storage e constrói o dashboard
  * @returns {Promise<Object>} Dados do dashboard
  */
 async function buildDashboardFromStorage() {
-  let authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc"]);
+  let authData = await chrome.storage.local.get(['escolaRsToken', 'nrDoc']);
 
   if (!authData.escolaRsToken) {
     console.log('[Dashboard] Token ausente. Tentando renovação silenciosa inicial...');
     try {
       await trySilentTokenRefresh(authData.escolaRsToken);
-      authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc"]);
+      authData = await chrome.storage.local.get(['escolaRsToken', 'nrDoc']);
     } catch (e) {
       console.warn('[Dashboard] Renovação inicial falhou:', e);
     }
   }
 
   if (!authData.escolaRsToken || !authData.nrDoc) {
-    throw new Error("Dados de autenticação não encontrados. Por favor, acesse o portal EscolaRS primeiro.");
+    throw new Error(AUTH_MISSING_ERROR);
   }
 
   return getDashboardData(authData.escolaRsToken, authData.nrDoc, (progress) => {
     chrome.runtime.sendMessage({
       action: 'updateProgress',
       percentage: progress.percentage,
-      status: progress.status
+      status: progress.status,
     }).catch(() => {});
   });
 }
