@@ -88,6 +88,7 @@ function buildEscolasFromResults(tasks, results) {
     // Garantir que a turma exista no Map da escola
     if (!escola.turmas.has(task.turmaNome)) {
       escola.turmas.set(task.turmaNome, {
+        id: task.turmaId,
         nome: task.turmaNome,
         serie: task.turmaSerie,
         disciplinas: [],
@@ -98,6 +99,7 @@ function buildEscolasFromResults(tasks, results) {
     // Adicionar a disciplina (com sucesso ou com erro)
     if (result.status === 'fulfilled') {
       turma.disciplinas.push({
+        id: task.discId,
         disciplina: result.value.discNome,
         carga_horaria: result.value.discCargaHoraria,
         alunos: result.value.alunos,
@@ -107,6 +109,7 @@ function buildEscolasFromResults(tasks, results) {
       const mensagemErro = result.reason?.message || 'Erro desconhecido ao carregar disciplina';
       console.warn(`[Dashboard] Erro ao carregar ${task.turmaNome} - ${task.discNome}:`, mensagemErro);
       turma.disciplinas.push({
+        id: task.discId,
         disciplina: task.discNome,
         carga_horaria: task.discCargaHoraria,
         alunos: [],
@@ -197,6 +200,7 @@ async function getDashboardData(token, nrDoc, onProgress = null) {
   return {
     professor: infoInicial.nome,
     cpf: nrDoc,
+    idRecHumano,
     data_exportacao: new Date().toISOString(),
     escolas,
   };

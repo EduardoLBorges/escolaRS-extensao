@@ -732,6 +732,9 @@ let fstatSelectedPeriod = null;
 let fstatCategoryFilter = null;
 let fstatInitialized = false;
 
+let preVisuCalculos = {}; // Store calculations fetched
+let preVisuStatus = null; // null | 'soma' | 'media'
+
 function updateFilteredStats() {
   const container = document.getElementById('filtered-stats-row');
   if (!container) return;
@@ -791,6 +794,8 @@ function updateFilteredStats() {
         fstatSelectedPeriod = p.label;
       }
       fstatCategoryFilter = null;
+      preVisuCalculos = {};
+      preVisuStatus = null;
       applyFilters();
     });
 
@@ -832,6 +837,73 @@ function updateFilteredStats() {
     return el;
   };
 
+
+  const legendItems = [
+    createLegItem('aprov', 'Aprov.', pAprov, distData.aprovados),
+    createLegItem('recup', 'Recup.', pRecup, distData.emRecuperacao),
+    createLegItem('reprov', 'Reprov.', pReprov, distData.reprovados),
+    createLegItem('semnota', 'Sem Nota', pSemNota, distData.semNota),
+  ];
+
+  if (fstatSelectedPeriod && fstatSelectedPeriod.toLowerCase().includes('trim')) {
+    const isPreVisLoaded = Object.keys(preVisuCalculos || {}).length > 0;
+
+    const btnContainer = createEl('div', { style: 'margin-left: auto; display: flex; gap: 8px;' });
+
+    if (!isPreVisLoaded) {
+      const btnPreVis = createEl('span', {
+        className: 'fstat-leg-item',
+        title: 'Pré-visualização do período selecionado',
+        style: 'cursor: pointer; user-select: none; position: relative; overflow: hidden;'
+      }, [
+        createEl('span', { className: 'fstat-leg-dot', style: 'background: #999;' }),
+        'Pré-visualização'
+      ]);
+
+      btnPreVis.addEventListener('click', async () => {
+        if (btnPreVis.classList.contains('loading')) return;
+        btnPreVis.classList.add('loading');
+        btnPreVis.style.pointerEvents = 'none';
+        btnPreVis.innerHTML = '<div id="previs-progress" style="position: absolute; top: 0; left: 0; height: 100%; width: 0%; background: #4caf50; z-index: 0; transition: width 0.2s;"></div><span style="position: relative; z-index: 1;">Calculando...</span>';
+
+        await carregarPreVisualizacaoPeriodo(fstatSelectedPeriod);
+        applyFilters();
+      });
+
+      btnContainer.appendChild(btnPreVis);
+    } else {
+      const isSomaSelected = preVisuStatus === 'soma';
+      const btnSoma = createEl('span', {
+        className: `fstat-leg-item${isSomaSelected ? ' fstat-leg-selected' : ''}`,
+        title: 'Aplicar Soma',
+        style: 'cursor: pointer; user-select: none;'
+      }, [
+        createEl('span', { className: 'fstat-leg-dot', style: 'background: #4caf50;' }),
+        'Soma'
+      ]);
+      btnSoma.addEventListener('click', () => {
+        aplicarPreVisualizacao(isSomaSelected ? null : 'soma');
+      });
+
+      const isMediaSelected = preVisuStatus === 'media';
+      const btnMedia = createEl('span', {
+        className: `fstat-leg-item${isMediaSelected ? ' fstat-leg-selected' : ''}`,
+        title: 'Aplicar Média',
+        style: 'cursor: pointer; user-select: none;'
+      }, [
+        createEl('span', { className: 'fstat-leg-dot', style: 'background: #2196f3;' }),
+        'Média'
+      ]);
+      btnMedia.addEventListener('click', () => {
+        aplicarPreVisualizacao(isMediaSelected ? null : 'media');
+      });
+
+      btnContainer.appendChild(btnSoma);
+      btnContainer.appendChild(btnMedia);
+    }
+    legendItems.push(btnContainer);
+  }
+
   const distribuicaoCard = createEl('div', { className: 'fstat-card fstat-dist' }, [
     createEl('div', { className: 'fstat-label' }, [distData.label]),
     createEl('div', { className: 'fstat-dist-bar' }, [
@@ -840,12 +912,7 @@ function updateFilteredStats() {
       createEl('div', { className: 'fstat-seg fstat-reprov', style: `width:${pReprov}%`, title: `Reprovados: ${distData.reprovados} (${pReprov}%)` }),
       createEl('div', { className: 'fstat-seg fstat-semnota', style: `width:${pSemNota}%`, title: `Sem Nota: ${distData.semNota} (${pSemNota}%)` }),
     ]),
-    createEl('div', { className: 'fstat-dist-legend' }, [
-      createLegItem('aprov', 'Aprov.', pAprov, distData.aprovados),
-      createLegItem('recup', 'Recup.', pRecup, distData.emRecuperacao),
-      createLegItem('reprov', 'Reprov.', pReprov, distData.reprovados),
-      createLegItem('semnota', 'Sem Nota', pSemNota, distData.semNota),
-    ]),
+    createEl('div', { className: 'fstat-dist-legend', style: 'display: flex; gap: 8px; flex-wrap: wrap; align-items: center;' }, legendItems),
   ]);
 
   const alunosCard = createEl('div', { className: 'fstat-card' }, [
@@ -866,6 +933,196 @@ function updateFilteredStats() {
     container.appendChild(distribuicaoCard);
   }
 } // <---- end updateFilteredStats
+
+async function carregarPreVisualizacaoPeriodo(periodoStr) {
+  const authData = await chrome.storage.local.get('escolaRsToken');
+  const escolaRsToken = authData.escolaRsToken;
+  const idRecHumano = dashboardData.idRecHumano;
+
+  if (!idRecHumano) {
+    alert("Dados incompletos no cache! Por favor, clique em 'Sincronizar' (cabeçalho) para carregar os IDs necessários para esta função.");
+    return;
+  }
+
+  const numMatch = periodoStr.match(/\d+/);
+  if (!numMatch) return;
+  const idPeriodo = numMatch[0];
+
+  const escolaFiltro = document.querySelector(SELECTORS.filterEscola)?.value || '';
+  const turmaFiltro = document.querySelector(SELECTORS.filterTurma)?.value || '';
+
+  const tasks = [];
+  for (const escola of dashboardData.escolas) {
+    if (escolaFiltro && escola.nome !== escolaFiltro) continue;
+    for (const turma of escola.turmas) {
+      if (turmaFiltro && turma.nome !== turmaFiltro) continue;
+
+      if (!turma.id) {
+        alert("IDs de turma ausentes! Por favor, clique em 'Sincronizar'.");
+        return;
+      }
+
+      for (const disc of turma.disciplinas) {
+        if (!disc.erro && disc.id && turma.id) {
+          let idPeriodoCalculo = null;
+          if (disc.alunos && disc.alunos.length > 0) {
+            for (const aluno of disc.alunos) {
+              if (aluno.listaResultados) {
+                for (const res of aluno.listaResultados) {
+                  const nomeP = (res.nomePeriodo || '').toLowerCase();
+                  if (nomeP.includes('trim') && nomeP.includes(idPeriodo) && !nomeP.includes('er')) {
+                    idPeriodoCalculo = res.idPeriodoAvaliacao || res.idPeriodo || res.periodoId || res.id;
+                    break;
+                  }
+                }
+              }
+              if (idPeriodoCalculo) break;
+            }
+          }
+
+          if (idPeriodoCalculo) {
+            tasks.push({ idTurma: turma.id, idDisciplina: disc.id, idPeriodoAvaliacao: idPeriodoCalculo });
+          }
+        }
+      }
+    }
+  }
+
+  if (tasks.length === 0) {
+    alert("Nenhuma turma válida encontrada para calcular.");
+    return;
+  }
+
+  let concluidos = 0;
+  preVisuCalculos = {};
+
+  // Requests in chunks of 3 for gentle load
+  const chunkSize = 3;
+  for (let i = 0; i < tasks.length; i += chunkSize) {
+    const chunk = tasks.slice(i, i + chunkSize);
+    await Promise.allSettled(chunk.map(async task => {
+      try {
+        const url = `https://secweb.procergs.com.br/ise-escolars-professor/rest/professor/v2/calcularAproveitamentos/professor/${idRecHumano}/turma/${task.idTurma}/disciplina/${task.idDisciplina}/periodo/${task.idPeriodoAvaliacao}/area/false`;
+        const res = await fetch(url, { headers: { 'Authorization': escolaRsToken } });
+        if (res.ok) {
+          const text = await res.text();
+          if (text) {
+            try {
+              const data = JSON.parse(text);
+              if (data && data.calculosAproveitamentos) {
+                for (const calc of data.calculosAproveitamentos) {
+                  preVisuCalculos[calc.idAluno] = { soma: calc.soma, media: calc.media };
+                }
+              }
+            } catch (err) {
+              console.error('Falha ao interpretar JSON', err);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Erro na pre-visualizacao', e);
+      } finally {
+        concluidos++;
+        const pct = Math.round((concluidos / tasks.length) * 100);
+        const progBar = document.getElementById('previs-progress');
+        if (progBar) progBar.style.width = pct + '%';
+      }
+    }));
+  }
+}
+
+function aplicarPreVisualizacao(tipo) {
+  preVisuStatus = tipo;
+
+  const numMatch = fstatSelectedPeriod.match(/\d+/);
+  const idPeriodo = numMatch ? numMatch[0] : null;
+  if (!idPeriodo) return;
+
+  for (const escola of dashboardData.escolas) {
+    for (const turma of escola.turmas) {
+      for (const disc of turma.disciplinas) {
+        if (!disc.alunos) continue;
+        for (const aluno of disc.alunos) {
+
+          // 1. REVERTER modificacoes anteriores
+          if (aluno.notas) {
+            let tempNotas = [];
+            for (const n of aluno.notas) {
+              if (n.originalNota !== undefined) {
+                if (n.isPreVisAdded) {
+                  // ignorar este obj totalmente, ele foi inserido
+                  continue;
+                } else {
+                  n.nota = n.originalNota;
+                  delete n.originalNota;
+                }
+              }
+              tempNotas.push(n);
+            }
+            aluno.notas = tempNotas;
+
+            if (aluno.originalMediaFinal !== undefined) {
+              aluno.mediaFinal = aluno.originalMediaFinal;
+              delete aluno.originalMediaFinal;
+            }
+          }
+
+          if (tipo === null) continue;
+
+          // 2. APLICAR nova modificacao
+          const alunoIdToMatch = aluno.id || aluno.matricula || aluno.codigo || aluno.idAluno;
+
+          let pData = preVisuCalculos[alunoIdToMatch];
+          if (!pData) {
+            const strKeys = Object.keys(preVisuCalculos);
+            const matchedKey = strKeys.find(k => String(k) === String(aluno.matricula) || String(k) === String(aluno.id));
+            if (matchedKey) pData = preVisuCalculos[matchedKey];
+          }
+
+          if (pData) {
+            const valorCalculado = pData[tipo];
+            const notaStr = valorCalculado.toString().replace('.', ',');
+
+            if (aluno.notas) {
+              const periodoLower = 'trim';
+              let found = false;
+              for (const n of aluno.notas) {
+                const nomeTrim = (n.trimestre || n.nomePeriodo || '').toLowerCase();
+                if (nomeTrim.includes(periodoLower) && nomeTrim.includes(idPeriodo) && !nomeTrim.includes('er')) {
+                  if (n.originalNota === undefined) n.originalNota = n.nota;
+                  n.nota = notaStr;
+                  found = true;
+                  break;
+                }
+              }
+              if (!found) {
+                aluno.notas.push({
+                  trimestre: `${idPeriodo}° Trim`,
+                  nomePeriodo: `${idPeriodo}º TRIMESTRE`,
+                  nota: notaStr,
+                  originalNota: '--',
+                  isPreVisAdded: true
+                });
+              }
+
+              // Recalcula media final simples para Trimestral
+              if (aluno.originalMediaFinal === undefined) aluno.originalMediaFinal = aluno.mediaFinal;
+
+              const p1 = parseFloat(String(getNotaTexto(aluno.notas, '1° Trim')).replace(',', '.'));
+              const p2 = parseFloat(String(getNotaTexto(aluno.notas, '2° Trim')).replace(',', '.'));
+              const p3 = parseFloat(String(getNotaTexto(aluno.notas, '3° Trim')).replace(',', '.'));
+              if (!isNaN(p1) && !isNaN(p2) && !isNaN(p3)) {
+                aluno.mediaFinal = (p1 * 3 + p2 * 3 + p3 * 4) / 10;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  renderApp();
+}
 
 
 // =================================================================================
