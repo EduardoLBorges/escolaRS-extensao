@@ -1,5 +1,5 @@
 // --- IMPORTAÇÃO DE MÓDULOS ---
-importScripts('api/escolaRS.js', 'utils/notas.js', 'services/dashboardService.js');
+importScripts('api/escolaRS.js', 'utils/aluno.js', 'utils/string.js', 'utils/notas.js', 'services/dashboardService.js');
 
 
 // ─── Constantes & Estado ────────────────────────────────────────────

@@ -247,3 +247,177 @@ async function buildDashboardFromStorage() {
 
   return activeDashboardBuildPromise;
 }
+
+/**
+ * Calcula estatísticas gerais do dashboard.
+ * @param {Object} data 
+ * @returns {Object}
+ */
+function calculateStats(data) {
+  let totalAlunos = 0;
+  let totalTurmas = 0;
+  let totalNotas = 0;
+  let alunosComMedia = 0;
+  let aprovados = 0;
+
+  if (!data || !data.escolas) return { totalAlunos: 0, totalTurmas: 0, mediaGeral: 0, aprovados: 0, percentualAprovados: 0 };
+
+  for (const escola of data.escolas) {
+    for (const turma of escola.turmas) {
+      totalTurmas++;
+      for (const disc of turma.disciplinas) {
+        const alunosAtivos = getAlunosAtivos(disc.alunos);
+        totalAlunos += alunosAtivos.length;
+        for (const aluno of alunosAtivos) {
+          if (aluno.mediaFinal > 0) {
+            totalNotas += aluno.mediaFinal;
+            alunosComMedia++;
+            if (aluno.mediaFinal >= 6) aprovados++;
+          }
+        }
+      }
+    }
+  }
+
+  const mediaGeral = alunosComMedia > 0 ? (totalNotas / alunosComMedia).toFixed(1) : 0;
+  const percentualAprovados = totalAlunos > 0 ? ((aprovados / totalAlunos) * 100).toFixed(1) : 0;
+
+  return { totalAlunos, totalTurmas, mediaGeral, aprovados, percentualAprovados };
+}
+
+/**
+ * Calcula estatísticas filtradas para a UI.
+ */
+function calculateFilteredStats(dashboardData, escolaFiltro, turmaFiltro, alunoFiltro) {
+  let totalAlunos = 0;
+  let aprovados = 0, emRecuperacao = 0, reprovados = 0, semNota = 0;
+  const periodoNotas = {};
+  let allAlunos = [];
+
+  if (!dashboardData || !dashboardData.escolas) return null;
+
+  for (const escola of dashboardData.escolas) {
+    if (escolaFiltro && escola.nome !== escolaFiltro) continue;
+    for (const turma of escola.turmas) {
+      if (turmaFiltro && turma.nome !== turmaFiltro) continue;
+      for (const disc of turma.disciplinas) {
+        const alunosAtivos = getAlunosAtivos(disc.alunos || []);
+        for (const aluno of alunosAtivos) {
+          if (alunoFiltro && !aluno.nome.toLowerCase().includes(alunoFiltro)) continue;
+          allAlunos.push(aluno);
+        }
+      }
+    }
+  }
+
+  totalAlunos = allAlunos.length;
+  if (totalAlunos === 0) return null;
+
+  const { periodos } = detectarTipoEPeriodos(allAlunos);
+
+  for (const aluno of allAlunos) {
+    if (aluno.mediaFinal > 0) {
+      if (aluno.mediaFinal >= 6) aprovados++;
+      else if (aluno.mediaFinal >= 5) emRecuperacao++;
+      else reprovados++;
+    }
+    for (const per of periodos) {
+      const notaTxt = getNotaTexto(aluno.notas, per);
+      const nota = parseFloat(String(notaTxt).replace('*', '').replace(',', '.'));
+      if (!isNaN(nota)) {
+        if (!periodoNotas[per]) periodoNotas[per] = [];
+        periodoNotas[per].push(nota);
+      }
+    }
+  }
+
+  const periodAverages = periodos.map((per) => {
+    const lista = periodoNotas[per] || [];
+    const media = lista.length > 0 ? (lista.reduce((a, b) => a + b, 0) / lista.length) : null;
+    let ap = 0, rec = 0, rep = 0;
+    for (const nota of lista) {
+      if (nota >= 6) ap++;
+      else if (nota >= 5) rec++;
+      else rep++;
+    }
+    const sn = totalAlunos - (ap + rec + rep);
+    return { label: per, media, aprovados: ap, emRecuperacao: rec, reprovados: rep, semNota: sn };
+  });
+
+  semNota = totalAlunos - (aprovados + emRecuperacao + reprovados);
+
+  return { totalAlunos, aprovados, emRecuperacao, reprovados, semNota, periodAverages };
+}
+
+/**
+ * Busca cálculos de aproveitamento (soma/média) para o período selecionado.
+ */
+async function fetchPreVisualizacao(dashboardData, periodoStr, callbacks = {}) {
+  const { onProgress } = callbacks;
+  const authData = await chrome.storage.local.get('escolaRsToken');
+  const token = authData.escolaRsToken;
+  const idRecHumano = dashboardData.idRecHumano;
+
+  const numMatch = periodoStr.match(/\d+/);
+  if (!numMatch) return {};
+  const idPeriodo = numMatch[0];
+
+  const tasks = [];
+  for (const escola of dashboardData.escolas) {
+    for (const turma of escola.turmas) {
+      for (const disc of turma.disciplinas) {
+        if (!disc.erro && disc.id && turma.id) {
+          let idPeriodoCalculo = null;
+          if (disc.alunos) {
+            for (const aluno of disc.alunos) {
+              if (aluno.listaResultados) {
+                const res = aluno.listaResultados.find(r => {
+                  const nomeP = (r.nomePeriodo || '').toLowerCase();
+                  return nomeP.includes('trim') && nomeP.includes(idPeriodo) && !nomeP.includes('er');
+                });
+                if (res) {
+                  idPeriodoCalculo = res.idPeriodoAvaliacao || res.idPeriodo || res.periodoId || res.id;
+                  break;
+                }
+              }
+            }
+          }
+          if (idPeriodoCalculo) {
+            tasks.push({ idTurma: turma.id, idDisciplina: disc.id, idPeriodoAvaliacao: idPeriodoCalculo });
+          }
+        }
+      }
+    }
+  }
+
+  if (tasks.length === 0) return {};
+
+  const resultados = {};
+  let concluidos = 0;
+
+  const chunkSize = 3;
+  for (let i = 0; i < tasks.length; i += chunkSize) {
+    const chunk = tasks.slice(i, i + chunkSize);
+    await Promise.allSettled(chunk.map(async task => {
+      try {
+        const url = `https://secweb.procergs.com.br/ise-escolars-professor/rest/professor/v2/calcularAproveitamentos/professor/${idRecHumano}/turma/${task.idTurma}/disciplina/${task.idDisciplina}/periodo/${task.idPeriodoAvaliacao}/area/false`;
+        const res = await fetch(url, { headers: { 'Authorization': token } });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.calculosAproveitamentos) {
+            for (const calc of data.calculosAproveitamentos) {
+              resultados[calc.idAluno] = { soma: calc.soma, media: calc.media };
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[Dashboard Service] Erro na pre-visualizacao:', e);
+      } finally {
+        concluidos++;
+        if (onProgress) onProgress(Math.round((concluidos / tasks.length) * 100));
+      }
+    }));
+  }
+
+  return resultados;
+}
