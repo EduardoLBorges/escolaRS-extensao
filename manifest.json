@@ -28,7 +28,11 @@
     {
       "resources": [
         "ui/dashboard/dashboard.html",
-        "ui/chamada/chamada.html"
+        "ui/chamada/chamada.html",
+        "ui/avaliacoes/avaliacoes.html",
+        "libs/xlsx.full.min.js",
+        "tests/gerar_dados_xls.html",
+        "tests/gerar_dados_xls.js"
       ],
       "matches": [
         "<all_urls>"

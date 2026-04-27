@@ -230,3 +230,11 @@ async function registrarChamadaAula(turmaId, discId, data, idRecHumano, payload,
 async function buscarFotoDoAluno(matricula, idTurma, token) {
   return fetchEscolaRS(`buscarFotoDoAluno/${matricula}/${idTurma}`, token);
 }
+
+async function listarAvaliacoesTurma(turmaId, discId, profId, token) {
+  return fetchEscolaRS(`listarAvaliacoesTurma/${turmaId}/${discId}/${profId}`, token);
+}
+
+async function registrarResultadoInstrumentoLista(payload, token) {
+  return fetchEscolaRS(`registrarResultadoInstrumentoLista`, token, { method: 'POST', body: payload });
+}

@@ -238,8 +238,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Botão de atualização no header
+  // Botões do Header
   document.querySelector(SELECTORS.headerRefresh)?.addEventListener('click', () => loadDashboard(true));
+  document.querySelector('#btnAvaliacoesMassa')?.addEventListener('click', () => {
+    window.location.href = '../avaliacoes/avaliacoes.html';
+  });
 
   // Carga inicial
   loadDashboard(false);

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Importar/Exportar Avaliações em Massa</title>
+    <link rel="stylesheet" href="../chamada/chamada.css">
+    <link rel="stylesheet" href="avaliacoes.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="app-container">
+        <header class="header">
+            <div class="header-content">
+                <h1>Gerenciamento de Avaliações</h1>
+                <div class="header-actions">
+                    <button id="btnVoltar" class="btn btn-secondary">
+                        <i data-lucide="arrow-left"></i> Voltar
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div id="loading" class="loading-state">
+                <div class="spinner"></div>
+                <p id="loadingText">Aguarde...</p>
+            </div>
+
+            <div id="avaliacoesContainer" class="avaliacoes-layout hidden">
+                <div class="card-action">
+                    <div class="card-icon">
+                        <i data-lucide="download-cloud"></i>
+                    </div>
+                    <h2>Exportar Planilhas de Avaliações</h2>
+                    <p>Baixe as planilhas consolidadas por escola. Cada planilha conterá abas para as turmas, formatadas para inserção rápida de notas.</p>
+                    
+                    <div class="form-group" style="margin-top: 15px;">
+                        <label for="selectPeriodo">Selecione o Período de Avaliação:</label>
+                        <select id="selectPeriodo" class="form-control" style="max-width: 300px; margin: 0 auto; display: block; margin-top: 8px;">
+                            <option value="">Carregando períodos...</option>
+                        </select>
+                    </div>
+
+                    <button id="btnExport" class="btn btn-primary" style="margin-top: 20px;">
+                        <i data-lucide="download"></i> Gerar e Baixar Planilhas
+                    </button>
+                </div>
+
+                <div class="card-action">
+                    <div class="card-icon">
+                        <i data-lucide="upload-cloud"></i>
+                    </div>
+                    <h2>Importar Notas e Enviar</h2>
+                    <p>Selecione um arquivo de planilhas modificado (mesmo formato do export) para enviar as notas diretamente para o portal.</p>
+                    <input type="file" id="fileUpload" accept=".xls,.xlsx" style="display: none;">
+                    
+                    <button id="btnImport" class="btn btn-success" style="margin-top: 20px;">
+                        <i data-lucide="upload"></i> Selecionar Arquivo e Importar
+                    </button>
+                    <p id="importStatus" class="status-msg"></p>
+                </div>
+            </div>
+            
+            <div id="importModal" class="modal-overlay hidden">
+                <div class="modal-content" style="max-width: 600px;">
+                    <div class="modal-header">
+                        <h2>Validando Planilha...</h2>
+                        <button id="btnCloseModal" class="btn-close"><i data-lucide="x"></i></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="importLog" class="import-log">
+                            <!-- Logs de validação / envio serão inseridos aqui -->
+                        </div>
+                        <div class="progress-bar-container hidden" id="uploadProgressContainer">
+                            <div class="progress-bar" id="uploadProgressBar"></div>
+                        </div>
+                        <div style="text-align: right; margin-top: 15px;">
+                            <button id="btnConfirmarUpload" class="btn btn-primary hidden">
+                                Confirmar e Enviar Múltiplas Notas
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="toastContainer" class="toast-container"></div>
+        </main>
+    </div>
+
+    <script src="../libs/lucide.min.js"></script>
+    <script src="../../libs/xlsx.full.min.js"></script>
+    <script src="../../api/escolaRS.js"></script>
+    <script src="../../utils/dom.js"></script>
+    <script src="../../services/avaliacoesService.js"></script>
+    <script src="avaliacoes.js"></script>
+</body>
+
+</html>
