@@ -1,309 +1,169 @@
 /**
- * avaliacoes.js - Controlador da UI de Avaliações em Massa
+ * avaliacoes.js - Controlador da UI de Avaliações (Multi-Tab)
  */
 
 const service = new AvaliacoesService();
 
-document.addEventListener('DOMContentLoaded', async () => {
-    if (window.lucide) window.lucide.createIcons();
+class TabController {
+    constructor(id, viewEl, btnEl) {
+        this.id = id;
+        this.viewEl = viewEl;
+        this.btnEl = btnEl;
+        this.statePayloads = {};
 
-    const loadingState = document.getElementById('loading');
-    const tabsContainer = document.getElementById('tabsContainer');
-    const loteView = document.getElementById('loteView');
-    const diretoView = document.getElementById('diretoView');
-    const selectPeriodo = document.getElementById('selectPeriodo');
-    const selPeriodoDiretor = document.getElementById('selPeriodoDiretor');
-
-    // UI Lançamento Direto
-    const selEscola = document.getElementById('selEscola');
-    const selTurma = document.getElementById('selTurma');
-    const selDisc = document.getElementById('selDisc');
-    const btnCarregarTabela = document.getElementById('btnCarregarTabela');
-    const gridContainer = document.getElementById('gridContainer');
-    const tbNotasHeadRow = document.getElementById('tbNotasHeadRow');
-    const tbNotasBody = document.getElementById('tbNotasBody');
-    const footerAcoes = document.getElementById('footerAcoes');
-    const txtModificacoes = document.getElementById('txtModificacoes');
-    const btnSalvarDireto = document.getElementById('btnSalvarDireto');
-
-    let cacheDashboard = null;
-    let periodosGlobais = [];
-    let statePayloadsAguardos = {}; // idAluno-idInstr -> { aproveitamento, old }
-    
-    // Actions Export
-    const btnExport = document.getElementById('btnExport');
-    
-    // Actions Import
-    const btnImport = document.getElementById('btnImport');
-    const fileUpload = document.getElementById('fileUpload');
-    const importStatus = document.getElementById('importStatus');
-    
-    // Modal & Progress
-    const importModal = document.getElementById('importModal');
-    const importLog = document.getElementById('importLog');
-    const btnCloseModal = document.getElementById('btnCloseModal');
-    const btnConfirmarUpload = document.getElementById('btnConfirmarUpload');
-    const uploadProgressContainer = document.getElementById('uploadProgressContainer');
-    const uploadProgressBar = document.getElementById('uploadProgressBar');
-
-    let preparedPayloads = [];
-
-    // --- Inicia a Visualização --- //
-    try {
-        await service.init();
+         // Como window.periodosGlobais e cacheDashboard estarão no window
+        this.selEscola = viewEl.querySelector('.sel-escola');
+        this.selTurma = viewEl.querySelector('.sel-turma');
+        this.selDisc = viewEl.querySelector('.sel-disc');
+        this.selPeriodo = viewEl.querySelector('.sel-periodo-diretor');
         
-        // Puxar os períodos
-        periodosGlobais = await service.carregarPeriodos();
-        selectPeriodo.innerHTML = '<option value="">Selecione...</option>';
-        selPeriodoDiretor.innerHTML = '<option value="">Selecione...</option>';
+        this.btnCarregar = viewEl.querySelector('.btn-carregar-tabela');
+        this.gridContainer = viewEl.querySelector('.grid-container-wrapper');
+        this.headRow = viewEl.querySelector('.tb-notas-head-row');
+        this.bodyRow = viewEl.querySelector('.tb-notas-body');
+        
+        this.footerAcoes = viewEl.querySelector('.footer-acoes');
+        this.txtModifs = viewEl.querySelector('.txt-modificacoes');
+        this.btnSalvar = viewEl.querySelector('.btn-salvar-direto');
 
-        if (periodosGlobais.length > 0) {
-            periodosGlobais.forEach(p => {
+        this.initEvents();
+        setTimeout(() => this.populateSelects(), 200); // async pra garantir que as globais foram setadas
+    }
+
+    populateSelects() {
+        this.selPeriodo.innerHTML = '<option value="">Selecione...</option>';
+        if (window.periodosGlobais) {
+            window.periodosGlobais.forEach(p => {
                 const opt = document.createElement('option');
                 opt.value = p.id;
                 opt.textContent = p.descricao;
-                selectPeriodo.appendChild(opt);
-                selPeriodoDiretor.appendChild(opt.cloneNode(true));
+                this.selPeriodo.appendChild(opt);
             });
-            selectPeriodo.selectedIndex = 1;
-            selPeriodoDiretor.selectedIndex = 1;
-        } else {
-            selectPeriodo.innerHTML = '<option value="">(Nenhum período validado)</option>';
-            selPeriodoDiretor.innerHTML = selectPeriodo.innerHTML;
+            this.selPeriodo.selectedIndex = Math.min(1, window.periodosGlobais.length);
         }
 
-        // Carregar dados de Escolas do cache do dashboard para os combos diretos
-        const stData = await chrome.storage.local.get(['dashboardCache']);
-        if (stData.dashboardCache && stData.dashboardCache.data) {
-            cacheDashboard = stData.dashboardCache.data.escolas;
-            cacheDashboard.forEach(e => {
+        if (window.cacheDashboard) {
+            window.cacheDashboard.forEach(e => {
                 const opt = document.createElement('option');
                 opt.value = e.nome;
                 opt.textContent = e.nome;
-                selEscola.appendChild(opt);
+                this.selEscola.appendChild(opt);
             });
-        } else {
-            showToast('Nenhum dado de turmas no cache. Abra o Dashboard primeiro.', 'warning');
         }
-
-        loadingState.classList.add('hidden');
-        tabsContainer.classList.remove('hidden');
-        // layout já não é usado assim
-    } catch (err) {
-        showToast(`Erro na inicialização: ${err.message}`, 'error');
-        loadingState.innerHTML = `<p style="color:var(--error);">Falha: ${err.message}</p>`;
     }
 
-    // --- Navegação e Abas --- //
-    document.querySelectorAll('.tab-button').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
-            document.querySelectorAll('.tab-view').forEach(v => {
-                v.classList.remove('active-view');
-                v.classList.add('hidden');
-            });
+    initEvents() {
+        this.selEscola.addEventListener('change', (e) => {
+            this.selTurma.innerHTML = '<option value="">Selecione a Turma...</option>';
+            this.selDisc.innerHTML = '<option value="">Selecione a Turma primeiro</option>';
+            this.selTurma.disabled = false;
+            this.selDisc.disabled = true;
+            this.gridContainer.classList.add('hidden');
+            this.footerAcoes.classList.add('hidden');
             
-            e.target.classList.add('active');
-            const targetId = e.target.getAttribute('data-target');
-            const targetView = document.getElementById(targetId);
-            targetView.classList.add('active-view');
-            targetView.classList.remove('hidden');
-        });
-    });
-
-    btnVoltar.addEventListener('click', () => {
-        window.location.href = '../chamada/chamada.html';
-    });
-
-    // --- Exportação --- //
-    btnExport.addEventListener('click', async () => {
-        const pId = selectPeriodo.value;
-        if (!pId) {
-            showToast('Selecione primeiro qual o período.', 'warning');
-            return;
-        }
-        
-        btnExport.disabled = true;
-        const originalText = btnExport.innerHTML;
-        
-        try {
-            await service.exportarMassa(pId, (prog) => {
-                btnExport.innerHTML = `<i data-lucide="loader" class="spinner-small"></i> ${prog.status} - ${prog.pct}%`;
-            });
-            showToast('Arquivos baixados com sucesso! Revise sua pasta de downloads.', 'success');
-        } catch (err) {
-            showToast(`Erro na exportação: ${err.message}`, 'error');
-        } finally {
-            btnExport.disabled = false;
-            btnExport.innerHTML = originalText;
-        }
-    });
-
-    // --- Fluxo de Importação --- //
-    btnImport.addEventListener('click', () => {
-        fileUpload.click();
-    });
-
-    fileUpload.addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        // Reset state
-        importStatus.textContent = `Arquivo carregado: ${file.name}`;
-        importStatus.style.color = 'var(--text-muted)';
-        importLog.innerHTML = `<div class="info">Lendo arquivo e formatando payloads...</div>`;
-        btnConfirmarUpload.classList.add('hidden');
-        uploadProgressContainer.classList.add('hidden');
-        importModal.classList.remove('hidden');
-        preparedPayloads = [];
-
-        try {
-            preparedPayloads = await service.parseUploadedFile(file);
-            if (preparedPayloads.length === 0) {
-                logMessage('Nenhuma nota detectada contendo IDs. Lembre-se preencher a versão EXPORTADA por este utilitário.', 'error');
-                return;
-            }
-
-            logMessage(`Foram detectadas ${preparedPayloads.length} avaliações para atualizar em lote.`, 'success');
-            btnConfirmarUpload.classList.remove('hidden');
-
-        } catch (err) {
-            logMessage(`Falha na leitura do Excel: ${err.message}`, 'error');
-        } finally {
-            fileUpload.value = ''; // clean up
-        }
-    });
-
-    // Confirmação e Envio em Lote
-    btnConfirmarUpload.addEventListener('click', async () => {
-        btnConfirmarUpload.disabled = true;
-        btnCloseModal.disabled = true;
-        uploadProgressContainer.classList.remove('hidden');
-        uploadProgressBar.style.width = '0%';
-
-        try {
-            const sucessos = await service.enviarNotas(preparedPayloads, 
-            (prog) => {
-                uploadProgressBar.style.width = `${prog.pct}%`;
-            }, 
-            (msg, tipo) => {
-                logMessage(msg, tipo);
-            });
-
-            logMessage(`Processo concluído com sucesso. Realizados ${sucessos} lançamentos de aproveitamentos!`, 'success');
-            showToast(`Sucesso: ${sucessos} notas salvas.`, 'success');
-            
-        } catch (err) {
-            logMessage(`Interrompido por falha fatal na validação de APIs: ${err.message}`, 'error');
-        } finally {
-            btnConfirmarUpload.disabled = false;
-            btnConfirmarUpload.classList.add('hidden'); // já processou
-            btnCloseModal.disabled = false;
-        }
-    });
-
-    // Modal Close
-    btnCloseModal.addEventListener('click', () => {
-        importModal.classList.add('hidden');
-    });
-
-    // --- Lógica Lançamento Direto --- //
-
-    // Mapeamento dos combos
-    selEscola.addEventListener('change', (e) => {
-        selTurma.innerHTML = '<option value="">Selecione a Turma...</option>';
-        selDisc.innerHTML = '<option value="">Selecione a Turma primeiro</option>';
-        selTurma.disabled = false;
-        selDisc.disabled = true;
-        
-        if (!e.target.value || !cacheDashboard) return;
-        const esc = cacheDashboard.find(x => String(x.nome) === String(e.target.value));
-        if (esc && esc.turmas) {
-            esc.turmas.forEach(t => {
-                let opt = document.createElement('option');
-                opt.value = t.id;
-                opt.textContent = t.nome;
-                selTurma.appendChild(opt);
-            });
-        }
-        validarBotaoCarregar();
-    });
-
-    selTurma.addEventListener('change', (e) => {
-        selDisc.innerHTML = '<option value="">Selecione a Disciplina...</option>';
-        selDisc.disabled = false;
-        
-        if (!e.target.value || !cacheDashboard) return;
-        const esc = cacheDashboard.find(x => String(x.nome) === String(selEscola.value));
-        if (esc) {
-            const turm = esc.turmas.find(x => String(x.id) === String(e.target.value));
-            if (turm && turm.disciplinas) {
-                turm.disciplinas.forEach(d => {
+            const val = e.target.value;
+            if (!val || !window.cacheDashboard) return;
+            const esc = window.cacheDashboard.find(x => String(x.nome) === String(val));
+            if (esc && esc.turmas) {
+                esc.turmas.forEach(t => {
                     let opt = document.createElement('option');
-                    opt.value = d.id;
-                    opt.textContent = d.disciplina || d.nome;
-                    selDisc.appendChild(opt);
+                    opt.value = t.id;
+                    opt.textContent = t.nome;
+                    this.selTurma.appendChild(opt);
                 });
             }
-        }
-        validarBotaoCarregar();
-    });
-    
-    selDisc.addEventListener('change', validarBotaoCarregar);
-    selPeriodoDiretor.addEventListener('change', validarBotaoCarregar);
-    
-    function validarBotaoCarregar() {
-        if (selEscola.value && selTurma.value && selDisc.value && selPeriodoDiretor.value) {
-            btnCarregarTabela.disabled = false;
+            this.validarBusca();
+        });
+
+        this.selTurma.addEventListener('change', (e) => {
+            this.selDisc.innerHTML = '<option value="">Selecione a Disciplina...</option>';
+            this.selDisc.disabled = false;
+            this.gridContainer.classList.add('hidden');
+            this.footerAcoes.classList.add('hidden');
+            
+            const val = e.target.value;
+            if (!val || !window.cacheDashboard) return;
+            const esc = window.cacheDashboard.find(x => String(x.nome) === String(this.selEscola.value));
+            if (esc) {
+                const turm = esc.turmas.find(x => String(x.id) === String(val));
+                if (turm && turm.disciplinas) {
+                    turm.disciplinas.forEach(d => {
+                        let opt = document.createElement('option');
+                        opt.value = d.id;
+                        opt.textContent = d.disciplina || d.nome;
+                        this.selDisc.appendChild(opt);
+                    });
+                }
+            }
+            this.validarBusca();
+        });
+
+        this.selDisc.addEventListener('change', () => this.validarBusca());
+        this.selPeriodo.addEventListener('change', () => this.validarBusca());
+
+        this.btnCarregar.addEventListener('click', () => this.carregarTabela());
+        this.btnSalvar.addEventListener('click', () => this.salvarDadosLote());
+    }
+
+    validarBusca() {
+        if (this.selEscola.value && this.selTurma.value && this.selDisc.value && this.selPeriodo.value) {
+            this.btnCarregar.disabled = false;
         } else {
-            btnCarregarTabela.disabled = true;
+            this.btnCarregar.disabled = true;
         }
     }
 
-    btnCarregarTabela.addEventListener('click', async () => {
-        const tId = selTurma.value;
-        const dId = selDisc.value;
-        const pId = selPeriodoDiretor.value;
-        const perNome = selPeriodoDiretor.options[selPeriodoDiretor.selectedIndex].text;
+    async carregarTabela() {
+        const tId = this.selTurma.value;
+        const dId = this.selDisc.value;
+        const pId = this.selPeriodo.value;
+        const perNome = this.selPeriodo.options[this.selPeriodo.selectedIndex].text;
+        const discNome = this.selDisc.options[this.selDisc.selectedIndex].text;
+        const turmNome = this.selTurma.options[this.selTurma.selectedIndex].text;
         const isSemestre = perNome.toLowerCase().includes('sem');
         
-        btnCarregarTabela.disabled = true;
-        btnCarregarTabela.innerHTML = `<i data-lucide="loader" class="spinner-small"></i> Buscando Diários...`;
+        this.btnCarregar.disabled = true;
+        this.btnCarregar.innerHTML = `<i data-lucide="loader" class="spinner-small"></i> Buscando Diários...`;
         if (window.lucide) window.lucide.createIcons();
 
         try {
             const data = await service.carregarDadosTabelaDireta(tId, dId, isSemestre, pId, service.cacheInfo.idRecHumano);
-            renderizarDataGrid(data.instrumentos, data.alunos);
-            gridContainer.classList.remove('hidden');
-            footerAcoes.classList.remove('hidden');
-            statePayloadsAguardos = {};
-            atualizarFooter();
-            showToast('Instrumentos e notas carregados com sucesso!', 'success');
+            this.renderizarDataGrid(data.instrumentos, data.alunos);
+            
+            this.gridContainer.classList.remove('hidden');
+            this.footerAcoes.classList.remove('hidden');
+            this.statePayloads = {};
+            this.atualizarFooter();
+            
+            const span = this.btnEl.querySelector('span');
+            if(span) span.textContent = `${discNome} / ${turmNome.substring(0,6)}`;
+            
+            window.showToast(`(Aba) Carregado: ${data.alunos.length} alunos!`, 'success');
         } catch (err) {
-            showToast(`Erro ao abrir a tabela: ${err.message}`, 'error');
-            gridContainer.classList.add('hidden');
-            footerAcoes.classList.add('hidden');
+            window.showToast(`(Aba) Erro: ${err.message}`, 'error');
+            this.gridContainer.classList.add('hidden');
+            this.footerAcoes.classList.add('hidden');
         } finally {
-            btnCarregarTabela.disabled = false;
-            btnCarregarTabela.innerHTML = `<i data-lucide="search"></i> Buscar Instrumentos e Lançamentos`;
+            this.btnCarregar.disabled = false;
+            this.btnCarregar.innerHTML = `<i data-lucide="search"></i> Buscar Instrumentos`;
             if (window.lucide) window.lucide.createIcons();
         }
-    });
+    }
 
-    function renderizarDataGrid(instrumentos, alunos) {
-        tbNotasHeadRow.innerHTML = `<th style="width: 80px;">Nº Matr.</th><th>Nome do Aluno</th>`;
-        tbNotasBody.innerHTML = '';
+    renderizarDataGrid(instrumentos, alunos) {
+        this.headRow.innerHTML = `<th style="width: 80px;">Nº Matr.</th><th>Nome do Aluno</th>`;
+        this.bodyRow.innerHTML = '';
         
         instrumentos.forEach(ins => {
             const th = document.createElement('th');
             th.innerHTML = `${ins.nome}<br><small style="color:var(--text-muted);font-weight:normal;">Peso: ${ins.peso || 1}</small>`;
-            tbNotasHeadRow.appendChild(th);
+            this.headRow.appendChild(th);
         });
 
         alunos.forEach(alu => {
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td><span style="font-family:monospace; color:var(--text-muted);">${alu.matricula}</span></td>
-                            <td style="font-weight: 500;">${alu.nome}</td>`;
+            tr.innerHTML = `<td class="cell-text"><span style="font-family:monospace; color:var(--text-muted);">${alu.matricula}</span></td>
+                            <td class="cell-text" style="font-weight: 500;">${alu.nome}</td>`;
             
             instrumentos.forEach(ins => {
                 const td = document.createElement('td');
@@ -320,17 +180,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 inp.setAttribute('data-id-inst', ins.id);
                 inp.setAttribute('data-original-val', prevVal);
                 
-                inp.addEventListener('input', () => registrarMudancaGrid(inp));
+                inp.addEventListener('input', () => this.registrarMudanca(inp));
                 
                 td.appendChild(inp);
                 tr.appendChild(td);
             });
             
-            tbNotasBody.appendChild(tr);
+            this.bodyRow.appendChild(tr);
         });
     }
 
-    function registrarMudancaGrid(inp) {
+    registrarMudanca(inp) {
         const idA = inp.getAttribute('data-id-aluno');
         const idI = inp.getAttribute('data-id-inst');
         const oV = String(inp.getAttribute('data-original-val'));
@@ -340,7 +200,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         if (nV !== oV && nV !== '') {
             inp.classList.add('changed');
-            statePayloadsAguardos[key] = {
+            this.statePayloads[key] = {
                 payload: {
                     idInstrumento: parseInt(idI, 10),
                     idAluno: parseInt(idA, 10),
@@ -351,59 +211,297 @@ document.addEventListener('DOMContentLoaded', async () => {
             };
         } else {
             inp.classList.remove('changed');
-            delete statePayloadsAguardos[key];
+            delete this.statePayloads[key];
         }
         
-        atualizarFooter();
+        this.atualizarFooter();
     }
 
-    function atualizarFooter() {
-        const count = Object.keys(statePayloadsAguardos).length;
-        txtModificacoes.textContent = count === 0 ? "0 alterações pendentes" : `${count} avaliações prontas para gravação`;
-        btnSalvarDireto.disabled = count === 0;
+    atualizarFooter() {
+        const count = Object.keys(this.statePayloads).length;
+        this.txtModifs.textContent = count === 0 ? "0 alterações na aba" : `${count} avaliações prontas para gravação`;
+        this.btnSalvar.disabled = count === 0;
     }
 
-    btnSalvarDireto.addEventListener('click', async () => {
-        const ks = Object.keys(statePayloadsAguardos);
+    async salvarDadosLote() {
+        const ks = Object.keys(this.statePayloads);
         if (ks.length === 0) return;
         
-        const listToPost = ks.map(k => statePayloadsAguardos[k]);
+        const listToPost = ks.map(k => this.statePayloads[k]);
         
-        btnSalvarDireto.disabled = true;
-        btnSalvarDireto.innerHTML = `<i data-lucide="loader" class="spinner-small"></i> Salvando (${listToPost.length})...`;
+        this.btnSalvar.disabled = true;
+        this.btnSalvar.innerHTML = `<i data-lucide="loader" class="spinner-small"></i> Salvando...`;
         if (window.lucide) window.lucide.createIcons();
 
         try {
-            // Reutiliza endpoint em lote
             const enviosObj = listToPost.map(l => ({ payload: l.payload }));
-            // Passamos um progress callback mock porque na Grid Direct não temos barra
             await service.enviarNotas(enviosObj, 
                 (p) => {}, 
-                (logMsg, tpo) => { console.log("[Direct Save]", logMsg); }
+                (logMsg, tpo) => { console.log(`[Aba ${this.id}]`, logMsg); }
             );
 
-            showToast(`Sucesso! ${listToPost.length} notas sincronizadas com a SEDUC.`, 'success');
+            window.showToast(`Sucesso! ${listToPost.length} notas gravadas.`, 'success');
             
-            // Aceita como originais agora
             listToPost.forEach(item => {
                 item.inputRef.classList.remove('changed');
                 item.inputRef.classList.add('saved');
                 item.inputRef.setAttribute('data-original-val', item.payload.dsAproveitamento);
                 setTimeout(() => item.inputRef.classList.remove('saved'), 3000);
             });
-            statePayloadsAguardos = {};
-            atualizarFooter();
+            this.statePayloads = {};
+            this.atualizarFooter();
 
         } catch (err) {
-            showToast(`Falha no envio direto: ${err.message}`, 'error');
+            window.showToast(`Falha no envio da Aba: ${err.message}`, 'error');
         } finally {
-            btnSalvarDireto.innerHTML = `<i data-lucide="save"></i> Salvar Lançamentos na EscolaRS`;
-            btnSalvarDireto.disabled = false;
+            this.btnSalvar.innerHTML = `<i data-lucide="save"></i> Salvar Lançamentos Aba`;
+            this.btnSalvar.disabled = false;
             if (window.lucide) window.lucide.createIcons();
+        }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    if (window.lucide) window.lucide.createIcons();
+
+    const loadingState = document.getElementById('loading');
+    const tabsContainer = document.getElementById('tabsContainer');
+    const tabsList = document.getElementById('tabsList');
+    const tabViewsContainer = document.getElementById('tabViewsContainer');
+    const btnNovaAba = document.getElementById('btnNovaAba');
+    const tabTemplate = document.getElementById('tabTemplate');
+    
+    // Globais do Header
+    const selectPeriodo = document.getElementById('selectPeriodo');
+    const btnExport = document.getElementById('btnExport');
+    const btnImport = document.getElementById('btnImport');
+    const fileUpload = document.getElementById('fileUpload');
+    const btnVoltar = document.getElementById('btnVoltar');
+    
+    // Import Modal globais
+    const importModal = document.getElementById('importModal');
+    const importLog = document.getElementById('importLog');
+    const importStatus = document.getElementById('importStatus');
+    const btnCloseModal = document.getElementById('btnCloseModal');
+    const btnConfirmarUpload = document.getElementById('btnConfirmarUpload');
+    const uploadProgressContainer = document.getElementById('uploadProgressContainer');
+    const uploadProgressBar = document.getElementById('uploadProgressBar');
+
+    // Expondo vars pro Escopo da Classe Externa
+    window.cacheDashboard = null;
+    window.periodosGlobais = [];
+    let preparedPayloads = [];
+
+    // Gerenciamento de Abas
+    let tabCount = 0;
+    let activeTabId = null;
+    const tabsData = new Map(); // id -> Tab Instance
+
+    // Exportar globais que a classe precisa chamar
+    window.showToast = showToast;
+
+    // --- Inicia a Visualização --- //
+    try {
+        await service.init();
+        
+        // Puxar os períodos
+        window.periodosGlobais = await service.carregarPeriodos();
+        selectPeriodo.innerHTML = '<option value="">Obrigatório...</option>';
+
+        if (window.periodosGlobais.length > 0) {
+            window.periodosGlobais.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = p.descricao;
+                selectPeriodo.appendChild(opt);
+            });
+            selectPeriodo.selectedIndex = 1;
+        }
+
+        // Carregar dados de Escolas do cache do dashboard para os combos
+        const stData = await chrome.storage.local.get(['dashboardCache']);
+        if (stData.dashboardCache && stData.dashboardCache.data) {
+            window.cacheDashboard = stData.dashboardCache.data.escolas;
+        } else {
+            showToast('Nenhum dado de turmas no cache. Abra o Dashboard primeiro.', 'warning');
+            cacheDashboard = [];
+        }
+
+        loadingState.classList.add('hidden');
+        tabsContainer.classList.remove('hidden');
+        
+        // Inicializar a primeira aba automaticamente
+        criarAba();
+
+    } catch (err) {
+        showToast(`Erro na inicialização: ${err.message}`, 'error');
+        loadingState.innerHTML = `<p style="color:var(--error);">Falha: ${err.message}</p>`;
+    }
+
+    btnVoltar.addEventListener('click', () => {
+        window.location.href = '../chamada/chamada.html';
+    });
+
+    // --- Módulo Multi-Abas --- //
+
+    btnNovaAba.addEventListener('click', () => criarAba());
+
+    function criarAba() {
+        tabCount++;
+        const tId = `tab-${tabCount}`;
+        
+        // 1. Criar Botão da Aba
+        const btn = document.createElement('button');
+        btn.className = 'tab-button tab-label';
+        btn.innerHTML = `<span>Aba ${tabCount}</span> <div class="tab-close" data-target="${tId}"><i data-lucide="x"></i></div>`;
+        btn.addEventListener('click', (e) => {
+            if(e.target.closest('.tab-close')) return; // ignora se clicou no fechar
+            alternarAba(tId);
+        });
+        tabsList.appendChild(btn);
+
+        // Evento de Fcehar
+        btn.querySelector('.tab-close').addEventListener('click', (e) => {
+            e.stopPropagation();
+            fecharAba(tId);
+        });
+
+        // 2. Instanciar View da Aba
+        const clone = tabTemplate.content.cloneNode(true);
+        const viewEl = clone.querySelector('.tab-view');
+        viewEl.id = tId;
+        tabViewsContainer.appendChild(clone);
+
+        // 3. Classe de controle local
+        const tabInstance = new TabController(tId, viewEl, btn);
+        tabsData.set(tId, tabInstance);
+        
+        alternarAba(tId);
+        if (window.lucide) window.lucide.createIcons();
+    }
+
+    function alternarAba(id) {
+        if (!tabsData.has(id)) return;
+        
+        // Ocultar todas
+        document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-view').forEach(v => {
+            v.classList.remove('active-view');
+            v.classList.add('hidden');
+        });
+
+        const instance = tabsData.get(id);
+        instance.btnEl.classList.add('active');
+        instance.viewEl.classList.add('active-view');
+        instance.viewEl.classList.remove('hidden');
+        activeTabId = id;
+    }
+
+    function fecharAba(id) {
+        if (!tabsData.has(id)) return;
+        const instance = tabsData.get(id);
+        
+        instance.btnEl.remove();
+        instance.viewEl.remove();
+        tabsData.delete(id);
+        
+        // Se fechou a aba atual, foca em outra
+        if (activeTabId === id) {
+            const remaining = Array.from(tabsData.keys());
+            if (remaining.length > 0) {
+                alternarAba(remaining[remaining.length - 1]);
+            } else {
+                activeTabId = null;
+                // Abre uma nova aba limpa se fechar a ultima?
+                criarAba(); 
+            }
+        }
+    }
+
+
+
+    // --- Sistema Legado: Exportação em Lote pelo Top Header --- //
+    btnExport.addEventListener('click', async () => {
+        const pId = selectPeriodo.value;
+        if (!pId) {
+            showToast('Top Header: Selecione o período antes de exportar o lote global.', 'warning');
+            return;
+        }
+        
+        btnExport.disabled = true;
+        const originalText = btnExport.innerHTML;
+        
+        try {
+            await service.exportarMassa(pId, (prog) => {
+                btnExport.innerHTML = `<i data-lucide="loader" class="spinner-small"></i> ${prog.pct}%`;
+            });
+            showToast('Arquivos de lote baixados com sucesso!', 'success');
+        } catch (err) {
+            showToast(`Erro na exportação em lote: ${err.message}`, 'error');
+        } finally {
+            btnExport.disabled = false;
+            btnExport.innerHTML = originalText;
         }
     });
 
-    // Globais
+    // --- Fluxo de Importação pelo Top Header --- //
+    btnImport.addEventListener('click', () => fileUpload.click());
+
+    fileUpload.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Reset state
+        importStatus.textContent = `(${file.name})`;
+        importLog.innerHTML = `<div class="info">Lendo arquivo excel massivo...</div>`;
+        btnConfirmarUpload.classList.add('hidden');
+        uploadProgressContainer.classList.add('hidden');
+        importModal.classList.remove('hidden');
+        preparedPayloads = [];
+
+        try {
+            preparedPayloads = await service.parseUploadedFile(file);
+            if (preparedPayloads.length === 0) {
+                logMessage('Nenhuma nota com ID detectada no arquivo global.', 'error');
+                return;
+            }
+
+            logMessage(`Foram detectadas ${preparedPayloads.length} avaliações para atualizar massivamente.`, 'success');
+            btnConfirmarUpload.classList.remove('hidden');
+
+        } catch (err) {
+            logMessage(`Falha Excel: ${err.message}`, 'error');
+        } finally {
+            fileUpload.value = '';
+        }
+    });
+
+    btnConfirmarUpload.addEventListener('click', async () => {
+        btnConfirmarUpload.disabled = true;
+        btnCloseModal.disabled = true;
+        uploadProgressContainer.classList.remove('hidden');
+        uploadProgressBar.style.width = '0%';
+
+        try {
+            const sucessos = await service.enviarNotas(preparedPayloads, 
+            (prog) => uploadProgressBar.style.width = `${prog.pct}%`, 
+            (msg, tipo) => logMessage(msg, tipo));
+
+            logMessage(`Massivo concluído: ${sucessos} lançamentos validados!`, 'success');
+            showToast(`Lote Global: ${sucessos} notas salvas.`, 'success');
+            
+        } catch (err) {
+            logMessage(`Interrompido: ${err.message}`, 'error');
+        } finally {
+            btnConfirmarUpload.disabled = false;
+            btnConfirmarUpload.classList.add('hidden');
+            btnCloseModal.disabled = false;
+        }
+    });
+
+    btnCloseModal.addEventListener('click', () => importModal.classList.add('hidden'));
+
+    // --- Helpers Utilitários --- //
     function logMessage(text, tipo) {
         const d = document.createElement('div');
         d.className = tipo;
@@ -425,9 +523,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         toast.innerHTML = `<i data-lucide="${icon}"></i> <span>${message}</span>`;
         container.appendChild(toast);
         
-        // Ativa lucide para itens injetados
         if (window.lucide) window.lucide.createIcons();
-
         setTimeout(() => toast.remove(), 5000);
     }
 });

@@ -14,8 +14,21 @@
         <header class="header">
             <div class="header-content">
                 <h1>Gerenciamento de Avaliações</h1>
-                <div class="header-actions">
-                    <button id="btnVoltar" class="btn btn-secondary">
+                <div class="header-actions" style="display: flex; gap: 10px; align-items: center;">
+                    <select id="selectPeriodo" class="form-control" style="max-width: 150px; padding-top: 5px; padding-bottom: 5px; height: auto;">
+                        <option value="">Aguarde...</option>
+                    </select>
+                    
+                    <button id="btnExport" class="btn btn-outline" title="Baixar Diários em Lote (Excel)">
+                        <i data-lucide="download"></i> Gerar
+                    </button>
+
+                    <input type="file" id="fileUpload" accept=".xls,.xlsx" style="display: none;">
+                    <button id="btnImport" class="btn btn-outline" title="Carregar Diários Alterados (Excel)">
+                        <i data-lucide="upload"></i> Importar
+                    </button>
+                    
+                    <button id="btnVoltar" class="btn btn-secondary" style="margin-left: 10px;">
                         <i data-lucide="arrow-left"></i> Voltar
                     </button>
                 </div>
@@ -29,104 +42,80 @@
             </div>
 
             <!-- Tabs Navigation -->
-            <div class="tabs-container hidden" id="tabsContainer" style="margin-top: 20px;">
-                <button class="tab-button active" data-target="loteView">Em Lote (Planilhas)</button>
-                <button class="tab-button" data-target="diretoView">Lançamento Direto</button>
+            <div class="tabs-container hidden" id="tabsContainer" style="margin-top: 20px; align-items: flex-end;">
+                <div id="tabsList" style="display: flex; flex-wrap: wrap; gap: 5px; flex-grow: 1;">
+                    <!-- Abas injetadas dinamicamente aqui -->
+                </div>
+                <button id="btnNovaAba" class="tab-button-add" title="Nova Aba" style="margin-left: 10px; padding: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer;">
+                    <i data-lucide="plus"></i>
+                </button>
             </div>
 
-            <!-- View: Em Lote -->
-            <div id="loteView" class="avaliacoes-layout hidden tab-view active-view">
-                <div class="card-action">
-                    <div class="card-icon">
-                        <i data-lucide="download-cloud"></i>
-                    </div>
-                    <h2>Exportar Planilhas de Avaliações</h2>
-                    <p>Baixe as planilhas consolidadas por escola. Cada planilha conterá abas para as turmas, formatadas para inserção rápida de notas.</p>
-                    
-                    <div class="form-group" style="margin-top: 15px;">
-                        <label for="selectPeriodo">Selecione o Período de Avaliação:</label>
-                        <select id="selectPeriodo" class="form-control" style="max-width: 300px; margin: 0 auto; display: block; margin-top: 8px;">
-                            <option value="">Carregando períodos...</option>
-                        </select>
-                    </div>
-
-                    <button id="btnExport" class="btn btn-primary" style="margin-top: 20px;">
-                        <i data-lucide="download"></i> Gerar e Baixar Planilhas
-                    </button>
-                </div>
-
-                <div class="card-action">
-                    <div class="card-icon">
-                        <i data-lucide="upload-cloud"></i>
-                    </div>
-                    <h2>Importar Notas e Enviar</h2>
-                    <p>Selecione um arquivo de planilhas modificado (mesmo formato do export) para enviar as notas diretamente para o portal.</p>
-                    <input type="file" id="fileUpload" accept=".xls,.xlsx" style="display: none;">
-                    
-                    <button id="btnImport" class="btn btn-success" style="margin-top: 20px;">
-                        <i data-lucide="upload"></i> Selecionar Arquivo e Importar
-                    </button>
-                    <p id="importStatus" class="status-msg"></p>
-                </div>
+            <!-- Views Container -->
+            <div id="tabViewsContainer">
+                <!-- Visões ativas das abas renderizadas aqui -->
             </div>
 
-            <!-- View: Lançamento Direto -->
-            <div id="diretoView" class="hidden tab-view" style="margin-top: 20px;">
-                <div class="filtro-container" style="background: var(--surface); padding: 20px; border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow-sm); margin-bottom: 20px;">
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
-                        <div>
-                            <label class="form-label">Escola</label>
-                            <select id="selEscola" class="form-control"><option value="">Selecione...</option></select>
+            <!-- Template: Lançamento Direto -->
+            <template id="tabTemplate">
+                <div class="tab-view" style="margin-top: 20px;">
+                    <div class="filtro-container" style="background: var(--surface); padding: 20px; border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow-sm); margin-bottom: 20px;">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                            <div>
+                                <label class="form-label">Escola</label>
+                                <select class="form-control sel-escola"><option value="">Selecione...</option></select>
+                            </div>
+                            <div>
+                                <label class="form-label">Turma</label>
+                                <select class="form-control sel-turma" disabled><option value="">Selecione a Escola</option></select>
+                            </div>
+                            <div>
+                                <label class="form-label">Disciplina</label>
+                                <select class="form-control sel-disc" disabled><option value="">Selecione a Turma</option></select>
+                            </div>
+                            <div>
+                                <label class="form-label">Período</label>
+                                <select class="form-control sel-periodo-diretor"><option value="">Aguarde...</option></select>
+                            </div>
                         </div>
-                        <div>
-                            <label class="form-label">Turma</label>
-                            <select id="selTurma" class="form-control" disabled><option value="">Selecione a Escola</option></select>
-                        </div>
-                        <div>
-                            <label class="form-label">Disciplina</label>
-                            <select id="selDisc" class="form-control" disabled><option value="">Selecione a Turma</option></select>
-                        </div>
-                        <div>
-                            <label class="form-label">Período</label>
-                            <select id="selPeriodoDiretor" class="form-control"><option value="">Aguarde...</option></select>
+                        <div style="text-align: right;">
+                            <button class="btn btn-primary btn-carregar-tabela" disabled>
+                                <i data-lucide="search"></i> Buscar Instrumentos e Lançamentos
+                            </button>
                         </div>
                     </div>
-                    <div style="text-align: right;">
-                        <button id="btnCarregarTabela" class="btn btn-primary" disabled>
-                            <i data-lucide="search"></i> Buscar Instrumentos e Lançamentos
+
+                    <!-- Tabela DataGrid Native -->
+                    <div class="hidden data-grid-container grid-container-wrapper">
+                        <table class="data-grid tb-notas-direto">
+                            <thead>
+                                <tr class="tb-notas-head-row">
+                                    <th style="width: 80px;">Nº Matr.</th>
+                                    <th>Nome do Aluno</th>
+                                </tr>
+                            </thead>
+                            <tbody class="tb-notas-body">
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Formato de Espaçador para o Scroll final -->
+                    <div style="height: 60px;"></div>
+
+                    <!-- Sticky Footer Actions -->
+                    <div class="hidden footer-acoes" style="position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface); padding: 15px 30px; border-top: 1px solid var(--border); box-shadow: 0 -4px 10px rgba(0,0,0,0.05); display: flex; justify-content: flex-end; align-items: center; z-index: 100;">
+                        <span class="txt-modificacoes" style="margin-right: 20px; color: var(--text-muted); font-size: 0.9rem;">0 alterações pendentes</span>
+                        <button class="btn btn-success btn-salvar-direto shadow-md" disabled>
+                            <i data-lucide="save"></i> Salvar Lançamentos Aba
                         </button>
                     </div>
                 </div>
-
-                <!-- Tabela DataGrid Native -->
-                <div id="gridContainer" class="hidden" style="background: var(--surface); padding: 20px; border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow-sm); margin-bottom: 80px; overflow-x: auto;">
-                    <table class="data-grid" id="tbNotasDireto">
-                        <thead>
-                            <tr id="tbNotasHeadRow">
-                                <th style="width: 80px;">Nº Matr.</th>
-                                <th>Nome do Aluno</th>
-                                <!-- Colunas de instrumentos injetadas aqui -->
-                            </tr>
-                        </thead>
-                        <tbody id="tbNotasBody">
-                            <!-- Alunos injetados aqui -->
-                        </tbody>
-                    </table>
-                </div>
-                
-                <!-- Sticky Footer Actions -->
-                <div id="footerAcoes" class="hidden" style="position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface); padding: 15px 30px; border-top: 1px solid var(--border); box-shadow: 0 -4px 10px rgba(0,0,0,0.05); display: flex; justify-content: flex-end; align-items: center; z-index: 100;">
-                    <span id="txtModificacoes" style="margin-right: 20px; color: var(--text-muted); font-size: 0.9rem;">0 alterações pendentes</span>
-                    <button id="btnSalvarDireto" class="btn btn-success shadow-md">
-                        <i data-lucide="save"></i> Salvar Lançamentos na EscolaRS
-                    </button>
-                </div>
-            </div>
+            </template>
             
             <div id="importModal" class="modal-overlay hidden">
                 <div class="modal-content" style="max-width: 600px;">
                     <div class="modal-header">
-                        <h2>Validando Planilha...</h2>
+                        <h2>Validando Planilha <span id="importStatus" style="font-size:0.8rem; font-weight:normal; color:#666;"></span></h2>
                         <button id="btnCloseModal" class="btn-close"><i data-lucide="x"></i></button>
                     </div>
                     <div class="modal-body">
