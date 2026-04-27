@@ -28,7 +28,14 @@
                 <p id="loadingText">Aguarde...</p>
             </div>
 
-            <div id="avaliacoesContainer" class="avaliacoes-layout hidden">
+            <!-- Tabs Navigation -->
+            <div class="tabs-container hidden" id="tabsContainer" style="margin-top: 20px;">
+                <button class="tab-button active" data-target="loteView">Em Lote (Planilhas)</button>
+                <button class="tab-button" data-target="diretoView">Lançamento Direto</button>
+            </div>
+
+            <!-- View: Em Lote -->
+            <div id="loteView" class="avaliacoes-layout hidden tab-view active-view">
                 <div class="card-action">
                     <div class="card-icon">
                         <i data-lucide="download-cloud"></i>
@@ -60,6 +67,59 @@
                         <i data-lucide="upload"></i> Selecionar Arquivo e Importar
                     </button>
                     <p id="importStatus" class="status-msg"></p>
+                </div>
+            </div>
+
+            <!-- View: Lançamento Direto -->
+            <div id="diretoView" class="hidden tab-view" style="margin-top: 20px;">
+                <div class="filtro-container" style="background: var(--surface); padding: 20px; border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow-sm); margin-bottom: 20px;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                        <div>
+                            <label class="form-label">Escola</label>
+                            <select id="selEscola" class="form-control"><option value="">Selecione...</option></select>
+                        </div>
+                        <div>
+                            <label class="form-label">Turma</label>
+                            <select id="selTurma" class="form-control" disabled><option value="">Selecione a Escola</option></select>
+                        </div>
+                        <div>
+                            <label class="form-label">Disciplina</label>
+                            <select id="selDisc" class="form-control" disabled><option value="">Selecione a Turma</option></select>
+                        </div>
+                        <div>
+                            <label class="form-label">Período</label>
+                            <select id="selPeriodoDiretor" class="form-control"><option value="">Aguarde...</option></select>
+                        </div>
+                    </div>
+                    <div style="text-align: right;">
+                        <button id="btnCarregarTabela" class="btn btn-primary" disabled>
+                            <i data-lucide="search"></i> Buscar Instrumentos e Lançamentos
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Tabela DataGrid Native -->
+                <div id="gridContainer" class="hidden" style="background: var(--surface); padding: 20px; border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow-sm); margin-bottom: 80px; overflow-x: auto;">
+                    <table class="data-grid" id="tbNotasDireto">
+                        <thead>
+                            <tr id="tbNotasHeadRow">
+                                <th style="width: 80px;">Nº Matr.</th>
+                                <th>Nome do Aluno</th>
+                                <!-- Colunas de instrumentos injetadas aqui -->
+                            </tr>
+                        </thead>
+                        <tbody id="tbNotasBody">
+                            <!-- Alunos injetados aqui -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Sticky Footer Actions -->
+                <div id="footerAcoes" class="hidden" style="position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface); padding: 15px 30px; border-top: 1px solid var(--border); box-shadow: 0 -4px 10px rgba(0,0,0,0.05); display: flex; justify-content: flex-end; align-items: center; z-index: 100;">
+                    <span id="txtModificacoes" style="margin-right: 20px; color: var(--text-muted); font-size: 0.9rem;">0 alterações pendentes</span>
+                    <button id="btnSalvarDireto" class="btn btn-success shadow-md">
+                        <i data-lucide="save"></i> Salvar Lançamentos na EscolaRS
+                    </button>
                 </div>
             </div>
             

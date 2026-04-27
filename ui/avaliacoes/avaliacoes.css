@@ -96,3 +96,95 @@
   height: 16px;
   animation: spin 1s linear infinite;
 }
+
+/* Tabs Styling */
+.tabs-container {
+    display: flex;
+    gap: 10px;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 20px;
+}
+
+.tab-button {
+    background: transparent;
+    border: none;
+    padding: 10px 20px;
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.2s;
+}
+
+.tab-button:hover {
+    color: var(--primary);
+}
+
+.tab-button.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+}
+
+.tab-view {
+    display: none;
+}
+
+.tab-view.active-view {
+    display: block; /* avaliacoes-layout uses grid, so we will handle it via JS if needed, or flex */
+}
+
+/* DataGrid Native Styling */
+.data-grid {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+}
+
+.data-grid th {
+    background: var(--bg-hover);
+    color: var(--text-main);
+    padding: 12px;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 2px solid var(--border);
+    white-space: nowrap;
+}
+
+.data-grid td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+}
+
+.data-grid tbody tr:hover {
+    background-color: var(--bg-hover);
+}
+
+.grade-input {
+    width: 70px;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    text-align: center;
+    font-size: 0.95rem;
+    font-family: monospace;
+    transition: all 0.2s;
+}
+
+.grade-input:focus {
+    border-color: var(--primary);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(31, 130, 43, 0.2);
+}
+
+.grade-input.changed {
+    background-color: #fef3c7; /* yellow hint */
+    border-color: #fbbf24;
+}
+
+.grade-input.saved {
+    background-color: #dcfce7; /* green hint */
+    border-color: #22c55e;
+}

@@ -480,4 +480,182 @@ class AvaliacoesService {
         onLog(`\n[FINALIZADO] ${successCount} notas atualizadas com sucesso no EscolaRS!`, 'success');
         return successCount;
     }
+
+    // --- Lançamento Direto (DataGrid Native) --- //
+    
+    async carregarDadosTabelaDireta(turmaId, discId, isSemestre, periodoId, idRecHumano) {
+        if (!this.cacheInfo) await this.init();
+        const { token } = this.cacheInfo;
+
+        // 1. Encontrar o idInstrumento via listarAvaliacoesTurma
+        const urlAval = `https://secweb.procergs.com.br/ise-escolars-professor/rest/professor/listarAvaliacoesTurma/${turmaId}/${discId}/${idRecHumano}`;
+        const resAval = await this.fetchComRetry(urlAval, { headers: { 'Authorization': token } });
+        const arrayAvals = await resAval.json();
+
+        let intrumentosPermitidos = new Set();
+        const nomePeriodoProc = `° ${isSemestre ? 'Sem' : 'Trim'}`;
+        let periodoEncontrado = null;
+
+        for (const av of arrayAvals) {
+            if (av.descricao && av.descricao.includes(nomePeriodoProc)) {
+                if (!periodoId || av.id == periodoId) {
+                    periodoEncontrado = av;
+                    break;
+                }
+            }
+        }
+
+        let instrumentosApi = [];
+        if (periodoEncontrado && periodoEncontrado.instrumentos) {
+            instrumentosApi = periodoEncontrado.instrumentos;
+            instrumentosApi.forEach(i => intrumentosPermitidos.add(i.id));
+        }
+
+        if (instrumentosApi.length === 0) {
+            throw new Error("Nenhum instrumento de avaliação encontrado para esta disciplina no período selecionado.");
+        }
+
+        // Tenta reaproveitar a cache do dashboard
+        let alunosInfo = null;
+        let escolaCacheId = null;
+        const bkgData = await chrome.storage.local.get(['dashboardCache']);
+        if (bkgData.dashboardCache && bkgData.dashboardCache.data && bkgData.dashboardCache.data.escolas) {
+            const dC = bkgData.dashboardCache.data.escolas;
+            for (const esc of dC) {
+                for (const t of esc.turmas) {
+                    if (String(t.id) === String(turmaId)) {
+                        for (const d of t.disciplinas) {
+                            if (String(d.id) === String(discId)) {
+                                alunosInfo = d.alunos;
+                                escolaCacheId = esc.id;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Se não encontrou no cache, faz fetch
+        if (!alunosInfo || alunosInfo.length === 0) {
+            const urlAlunos = `https://secweb.procergs.com.br/ise-escolars-professor/rest/professor/listarAulasDaTurmaComResultado/${turmaId}/${discId}/${idRecHumano}/false`;
+            const resAlunos = await this.fetchComRetry(urlAlunos, { headers: { 'Authorization': token } });
+            const dataAlunos = await resAlunos.json();
+            alunosInfo = dataAlunos.alunos || [];
+        }
+
+        const alunosMap = new Map();
+        if (alunosInfo) {
+            alunosInfo.forEach(a => {
+                let situacaoObj = null;
+                if (a.situacaoAlunoTurma) {
+                    situacaoObj = { ativo: a.situacaoAlunoTurma.ativo === "S" || a.situacaoAlunoTurma.ativo === true };
+                } else {
+                    situacaoObj = a.situacao || { ativo: true };
+                }
+                
+                const nmLimpo = String(a.nome || '').replace(/^\d+\.\s*/, '').replace(/\s+/g, '').toLowerCase();
+                alunosMap.set(nmLimpo, {
+                    situacao: situacaoObj,
+                    matricula: a.matricula || a.id,
+                    nomeExibicao: String(a.nome || '').replace(/^\d+\.\s*/, '').trim()
+                });
+            });
+        }
+
+        // 3. Pegar o XLS original para obter as notas atuais formatadas corretamente pela SEDUC
+        const urlCsv = `https://secweb.procergs.com.br/ise-escolars-professor/rest/professor/gerarXls/${turmaId}/${discId}/${idRecHumano}/${periodoId}`;
+        const resCsv = await this.fetchComRetry(urlCsv, { headers: { 'Authorization': token } });
+        const jsonCsv = await resCsv.json();
+
+        if (!jsonCsv || !jsonCsv.xls) {
+            throw new Error("Falha ao obter os dados oficiais da turma.");
+        }
+
+        const arrayBuffer = this.base64ToArrayBuffer(jsonCsv.xls);
+        const wbOrig = XLSX.read(arrayBuffer, { type: 'array' });
+        const sheetOrig = wbOrig.Sheets[wbOrig.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(sheetOrig, { header: 1 });
+
+        let headerRowIndex = -1;
+        for (let rowIdx = 0; rowIdx < Math.min(5, jsonData.length); rowIdx++) {
+            const row = jsonData[rowIdx];
+            // Utilizamos 'Aluno' como identificador infalível da linha de cabeçalho (idêntico à Exportação)
+            if (row && row.some(c => typeof c === 'string' && c.includes('Aluno'))) {
+                headerRowIndex = rowIdx;
+                break;
+            }
+        }
+
+        if (headerRowIndex === -1) {
+            throw new Error("Formato de cabeçalho não reconhecido na resposta oficial.");
+        }
+
+        const headerRow = jsonData[headerRowIndex];
+        const oldAlunoColIdx = headerRow.findIndex(c => typeof c === 'string' && c.includes('Aluno'));
+        
+        let cabecalhosIdentificados = [];
+        for (let colIdx = 0; colIdx < headerRow.length; colIdx++) {
+            const colName = headerRow[colIdx];
+            if (!colName || typeof colName !== 'string') continue;
+            
+            for (const instr of instrumentosApi) {
+                // A Procergs gera nomes longos cortados, usaremos startswith ou subset
+                const safeApiName = instr.nome.substring(0, 5).toLowerCase();
+                const safeColName = colName.substring(0, 5).toLowerCase();
+
+                if (safeColName.includes(safeApiName) || colName.toLowerCase().includes(instr.nome.toLowerCase())) {
+                    if (cabecalhosIdentificados.find(c => c.id === instr.id)) continue; 
+                    cabecalhosIdentificados.push({
+                        idx: colIdx,
+                        id: instr.id,
+                        nome: instr.nome,
+                        peso: instr.peso,
+                        ref: colName
+                    });
+                    break;
+                }
+            }
+        }
+
+        // Construir Array Limpo de Alunos com Notas
+        const extractRecords = [];
+        for (let r = headerRowIndex + 1; r < jsonData.length; r++) {
+            const row = jsonData[r] || [];
+            if (oldAlunoColIdx !== -1 && row[oldAlunoColIdx]) {
+                const nomeBruto = row[oldAlunoColIdx];
+                const nomeLimpo = String(nomeBruto).replace(/^\d+\.\s*/, '').trim();
+                const nomeNorm = nomeLimpo.replace(/\s+/g, '').toLowerCase();
+
+                const alunoObj = alunosMap.get(nomeNorm);
+                
+                // Exibe inativos também, mas marca (opcional, vamos filtrar ativos por padrão)
+                const isAtivo = alunoObj && alunoObj.situacao ? alunoObj.situacao.ativo : true;
+                
+                if (isAtivo && alunoObj) {
+                    const notasMap = {};
+                    for (const cab of cabecalhosIdentificados) {
+                        const rawVal = row[cab.idx];
+                        let valFormatado = "";
+                        if (rawVal !== undefined && rawVal !== null && rawVal !== '' && rawVal !== '--') {
+                            const cleanedValue = parseFloat(String(rawVal).replace(',', '.'));
+                            if (!isNaN(cleanedValue)) valFormatado = cleanedValue;
+                        }
+                        notasMap[cab.id] = valFormatado;
+                    }
+
+                    extractRecords.push({
+                        matricula: alunoObj.matricula,
+                        nome: alunoObj.nomeExibicao,
+                        notas: notasMap
+                    });
+                }
+            }
+        }
+
+        return {
+            instrumentos: cabecalhosIdentificados,
+            alunos: extractRecords
+        };
+    }
 }
