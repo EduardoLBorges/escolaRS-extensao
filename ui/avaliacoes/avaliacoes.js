@@ -180,6 +180,22 @@ class TabController {
                 inp.setAttribute('data-id-inst', ins.id);
                 inp.setAttribute('data-original-val', prevVal);
                 
+                let dataParaEnvio = ins.dataRealizacao || ins.data;
+                const dataMat = alu.dataMatricula; 
+                const hojeStr = new Date().toISOString().split('T')[0];
+
+                if (dataParaEnvio && dataMat) {
+                    const dInst = new Date(dataParaEnvio);
+                    const dMat = new Date(dataMat);
+                    if (dMat > dInst) {
+                        dataParaEnvio = hojeStr;
+                    }
+                } else if (!dataParaEnvio) {
+                    dataParaEnvio = hojeStr;
+                }
+           
+                inp.setAttribute('data-data-realizacao', dataParaEnvio);
+                
                 inp.addEventListener('input', () => this.registrarMudanca(inp));
                 
                 td.appendChild(inp);
@@ -195,6 +211,8 @@ class TabController {
         const idI = inp.getAttribute('data-id-inst');
         const oV = String(inp.getAttribute('data-original-val'));
         const nV = String(inp.value).trim();
+    
+        const dataResolvida = inp.getAttribute('data-data-realizacao');
         
         const key = `${idA}-${idI}`;
         
@@ -205,7 +223,7 @@ class TabController {
                     idInstrumento: parseInt(idI, 10),
                     idAluno: parseInt(idA, 10),
                     dsAproveitamento: parseFloat(nV),
-                    dataRealizacao: new Date().toISOString().split('T')[0]
+                    dataRealizacao: dataResolvida 
                 },
                 inputRef: inp
             };
@@ -216,7 +234,7 @@ class TabController {
         
         this.atualizarFooter();
     }
-
+    
     atualizarFooter() {
         const count = Object.keys(this.statePayloads).length;
         this.txtModifs.textContent = count === 0 ? "0 alterações na aba" : `${count} avaliações prontas para gravação`;
