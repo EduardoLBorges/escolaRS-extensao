@@ -183,7 +183,7 @@ class TabController {
                 inp.setAttribute('data-id-inst', ins.id);
                 inp.setAttribute('data-original-val', prevVal);
                 
-                let dataParaEnvio = ins.dataRealizacao || ins.data;
+                let dataParaEnvio = ins.dataAplicacao || ins.dataRealizacao || ins.data;;
                 const dataMat = alu.dataMatricula; 
                 const hojeStr = new Date().toISOString().split('T')[0];
 
