@@ -114,48 +114,6 @@ class TabController {
             this.btnCarregar.disabled = true;
         }
         
-    navegarComSetas(e) {
-        if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) return;
-
-        const currentInput = e.target;
-        
-        if (!currentInput.classList.contains('grade-input')) return;
-
-        const currentTd = currentInput.closest('td');
-        const currentTr = currentInput.closest('tr');
-        if (!currentTd || !currentTr) return;
-
-        const cellIndex = Array.from(currentTr.children).indexOf(currentTd);
-        let targetRow = null;
-        let targetCell = null;
-
-        if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            targetRow = currentTr.previousElementSibling;
-            if (targetRow) targetCell = targetRow.children[cellIndex];
-        } 
-        else if (e.key === 'ArrowDown' || e.key === 'Enter') {
-            e.preventDefault();
-            targetRow = currentTr.nextElementSibling;
-            if (targetRow) targetCell = targetRow.children[cellIndex];
-        }
-        else if (e.key === 'ArrowLeft') {
-            targetCell = currentTd.previousElementSibling;
-        }
-        else if (e.key === 'ArrowRight') {
-            targetCell = currentTd.nextElementSibling;
-        }
-        if (targetCell) {
-            const nextInput = targetCell.querySelector('.grade-input');
-            if (nextInput) {
-                if (['ArrowLeft', 'ArrowRight'].includes(e.key)) e.preventDefault(); 
-                
-                nextInput.focus();
-                
-                nextInput.select(); 
-            }
-        }
-    }
     }
 
     async carregarTabela() {
@@ -320,6 +278,49 @@ class TabController {
             this.btnSalvar.innerHTML = `<i data-lucide="save"></i> Salvar Lançamentos Aba`;
             this.btnSalvar.disabled = false;
             if (window.lucide) window.lucide.createIcons();
+        }
+    }
+
+    navegarComSetas(e) {
+        if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) return;
+
+        const currentInput = e.target;
+        
+        if (!currentInput.classList.contains('grade-input')) return;
+
+        const currentTd = currentInput.closest('td');
+        const currentTr = currentInput.closest('tr');
+        if (!currentTd || !currentTr) return;
+
+        const cellIndex = Array.from(currentTr.children).indexOf(currentTd);
+        let targetRow = null;
+        let targetCell = null;
+
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            targetRow = currentTr.previousElementSibling;
+            if (targetRow) targetCell = targetRow.children[cellIndex];
+        } 
+        else if (e.key === 'ArrowDown' || e.key === 'Enter') {
+            e.preventDefault();
+            targetRow = currentTr.nextElementSibling;
+            if (targetRow) targetCell = targetRow.children[cellIndex];
+        }
+        else if (e.key === 'ArrowLeft') {
+            targetCell = currentTd.previousElementSibling;
+        }
+        else if (e.key === 'ArrowRight') {
+            targetCell = currentTd.nextElementSibling;
+        }
+        if (targetCell) {
+            const nextInput = targetCell.querySelector('.grade-input');
+            if (nextInput) {
+                if (['ArrowLeft', 'ArrowRight'].includes(e.key)) e.preventDefault(); 
+                
+                nextInput.focus();
+                
+                nextInput.select(); 
+            }
         }
     }
 }
