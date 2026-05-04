@@ -26,6 +26,7 @@ class TabController {
         
         this.footerAcoes = viewEl.querySelector('.footer-acoes');
         this.txtModifs = viewEl.querySelector('.txt-modificacoes');
+        this.btnPreencherZeros = viewEl.querySelector('.btn-preencher-zeros');
         this.btnSalvar = viewEl.querySelector('.btn-salvar-direto');
 
         this.initCardsEvents();
@@ -44,7 +45,26 @@ class TabController {
         });
         
         this.bodyRow.addEventListener('keydown', (e) => this.navegarComSetas(e));
+        this.btnPreencherZeros.addEventListener('click', () => this.preencherVaziosComZero());
         this.btnSalvar.addEventListener('click', () => this.salvarDadosLote());
+    }
+
+    preencherVaziosComZero() {
+        let count = 0;
+        const inputs = this.bodyRow.querySelectorAll('.grade-input');
+        inputs.forEach(inp => {
+            if (inp.value.trim() === '') {
+                inp.value = '0';
+                this.registrarMudanca(inp);
+                count++;
+            }
+        });
+        
+        if (count > 0) {
+            window.showToast(`${count} lacunas preenchidas com nota 0.`, 'info');
+        } else {
+            window.showToast(`Nenhuma lacuna vazia encontrada nesta tabela.`, 'info');
+        }
     }
 
     async renderizarCardsTurmas() {
