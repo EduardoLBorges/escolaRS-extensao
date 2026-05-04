@@ -11,13 +11,15 @@ class TabController {
         this.btnEl = btnEl;
         this.statePayloads = {};
 
-         // Como window.periodosGlobais e cacheDashboard estarão no window
-        this.selEscola = viewEl.querySelector('.sel-escola');
-        this.selTurma = viewEl.querySelector('.sel-turma');
-        this.selDisc = viewEl.querySelector('.sel-disc');
-        this.selPeriodo = viewEl.querySelector('.sel-periodo-diretor');
+        this.cardsView = viewEl.querySelector('.cards-view-container');
+        this.cardsGrid = viewEl.querySelector('.cards-grid-container');
+        this.cardsLoading = viewEl.querySelector('.cards-loading');
         
-        this.btnCarregar = viewEl.querySelector('.btn-carregar-tabela');
+        this.gridHeader = viewEl.querySelector('.grid-header');
+        this.gridTitle = viewEl.querySelector('.grid-title');
+        this.gridSubtitle = viewEl.querySelector('.grid-subtitle');
+        this.btnVoltarCards = viewEl.querySelector('.btn-voltar-cards');
+        
         this.gridContainer = viewEl.querySelector('.grid-container-wrapper');
         this.headRow = viewEl.querySelector('.tb-notas-head-row');
         this.bodyRow = viewEl.querySelector('.tb-notas-body');
@@ -26,111 +28,179 @@ class TabController {
         this.txtModifs = viewEl.querySelector('.txt-modificacoes');
         this.btnSalvar = viewEl.querySelector('.btn-salvar-direto');
 
-        this.initEvents();
-        setTimeout(() => this.populateSelects(), 200); // async pra garantir que as globais foram setadas
+        this.initCardsEvents();
+        setTimeout(() => this.renderizarCardsTurmas(), 200);
     }
 
-    populateSelects() {
-        this.selPeriodo.innerHTML = '<option value="">Selecione...</option>';
-        if (window.periodosGlobais) {
-            window.periodosGlobais.forEach(p => {
-                const opt = document.createElement('option');
-                opt.value = p.id;
-                opt.textContent = p.descricao;
-                this.selPeriodo.appendChild(opt);
-            });
-            this.selPeriodo.selectedIndex = Math.min(1, window.periodosGlobais.length);
-        }
-
-        if (window.cacheDashboard) {
-            window.cacheDashboard.forEach(e => {
-                const opt = document.createElement('option');
-                opt.value = e.nome;
-                opt.textContent = e.nome;
-                this.selEscola.appendChild(opt);
-            });
-        }
-    }
-
-    initEvents() {
-        this.selEscola.addEventListener('change', (e) => {
-            this.selTurma.innerHTML = '<option value="">Selecione a Turma...</option>';
-            this.selDisc.innerHTML = '<option value="">Selecione a Turma primeiro</option>';
-            this.selTurma.disabled = false;
-            this.selDisc.disabled = true;
+    initCardsEvents() {
+        this.btnVoltarCards.addEventListener('click', () => {
             this.gridContainer.classList.add('hidden');
             this.footerAcoes.classList.add('hidden');
+            this.gridHeader.classList.add('hidden');
+            this.cardsView.classList.remove('hidden');
             
-            const val = e.target.value;
-            if (!val || !window.cacheDashboard) return;
-            const esc = window.cacheDashboard.find(x => String(x.nome) === String(val));
-            if (esc && esc.turmas) {
-                esc.turmas.forEach(t => {
-                    let opt = document.createElement('option');
-                    opt.value = t.id;
-                    opt.textContent = t.nome;
-                    this.selTurma.appendChild(opt);
+            const span = this.btnEl.querySelector('span');
+            if(span) span.textContent = 'Nova aba';
+        });
+        
+        this.bodyRow.addEventListener('keydown', (e) => this.navegarComSetas(e));
+        this.btnSalvar.addEventListener('click', () => this.salvarDadosLote());
+    }
+
+    async renderizarCardsTurmas() {
+        this.cardsGrid.innerHTML = '';
+        if (!window.cacheDashboard || window.cacheDashboard.length === 0) {
+            this.cardsGrid.innerHTML = '<div style="grid-column: 1/-1; padding: 20px; text-align: center; color: var(--text-muted);">Nenhuma turma encontrada no cache. Abra o Dashboard primeiro.</div>';
+            return;
+        }
+
+        const cardsToFetch = [];
+
+        window.cacheDashboard.forEach(esc => {
+            const section = document.createElement('div');
+            section.className = 'escola-section';
+            
+            const title = document.createElement('h3');
+            title.style.cssText = 'margin-bottom: 15px; font-size: 1.1rem; color: var(--text-muted); border-bottom: 1px solid var(--border); padding-bottom: 8px; font-weight: 600;';
+            title.textContent = esc.nome;
+            section.appendChild(title);
+
+            const grid = document.createElement('div');
+            grid.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;';
+
+            let disciplinasList = [];
+            
+            if (esc.turmas) {
+                esc.turmas.forEach(tur => {
+                    if (tur.disciplinas) {
+                        tur.disciplinas.forEach(disc => {
+                            disciplinasList.push({ tur, disc });
+                        });
+                    }
                 });
             }
-            this.validarBusca();
-        });
 
-        this.selTurma.addEventListener('change', (e) => {
-            this.selDisc.innerHTML = '<option value="">Selecione a Disciplina...</option>';
-            this.selDisc.disabled = false;
-            this.gridContainer.classList.add('hidden');
-            this.footerAcoes.classList.add('hidden');
-            
-            const val = e.target.value;
-            if (!val || !window.cacheDashboard) return;
-            const esc = window.cacheDashboard.find(x => String(x.nome) === String(this.selEscola.value));
-            if (esc) {
-                const turm = esc.turmas.find(x => String(x.id) === String(val));
-                if (turm && turm.disciplinas) {
-                    turm.disciplinas.forEach(d => {
-                        let opt = document.createElement('option');
-                        opt.value = d.id;
-                        opt.textContent = d.disciplina || d.nome;
-                        this.selDisc.appendChild(opt);
-                    });
-                }
+            // Ordenar em ordem alfanumérica pelo nome (ex: "71 - Matemática")
+            disciplinasList.sort((a, b) => {
+                const nameA = `${a.tur.nome} - ${a.disc.disciplina || a.disc.nome}`;
+                const nameB = `${b.tur.nome} - ${b.disc.disciplina || b.disc.nome}`;
+                return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+            });
+
+            disciplinasList.forEach(item => {
+                const tur = item.tur;
+                const disc = item.disc;
+                const cardTitle = `${tur.nome} - ${disc.disciplina || disc.nome}`;
+
+                const card = document.createElement('div');
+                card.className = 'turma-card';
+                card.innerHTML = `
+                    <div class="turma-card-header">
+                        <h4 class="turma-card-title">${cardTitle}</h4>
+                    </div>
+                    <div class="turma-card-instruments">
+                        <span class="instrument-loading-tag">Carregando instrumentos...</span>
+                    </div>
+                `;
+
+                card.addEventListener('click', () => this.carregarTabela(esc, tur, disc));
+                grid.appendChild(card);
+
+                cardsToFetch.push({
+                    cardEl: card,
+                    turmaId: tur.id,
+                    discId: disc.id,
+                    idRecHumano: service.cacheInfo.idRecHumano
+                });
+            });
+
+            if (disciplinasList.length > 0) {
+                section.appendChild(grid);
+                this.cardsGrid.appendChild(section);
             }
-            this.validarBusca();
         });
 
-        this.selDisc.addEventListener('change', () => this.validarBusca());
-        this.selPeriodo.addEventListener('change', () => this.validarBusca());
-
-        this.btnCarregar.addEventListener('click', () => this.carregarTabela());
-        this.btnSalvar.addEventListener('click', () => this.salvarDadosLote());
-
-        this.bodyRow.addEventListener('keydown', (e) => this.navegarComSetas(e));
+        // Fetch instruments in background (batched)
+        this.carregarInstrumentosNosCards(cardsToFetch);
     }
 
-    validarBusca() {
-        if (this.selEscola.value && this.selTurma.value && this.selDisc.value && this.selPeriodo.value) {
-            this.btnCarregar.disabled = false;
-        } else {
-            this.btnCarregar.disabled = true;
+    async carregarInstrumentosNosCards(cardsData) {
+        if (!cardsData || cardsData.length === 0) return;
+        this.cardsLoading.classList.remove('hidden');
+        
+        const batchSize = 3;
+        for (let i = 0; i < cardsData.length; i += batchSize) {
+            const batch = cardsData.slice(i, i + batchSize);
+            
+            await Promise.all(batch.map(async (data) => {
+                try {
+                    // Usando chamadas através do service API client se possivel, senao direto (fetchEscolaRS seria melhor mas não tá global)
+                    const urlAval = `https://secweb.procergs.com.br/ise-escolars-professor/rest/professor/listarAvaliacoesTurma/${data.turmaId}/${data.discId}/${data.idRecHumano}`;
+                    const resAval = await service.fetchComRetry(urlAval, { headers: { 'Authorization': service.cacheInfo.token } });
+                    const arrayAvals = await resAval.json();
+                    
+                    const selectPeriodoGlobal = document.getElementById('selectPeriodo');
+                    const pId = selectPeriodoGlobal ? selectPeriodoGlobal.value : null;
+                    
+                    let instrumentosApi = [];
+                    if (pId) {
+                         const periodoEncontrado = arrayAvals.find(a => parseInt(a.id) === parseInt(pId));
+                         if (periodoEncontrado && periodoEncontrado.instrumentos) instrumentosApi = periodoEncontrado.instrumentos;
+                    } else {
+                         // Sem período, pega do primeiro período ativo ou junta todos
+                         if (arrayAvals[0] && arrayAvals[0].instrumentos) instrumentosApi = arrayAvals[0].instrumentos;
+                    }
+
+                    const container = data.cardEl.querySelector('.turma-card-instruments');
+                    container.innerHTML = '';
+                    if (instrumentosApi.length === 0) {
+                        container.innerHTML = '<span class="instrument-tag" style="background:#fef2f2; color:#991b1b;">Sem instrumentos no período</span>';
+                    } else {
+                        instrumentosApi.forEach(inst => {
+                            const tag = document.createElement('span');
+                            tag.className = 'instrument-tag';
+                            tag.textContent = inst.nome;
+                            tag.title = inst.nome;
+                            container.appendChild(tag);
+                        });
+                    }
+                } catch (e) {
+                    const container = data.cardEl.querySelector('.turma-card-instruments');
+                    container.innerHTML = '<span class="instrument-tag" style="background:#fef2f2; color:#991b1b;">Erro ao carregar</span>';
+                }
+            }));
         }
         
+        this.cardsLoading.classList.add('hidden');
     }
 
-    async carregarTabela() {
-        const tId = this.selTurma.value;
-        const dId = this.selDisc.value;
-        const pId = this.selPeriodo.value;
-        const perNome = this.selPeriodo.options[this.selPeriodo.selectedIndex].text;
-        const discNome = this.selDisc.options[this.selDisc.selectedIndex].text;
-        const turmNome = this.selTurma.options[this.selTurma.selectedIndex].text;
+    async carregarTabela(escola, turma, disciplina) {
+        const selectPeriodoGlobal = document.getElementById('selectPeriodo');
+        const pId = selectPeriodoGlobal ? selectPeriodoGlobal.value : null;
+        
+        if (!pId) {
+            window.showToast('Selecione um Período no cabeçalho superior primeiro.', 'warning');
+            return;
+        }
+
+        const perNome = selectPeriodoGlobal.options[selectPeriodoGlobal.selectedIndex].text;
         const isSemestre = perNome.toLowerCase().includes('sem');
         
-        this.btnCarregar.disabled = true;
-        this.btnCarregar.innerHTML = `<i data-lucide="loader" class="spinner-small"></i> Buscando Diários...`;
+        const discNome = disciplina.disciplina || disciplina.nome;
+        const turmNome = turma.nome;
+        
+        this.cardsView.classList.add('hidden');
+        
+        this.gridTitle.textContent = `${discNome}`;
+        this.gridSubtitle.textContent = `${escola.nome} • ${turmNome} • ${perNome}`;
+        this.gridHeader.classList.remove('hidden');
+
+        const iconOriginal = this.gridTitle.innerHTML;
+        this.gridTitle.innerHTML = `<i data-lucide="loader" class="spinner-small" style="display:inline-block; margin-right:8px;"></i> Carregando...`;
         if (window.lucide) window.lucide.createIcons();
 
         try {
-            const data = await service.carregarDadosTabelaDireta(tId, dId, isSemestre, pId, service.cacheInfo.idRecHumano);
+            const data = await service.carregarDadosTabelaDireta(turma.id, disciplina.id, isSemestre, pId, service.cacheInfo.idRecHumano);
             this.renderizarDataGrid(data.instrumentos, data.alunos);
             
             this.gridContainer.classList.remove('hidden');
@@ -144,11 +214,10 @@ class TabController {
             window.showToast(`(Aba) Carregado: ${data.alunos.length} alunos!`, 'success');
         } catch (err) {
             window.showToast(`(Aba) Erro: ${err.message}`, 'error');
-            this.gridContainer.classList.add('hidden');
-            this.footerAcoes.classList.add('hidden');
+            this.cardsView.classList.remove('hidden');
+            this.gridHeader.classList.add('hidden');
         } finally {
-            this.btnCarregar.disabled = false;
-            this.btnCarregar.innerHTML = `<i data-lucide="search"></i> Buscar Instrumentos`;
+            this.gridTitle.textContent = discNome;
             if (window.lucide) window.lucide.createIcons();
         }
     }
@@ -183,7 +252,7 @@ class TabController {
                 inp.setAttribute('data-id-inst', ins.id);
                 inp.setAttribute('data-original-val', prevVal);
                 
-                let dataParaEnvio = ins.dataAplicacao || ins.dataRealizacao || ins.data;;
+                let dataParaEnvio = ins.dataAplicacao || ins.dataRealizacao || ins.data;
                 const dataMat = alu.dataMatricula; 
                 const hojeStr = new Date().toISOString().split('T')[0];
 
@@ -417,7 +486,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // 1. Criar Botão da Aba
         const btn = document.createElement('button');
         btn.className = 'tab-button tab-label';
-        btn.innerHTML = `<span>Aba ${tabCount}</span> <div class="tab-close" data-target="${tId}"><i data-lucide="x"></i></div>`;
+        btn.innerHTML = `<span>Nova aba</span> <div class="tab-close" data-target="${tId}"><i data-lucide="x"></i></div>`;
         btn.addEventListener('click', (e) => {
             if(e.target.closest('.tab-close')) return; // ignora se clicou no fechar
             alternarAba(tId);

@@ -59,30 +59,27 @@
             <!-- Template: Lançamento Direto -->
             <template id="tabTemplate">
                 <div class="tab-view" style="margin-top: 20px;">
-                    <div class="filtro-container" style="background: var(--surface); padding: 20px; border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow-sm); margin-bottom: 20px;">
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
-                            <div>
-                                <label class="form-label">Escola</label>
-                                <select class="form-control sel-escola"><option value="">Selecione...</option></select>
-                            </div>
-                            <div>
-                                <label class="form-label">Turma</label>
-                                <select class="form-control sel-turma" disabled><option value="">Selecione a Escola</option></select>
-                            </div>
-                            <div>
-                                <label class="form-label">Disciplina</label>
-                                <select class="form-control sel-disc" disabled><option value="">Selecione a Turma</option></select>
-                            </div>
-                            <div>
-                                <label class="form-label">Período</label>
-                                <select class="form-control sel-periodo-diretor"><option value="">Aguarde...</option></select>
+                    <div class="cards-view-container" style="background: var(--surface); padding: 20px; border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow-sm); margin-bottom: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h3 style="margin: 0; font-size: 1.2rem; color: var(--text);">Selecione uma Turma e Disciplina</h3>
+                            <div class="cards-loading hidden" style="display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 0.9rem;">
+                                <i data-lucide="loader" class="spinner-small"></i> Buscando instrumentos...
                             </div>
                         </div>
-                        <div style="text-align: right;">
-                            <button class="btn btn-primary btn-carregar-tabela" disabled>
-                                <i data-lucide="search"></i> Buscar Instrumentos e Lançamentos
-                            </button>
+                        <div class="cards-grid-container" style="display: flex; flex-direction: column; gap: 20px;">
+                            <!-- Sections injetadas via JS -->
                         </div>
+                    </div>
+
+                    <!-- Header da Tabela (Fica oculto inicialmente) -->
+                    <div class="grid-header hidden" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <div style="display: flex; flex-direction: column;">
+                            <h3 class="grid-title" style="margin: 0; font-size: 1.2rem; color: var(--text);"></h3>
+                            <span class="grid-subtitle" style="font-size: 0.9rem; color: var(--text-muted);"></span>
+                        </div>
+                        <button class="btn btn-secondary btn-voltar-cards">
+                            <i data-lucide="arrow-left"></i> Voltar para Turmas
+                        </button>
                     </div>
 
                     <!-- Tabela DataGrid Native -->

@@ -137,7 +137,6 @@
 
 /* DataGrid Native Styling */
 .data-grid-container {
-    max-height: 65vh;
     overflow-y: auto;
     overflow-x: auto;
     margin-bottom: 80px;
@@ -260,4 +259,80 @@
 .tab-close i {
     width: 14px;
     height: 14px;
+}
+
+/* Turma Cards Grid */
+.cards-grid-container {
+    width: 100%;
+}
+
+.turma-card {
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    display: flex;
+    flex-direction: column;
+}
+
+.turma-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    border-color: var(--primary);
+}
+
+.turma-card-header {
+    margin-bottom: 12px;
+}
+
+.turma-card-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-main);
+    margin: 0 0 4px 0;
+}
+
+.turma-card-subtitle {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin: 0;
+}
+
+.turma-card-instruments {
+    margin-top: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border);
+}
+
+.instrument-tag {
+    background: #f1f5f9;
+    color: #475569;
+    font-size: 0.75rem;
+    padding: 4px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+.instrument-loading-tag {
+    background: #f1f5f9;
+    color: #94a3b8;
+    font-size: 0.75rem;
+    padding: 4px 8px;
+    border-radius: 4px;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { opacity: 0.6; }
 }

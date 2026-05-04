@@ -559,6 +559,7 @@ class AvaliacoesService {
                     situacao: situacaoObj,
                     matricula: a.matricula || a.id,
                     nomeExibicao: String(a.nome || '').replace(/^\d+\.\s*/, '').trim()
+                    
                 });
             });
         }
@@ -611,7 +612,8 @@ class AvaliacoesService {
                         id: instr.id,
                         nome: instr.nome,
                         peso: instr.peso,
-                        ref: colName
+                        ref: colName,
+                        dataAplicacao: instr.dataAplicacao
                     });
                     break;
                 }
