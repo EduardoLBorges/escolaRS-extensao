@@ -22,6 +22,13 @@ let state = {
 
 // --- Início: Inicialização ---
 document.addEventListener('DOMContentLoaded', async () => {
+  // Mantém o token sincronizado caso seja atualizado em background ou por outra aba
+  chrome.storage.onChanged.addListener((changes, namespace) => {
+    if (namespace === 'local' && changes.escolaRsToken?.newValue) {
+      state.token = changes.escolaRsToken.newValue;
+    }
+  });
+
   setupEventListeners();
   await loadData();
   renderCalendar();

@@ -36,21 +36,8 @@ class AvaliacoesService {
         return bytes.buffer;
     }
 
-    async fetchComRetry(url, options = {}, retries = 2) {
-        let lastErr;
-        for (let i = 0; i <= retries; i++) {
-            try {
-                const res = await fetch(url, options);
-                if (res.ok) return res;
-                if (res.status === 401 || res.status === 403) throw new Error('Falha de permissão / Token expirado');
-                throw new Error(`Erro API: ${res.status}`);
-            } catch (err) {
-                lastErr = err;
-                await new Promise(r => setTimeout(r, 1000 * (i + 1))); // backoff
-            }
-        }
-        throw lastErr;
-    }
+    // O método fetchComRetry foi removido. Agora todas as requisições usam fetchEscolaRS do api/escolaRS.js
+    // que já possui controle de retry e silent token refresh embutidos.
 
     // --- Exportação --- //
 
@@ -71,12 +58,21 @@ class AvaliacoesService {
 
         if (!firstClass) return [];
 
-        const url = `https://secweb.procergs.com.br/ise-escolars-professor/rest/professor/listarAvaliacoesTurma/${firstClass.idTurma}/${firstClass.idDisc}/${this.cacheInfo.idRecHumano}`;
-        const res = await fetch(url, { headers: { 'Authorization': this.cacheInfo.token } });
-        if (!res.ok) return [];
+        try {
+            const avaliacoes = await fetchEscolaRS(`listarAvaliacoesTurma/${firstClass.idTurma}/${firstClass.idDisc}/${this.cacheInfo.idRecHumano}`, this.cacheInfo.token);
+            const periodosMap = new Map();
 
-        const avaliacoes = await res.json();
-        const periodosMap = new Map();
+            for (const item of avaliacoes) {
+                if (item.id && item.descricao) {
+                    periodosMap.set(item.id, item.descricao);
+                }
+            }
+
+            return Array.from(periodosMap.entries()).map(([id, descricao]) => ({ id, descricao }));
+        } catch (err) {
+            console.error('Erro ao carregar periodos', err);
+            return [];
+        }
 
         for (const item of avaliacoes) {
             if (item.id && item.descricao) {
@@ -120,9 +116,7 @@ class AvaliacoesService {
             await Promise.all(batchTasks.map(async (task) => {
                 try {
                     // 1. Encontrar o idInstrumento via listarAvaliacoesTurma
-                    const urlAval = `https://secweb.procergs.com.br/ise-escolars-professor/rest/professor/listarAvaliacoesTurma/${task.turmaId}/${task.discId}/${idRecHumano}`;
-                    const resAval = await this.fetchComRetry(urlAval, { headers: { 'Authorization': token } });
-                    const arrayAvals = await resAval.json();
+                    const arrayAvals = await fetchEscolaRS(`listarAvaliacoesTurma/${task.turmaId}/${task.discId}/${idRecHumano}`, token);
 
                     // Identificar os instrumentos filtrados pelo período
                     let instrumentos = [];
@@ -157,9 +151,7 @@ class AvaliacoesService {
 
                     // Se não encontrou no cache, faz fetch
                     if (!alunosInfo || alunosInfo.length === 0) {
-                        const urlAlunos = `https://secweb.procergs.com.br/ise-escolars-professor/rest/professor/listarAulasDaTurmaComResultado/${task.turmaId}/${task.discId}/${idRecHumano}/false`;
-                        const resAlunos = await this.fetchComRetry(urlAlunos, { headers: { 'Authorization': token } });
-                        const dataAlunos = await resAlunos.json();
+                        const dataAlunos = await fetchEscolaRS(`listarAulasDaTurmaComResultado/${task.turmaId}/${task.discId}/${idRecHumano}/false`, token);
                         alunosInfo = dataAlunos.alunos || [];
                     }
 
@@ -174,9 +166,7 @@ class AvaliacoesService {
                     }
 
                     // 3. Pegar o XLS original gerado para ter a base e layout correto
-                    const urlCsv = `https://secweb.procergs.com.br/ise-escolars-professor/rest/professor/gerarXls/${task.turmaId}/${task.discId}/${idRecHumano}/${periodoId}`;
-                    const resCsv = await this.fetchComRetry(urlCsv, { headers: { 'Authorization': token } });
-                    const jsonCsv = await resCsv.json();
+                    const jsonCsv = await fetchEscolaRS(`gerarXls/${task.turmaId}/${task.discId}/${idRecHumano}/${periodoId}`, token);
 
                     if (!jsonCsv || !jsonCsv.xls) return;
 
@@ -488,9 +478,7 @@ class AvaliacoesService {
         const { token } = this.cacheInfo;
 
         // 1. Encontrar o idInstrumento via listarAvaliacoesTurma
-        const urlAval = `https://secweb.procergs.com.br/ise-escolars-professor/rest/professor/listarAvaliacoesTurma/${turmaId}/${discId}/${idRecHumano}`;
-        const resAval = await this.fetchComRetry(urlAval, { headers: { 'Authorization': token } });
-        const arrayAvals = await resAval.json();
+        const arrayAvals = await fetchEscolaRS(`listarAvaliacoesTurma/${turmaId}/${discId}/${idRecHumano}`, token);
 
         let intrumentosPermitidos = new Set();
         const nomePeriodoProc = `° ${isSemestre ? 'Sem' : 'Trim'}`;
@@ -538,9 +526,7 @@ class AvaliacoesService {
 
         // Se não encontrou no cache, faz fetch
         if (!alunosInfo || alunosInfo.length === 0) {
-            const urlAlunos = `https://secweb.procergs.com.br/ise-escolars-professor/rest/professor/listarAulasDaTurmaComResultado/${turmaId}/${discId}/${idRecHumano}/false`;
-            const resAlunos = await this.fetchComRetry(urlAlunos, { headers: { 'Authorization': token } });
-            const dataAlunos = await resAlunos.json();
+            const dataAlunos = await fetchEscolaRS(`listarAulasDaTurmaComResultado/${turmaId}/${discId}/${idRecHumano}/false`, token);
             alunosInfo = dataAlunos.alunos || [];
         }
 
@@ -565,9 +551,7 @@ class AvaliacoesService {
         }
 
         // 3. Pegar o XLS original para obter as notas atuais formatadas corretamente pela SEDUC
-        const urlCsv = `https://secweb.procergs.com.br/ise-escolars-professor/rest/professor/gerarXls/${turmaId}/${discId}/${idRecHumano}/${periodoId}`;
-        const resCsv = await this.fetchComRetry(urlCsv, { headers: { 'Authorization': token } });
-        const jsonCsv = await resCsv.json();
+        const jsonCsv = await fetchEscolaRS(`gerarXls/${turmaId}/${discId}/${idRecHumano}/${periodoId}`, token);
 
         if (!jsonCsv || !jsonCsv.xls) {
             throw new Error("Falha ao obter os dados oficiais da turma.");

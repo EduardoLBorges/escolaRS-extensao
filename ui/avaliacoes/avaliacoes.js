@@ -154,10 +154,8 @@ class TabController {
             
             await Promise.all(batch.map(async (data) => {
                 try {
-                    // Usando chamadas através do service API client se possivel, senao direto (fetchEscolaRS seria melhor mas não tá global)
-                    const urlAval = `https://secweb.procergs.com.br/ise-escolars-professor/rest/professor/listarAvaliacoesTurma/${data.turmaId}/${data.discId}/${data.idRecHumano}`;
-                    const resAval = await service.fetchComRetry(urlAval, { headers: { 'Authorization': service.cacheInfo.token } });
-                    const arrayAvals = await resAval.json();
+                    // Usando o client oficial da API que faz silent refresh e tratamentos de 401
+                    const arrayAvals = await fetchEscolaRS(`listarAvaliacoesTurma/${data.turmaId}/${data.discId}/${data.idRecHumano}`, service.cacheInfo.token);
                     
                     const selectPeriodoGlobal = document.getElementById('selectPeriodo');
                     const pId = selectPeriodoGlobal ? selectPeriodoGlobal.value : null;
