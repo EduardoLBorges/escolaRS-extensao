@@ -840,11 +840,12 @@ function aplicarPreVisualizacao(tipo) {
 
           // 2. APLICAR nova modificacao
           const alunoIdToMatch = aluno.id || aluno.matricula || aluno.codigo || aluno.idAluno;
+          const compositeKey = `${alunoIdToMatch}_${disc.id}`;
 
-          let pData = preVisuCalculos[alunoIdToMatch];
+          let pData = preVisuCalculos[compositeKey];
           if (!pData) {
             const strKeys = Object.keys(preVisuCalculos);
-            const matchedKey = strKeys.find(k => String(k) === String(aluno.matricula) || String(k) === String(aluno.id));
+            const matchedKey = strKeys.find(k => k === `${aluno.matricula}_${disc.id}` || k === `${aluno.id}_${disc.id}`);
             if (matchedKey) pData = preVisuCalculos[matchedKey];
           }
 

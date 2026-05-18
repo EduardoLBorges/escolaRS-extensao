@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Extensão EscolaRS",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "icons": {
     "16": "images/icons/icon16.png",
     "48": "images/icons/icon48.png",
@@ -16,7 +16,8 @@
   ],
   "host_permissions": [
     "https://*.procergs.com.br/*",
-    "https://professor.escola.rs.gov.br/*"
+    "https://professor.escola.rs.gov.br/*",
+    "https://www.soe.rs.gov.br/*"
   ],
   "action": {
     "default_title": "Abrir Dashboard de Notas"
@@ -24,6 +25,18 @@
   "background": {
     "service_worker": "background.js"
   },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://professor.escola.rs.gov.br/*",
+        "https://www.soe.rs.gov.br/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
   "web_accessible_resources": [
     {
       "resources": [

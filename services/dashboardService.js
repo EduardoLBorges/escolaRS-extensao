@@ -406,7 +406,7 @@ async function fetchPreVisualizacao(dashboardData, periodoStr, callbacks = {}) {
           const data = await res.json();
           if (data && data.calculosAproveitamentos) {
             for (const calc of data.calculosAproveitamentos) {
-              resultados[calc.idAluno] = { soma: calc.soma, media: calc.media };
+              resultados[`${calc.idAluno}_${task.idDisciplina}`] = { soma: calc.soma, media: calc.media };
             }
           }
         }

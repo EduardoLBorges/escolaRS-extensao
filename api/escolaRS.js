@@ -125,8 +125,8 @@ async function tryRecoverToken(staleToken, endpoint) {
       return storedToken;
     }
 
-    // 2. Dispara renovação única
-    console.log(`${LOG_PREFIX} Iniciando renovação única via popup...`);
+    // 2. Dispara renovação (o trySilentTokenRefresh agora tenta API HTTP POST primeiro e cai no popup se necessário)
+    console.log(`${LOG_PREFIX} Iniciando processo de renovação...`);
     const newToken = await trySilentTokenRefresh(staleToken);
     
     if (newToken) {
@@ -138,6 +138,55 @@ async function tryRecoverToken(staleToken, endpoint) {
   }
 
   return null;
+}
+
+/**
+ * Envia uma requisição POST direta para a API da SOE para trocar o refresh_token por um novo token.
+ * @param {string} refreshToken - O refresh_token extraído do OIDC.
+ * @returns {Promise<string|null>} O novo Bearer token, ou null.
+ */
+async function executeBackgroundTokenRefresh(refreshToken) {
+  if (activeTokenRefreshPromise) return activeTokenRefreshPromise;
+
+  activeTokenRefreshPromise = (async () => {
+    try {
+      const url = 'https://www.soe.rs.gov.br/soeauth/connect/token';
+      const body = new URLSearchParams({
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+        client_id: 'ise.i2.qAeyKT7HD0RZ7N1t76Q5etE'
+      });
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+      });
+
+      if (!res.ok) {
+        throw new Error(`API SOE retornou erro ${res.status}`);
+      }
+      
+      const data = await res.json();
+      if (data.access_token && data.token_type) {
+        const novoToken = `${data.token_type} ${data.access_token}`;
+        const updateData = { escolaRsToken: novoToken };
+        
+        // Se a SOE retornou um novo refresh_token, já guardamos também
+        if (data.refresh_token) {
+          updateData.escolaRsRefreshToken = data.refresh_token;
+        }
+        
+        await chrome.storage.local.set(updateData);
+        return novoToken;
+      }
+      return null;
+    } finally {
+      activeTokenRefreshPromise = null;
+    }
+  })();
+
+  return activeTokenRefreshPromise;
 }
 
 // ─── Token Refresh Singleton ────────────────────────────────────────
@@ -170,6 +219,19 @@ async function trySilentTokenRefresh(staleToken = null) {
         return storedToken;
       }
 
+      // Tenta o refresh POST antes do Popup
+      const { escolaRsRefreshToken } = await chrome.storage.local.get('escolaRsRefreshToken');
+      if (escolaRsRefreshToken) {
+        console.log(`${LOG_PREFIX} trySilentTokenRefresh: tentando API POST com refresh_token...`);
+        try {
+          const newToken = await executeBackgroundTokenRefresh(escolaRsRefreshToken);
+          if (newToken) return newToken;
+        } catch (err) {
+          console.warn(`${LOG_PREFIX} POST falhou, fallback para popup...`, err);
+        }
+      }
+
+      console.log(`${LOG_PREFIX} trySilentTokenRefresh: fallback para popup window...`);
       return await new Promise((resolve, reject) => {
         storageListener = (changes, namespace) => {
           if (namespace === 'local' && changes.escolaRsToken?.newValue) {
