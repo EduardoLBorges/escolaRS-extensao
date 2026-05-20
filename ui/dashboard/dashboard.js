@@ -340,17 +340,27 @@ function renderDisciplina(disc, turmaNome) {
   const percentual = ((aprovados / alunosAtivos.length) * 100).toFixed(0);
   const alunosInativos = alunos.length - alunosAtivos.length;
 
-  const headerHTML = `
-      <div style="flex: 1;">
-        <div>${turmaNome} - ${disciplina}</div>
-        <div class="turma-info">
-          ${alunosAtivos.length} alunos${alunosInativos > 0 ? ` (+${alunosInativos} inativos)` : ''} | Média: ${mediaTurma} | ${aprovados} aprovados (${percentual}%)
-        </div>
-      </div>
-    `;
+  const headerInfoDiv = createEl('div', { style: 'flex: 1;' }, [
+    createEl('div', {}, [`${turmaNome} - ${disciplina}`]),
+    createEl('div', { className: 'turma-info' }, [
+      `${alunosAtivos.length} alunos${alunosInativos > 0 ? ` (+${alunosInativos} inativos)` : ''} | Média: ${mediaTurma} | ${aprovados} aprovados (${percentual}%)`
+    ])
+  ]);
+
+  const chartBtn = createEl('button', {
+    className: 'chart-btn',
+    title: 'Visualizar gráficos desta disciplina',
+    innerHTML: '<i data-lucide="bar-chart-3"></i>'
+  });
+  chartBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openChartsModal(disc, turmaNome);
+  });
+
+  const headerDiv = createEl('div', { className: 'turma-header' }, [headerInfoDiv, chartBtn]);
 
   return createEl('div', { className: 'turma-card-content', dataset: { disciplinaNome: disciplina, turmaNome: turmaNome } }, [
-    createEl('div', { className: 'turma-header', innerHTML: headerHTML }),
+    headerDiv,
     createStudentsTable(alunos, disciplina)
   ]);
 }
@@ -970,4 +980,623 @@ function showImageModal(e, src, name) {
 
   overlay.onclick = (ev) => { if (ev.target === overlay) closeModal(); };
   content.querySelector('.modal-close').onclick = closeModal;
+}
+
+// --- CHARTS MODAL ---
+
+let activeChartInstances = [];
+
+function destroyActiveCharts() {
+  for (const chart of activeChartInstances) {
+    chart.destroy();
+  }
+  activeChartInstances = [];
+}
+
+/**
+ * Abre um modal com gráficos analíticos para uma disciplina.
+ * @param {Object} disc - Objeto da disciplina com alunos e notas.
+ * @param {string} turmaNome - Nome da turma.
+ */
+function openChartsModal(disc, turmaNome) {
+  const alunos = getAlunosAtivos(disc.alunos || []);
+  const disciplina = disc.disciplina || 'Disciplina';
+
+  if (alunos.length === 0) {
+    alert('Nenhum aluno ativo nesta disciplina.');
+    return;
+  }
+
+  const overlay = createEl('div', { className: 'charts-modal-overlay' });
+  const { periodos } = detectarTipoEPeriodos(alunos);
+
+  // Tabs definition
+  const tabs = [
+    { id: 'distribuicao', label: 'Distribuição', icon: 'pie-chart' },
+    { id: 'histograma', label: 'Histograma', icon: 'bar-chart-2' },
+    { id: 'evolucao', label: 'Evolução', icon: 'trending-up' },
+    { id: 'recuperacao', label: 'Recuperação (ER)', icon: 'repeat' },
+  ];
+
+  const tabsContainer = createEl('div', { className: 'charts-tabs' });
+  const canvasContainer = createEl('div', { className: 'charts-canvas-container' });
+
+  tabs.forEach((tab, i) => {
+    const tabEl = createEl('button', {
+      className: 'charts-tab' + (i === 0 ? ' charts-tab-active' : ''),
+      dataset: { tabId: tab.id },
+      innerHTML: `<i data-lucide="${tab.icon}"></i> ${tab.label}`
+    });
+    tabEl.addEventListener('click', () => {
+      tabsContainer.querySelectorAll('.charts-tab').forEach(t => t.classList.remove('charts-tab-active'));
+      tabEl.classList.add('charts-tab-active');
+      renderChart(tab.id, canvasContainer, alunos, periodos);
+    });
+    tabsContainer.appendChild(tabEl);
+  });
+
+  const modalContent = createEl('div', { className: 'charts-modal' }, [
+    createEl('div', { className: 'charts-modal-header' }, [
+      createEl('div', {}, [
+        createEl('span', { className: 'charts-modal-title' }, [`${turmaNome} — ${disciplina}`]),
+        createEl('span', { className: 'charts-modal-subtitle' }, [`${alunos.length} alunos ativos`]),
+      ]),
+      createEl('button', { className: 'modal-close charts-modal-close', innerHTML: '&times;' }),
+    ]),
+    tabsContainer,
+    canvasContainer,
+  ]);
+
+  overlay.appendChild(modalContent);
+  document.body.appendChild(overlay);
+
+  lucide.createIcons({ nodes: [modalContent] });
+
+  // Render first tab
+  renderChart('distribuicao', canvasContainer, alunos, periodos);
+
+  // Close handlers
+  const closeModal = () => {
+    destroyActiveCharts();
+    if (overlay.parentNode) document.body.removeChild(overlay);
+  };
+
+  overlay.addEventListener('click', (ev) => { if (ev.target === overlay) closeModal(); });
+  modalContent.querySelector('.charts-modal-close').addEventListener('click', closeModal);
+  document.addEventListener('keydown', function escHandler(e) {
+    if (e.key === 'Escape') {
+      closeModal();
+      document.removeEventListener('keydown', escHandler);
+    }
+  });
+}
+
+/**
+ * Renderiza um gráfico específico dentro do container.
+ */
+function renderChart(chartId, container, alunos, periodos) {
+  destroyActiveCharts();
+  container.innerHTML = '';
+
+  const hasPeriodSelector = (chartId === 'distribuicao' || chartId === 'histograma');
+  let selectedPeriod = null; // null = Geral (mediaFinal)
+
+  const renderCurrentChart = () => {
+    // Remove o canvas e summary antigos, preserva o seletor
+    const existingCanvas = container.querySelector('canvas');
+    const existingSummary = container.querySelector('.charts-er-summary');
+    const existingEmpty = container.querySelector('.charts-empty-state');
+    if (existingCanvas) existingCanvas.remove();
+    if (existingSummary) existingSummary.remove();
+    if (existingEmpty) existingEmpty.remove();
+    destroyActiveCharts();
+
+    const canvas = createEl('canvas', { id: 'chart-canvas' });
+    container.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+
+    switch (chartId) {
+      case 'distribuicao':
+        renderDistribuicaoChart(ctx, alunos, selectedPeriod);
+        break;
+      case 'histograma':
+        renderHistogramaChart(ctx, alunos, selectedPeriod);
+        break;
+      case 'evolucao':
+        renderEvolucaoChart(ctx, alunos, periodos);
+        break;
+      case 'recuperacao':
+        renderRecuperacaoChart(ctx, alunos, periodos, container);
+        break;
+    }
+  };
+
+  if (hasPeriodSelector && periodos.length > 0) {
+    const selectorBar = createEl('div', { className: 'charts-period-selector' });
+
+    const geralBtn = createEl('button', {
+      className: 'charts-period-btn charts-period-btn-active',
+    }, ['Geral']);
+    geralBtn.addEventListener('click', () => {
+      selectedPeriod = null;
+      selectorBar.querySelectorAll('.charts-period-btn').forEach(b => b.classList.remove('charts-period-btn-active'));
+      geralBtn.classList.add('charts-period-btn-active');
+      renderCurrentChart();
+    });
+    selectorBar.appendChild(geralBtn);
+
+    periodos.forEach(p => {
+      const btn = createEl('button', { className: 'charts-period-btn' }, [p]);
+      btn.addEventListener('click', () => {
+        selectedPeriod = p;
+        selectorBar.querySelectorAll('.charts-period-btn').forEach(b => b.classList.remove('charts-period-btn-active'));
+        btn.classList.add('charts-period-btn-active');
+        renderCurrentChart();
+      });
+      selectorBar.appendChild(btn);
+    });
+
+    container.appendChild(selectorBar);
+  }
+
+  renderCurrentChart();
+}
+
+/**
+ * Extrai a nota numérica de um aluno para o período selecionado, ou a média final se null.
+ * @returns {number|null}
+ */
+function getNotaParaGrafico(aluno, selectedPeriod) {
+  if (!selectedPeriod) {
+    return aluno.mediaFinal > 0 ? aluno.mediaFinal : null;
+  }
+  const notaTxt = getNotaTexto(aluno.notas, selectedPeriod);
+  if (notaTxt === '--') return null;
+  const val = parseFloat(String(notaTxt).replace('*', '').replace(',', '.'));
+  return isNaN(val) ? null : val;
+}
+
+// --- CHART 1: Distribuição (Donut) ---
+
+function renderDistribuicaoChart(ctx, alunos, selectedPeriod) {
+  let aprovados = 0, recuperacao = 0, reprovados = 0, semNota = 0;
+
+  for (const aluno of alunos) {
+    const nota = getNotaParaGrafico(aluno, selectedPeriod);
+    if (nota !== null) {
+      if (nota >= 6) aprovados++;
+      else if (nota >= 5) recuperacao++;
+      else reprovados++;
+    } else {
+      semNota++;
+    }
+  }
+
+  const total = alunos.length;
+  const titulo = selectedPeriod
+    ? `Distribuição (${selectedPeriod}) — ${total} alunos`
+    : `Distribuição de Desempenho — ${total} alunos`;
+
+  const chart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: [
+        `Aprovados (${aprovados})`,
+        `Recuperação (${recuperacao})`,
+        `Reprovados (${reprovados})`,
+        `Sem Nota (${semNota})`
+      ],
+      datasets: [{
+        data: [aprovados, recuperacao, reprovados, semNota],
+        backgroundColor: ['#16a34a', '#d97706', '#dc2626', '#9ca3af'],
+        borderWidth: 2,
+        borderColor: '#ffffff',
+        hoverOffset: 6,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '55%',
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            padding: 16,
+            font: { family: "'Inter', sans-serif", size: 13 },
+            usePointStyle: true,
+            pointStyleWidth: 12,
+          }
+        },
+        title: {
+          display: true,
+          text: titulo,
+          font: { family: "'Inter', sans-serif", size: 15, weight: '600' },
+          color: '#1f2937',
+          padding: { bottom: 16 }
+        },
+        tooltip: {
+          callbacks: {
+            label: (context) => {
+              const val = context.parsed;
+              const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
+              return ` ${context.label}: ${val} (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+
+  activeChartInstances.push(chart);
+}
+
+// --- CHART 2: Histograma por Faixa ---
+
+function renderHistogramaChart(ctx, alunos, selectedPeriod) {
+  const faixas = [
+    { label: '0 – 2', min: 0, max: 2 },
+    { label: '2 – 4', min: 2, max: 4 },
+    { label: '4 – 5', min: 4, max: 5 },
+    { label: '5 – 6', min: 5, max: 6 },
+    { label: '6 – 8', min: 6, max: 8 },
+    { label: '8 – 10', min: 8, max: 10.1 },
+  ];
+
+  const contagens = faixas.map(() => 0);
+  let comNota = 0;
+
+  for (const aluno of alunos) {
+    const nota = getNotaParaGrafico(aluno, selectedPeriod);
+    if (nota !== null) {
+      comNota++;
+      for (let i = 0; i < faixas.length; i++) {
+        if (nota >= faixas[i].min && nota < faixas[i].max) {
+          contagens[i]++;
+          break;
+        }
+      }
+    }
+  }
+
+  const cores = ['#dc2626', '#ef4444', '#d97706', '#eab308', '#22c55e', '#16a34a'];
+  const titulo = selectedPeriod
+    ? `Histograma (${selectedPeriod}) — ${comNota} alunos com nota`
+    : `Histograma de Notas — ${comNota} alunos com nota`;
+  const xLabel = selectedPeriod
+    ? `Faixa de Nota (${selectedPeriod})`
+    : 'Faixa de Nota (Média Final)';
+
+  const chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: faixas.map(f => f.label),
+      datasets: [{
+        label: 'Alunos',
+        data: contagens,
+        backgroundColor: cores,
+        borderRadius: 6,
+        borderSkipped: false,
+        maxBarThickness: 56,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: {
+            stepSize: 1,
+            font: { family: "'Inter', sans-serif" },
+            color: '#6b7280',
+          },
+          grid: { color: '#f1f5f9' },
+          title: {
+            display: true,
+            text: 'Nº de Alunos',
+            font: { family: "'Inter', sans-serif", size: 12, weight: '600' },
+            color: '#6b7280',
+          }
+        },
+        x: {
+          ticks: {
+            font: { family: "'Inter', sans-serif", size: 12 },
+            color: '#6b7280',
+          },
+          grid: { display: false },
+          title: {
+            display: true,
+            text: xLabel,
+            font: { family: "'Inter', sans-serif", size: 12, weight: '600' },
+            color: '#6b7280',
+          }
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        title: {
+          display: true,
+          text: titulo,
+          font: { family: "'Inter', sans-serif", size: 15, weight: '600' },
+          color: '#1f2937',
+          padding: { bottom: 16 }
+        },
+        tooltip: {
+          callbacks: {
+            label: (context) => {
+              const pct = comNota > 0 ? ((context.parsed.y / comNota) * 100).toFixed(1) : 0;
+              return ` ${context.parsed.y} alunos (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+
+  activeChartInstances.push(chart);
+}
+
+// --- CHART 3: Evolução por Período (Line) ---
+
+function renderEvolucaoChart(ctx, alunos, periodos) {
+  const mediaPorPeriodo = periodos.map(p => {
+    const notas = [];
+    for (const aluno of alunos) {
+      const notaTxt = getNotaTexto(aluno.notas, p);
+      const nota = parseFloat(String(notaTxt).replace('*', '').replace(',', '.'));
+      if (!isNaN(nota)) notas.push(nota);
+    }
+    return notas.length > 0 ? (notas.reduce((a, b) => a + b, 0) / notas.length) : null;
+  });
+
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: periodos,
+      datasets: [{
+        label: 'Média da Turma',
+        data: mediaPorPeriodo,
+        borderColor: '#1F822B',
+        backgroundColor: 'rgba(31, 130, 43, 0.1)',
+        fill: true,
+        tension: 0.35,
+        pointRadius: 6,
+        pointHoverRadius: 9,
+        pointBackgroundColor: '#1F822B',
+        pointBorderColor: '#ffffff',
+        pointBorderWidth: 2,
+        borderWidth: 3,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: {
+          min: 0,
+          max: 10,
+          ticks: {
+            stepSize: 1,
+            font: { family: "'Inter', sans-serif" },
+            color: '#6b7280',
+          },
+          grid: { color: '#f1f5f9' },
+          title: {
+            display: true,
+            text: 'Média',
+            font: { family: "'Inter', sans-serif", size: 12, weight: '600' },
+            color: '#6b7280',
+          }
+        },
+        x: {
+          ticks: {
+            font: { family: "'Inter', sans-serif", size: 12 },
+            color: '#6b7280',
+          },
+          grid: { display: false },
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        title: {
+          display: true,
+          text: 'Evolução da Média por Período',
+          font: { family: "'Inter', sans-serif", size: 15, weight: '600' },
+          color: '#1f2937',
+          padding: { bottom: 16 }
+        },
+        tooltip: {
+          callbacks: {
+            label: (context) => {
+              const val = context.parsed.y;
+              return val !== null ? ` Média: ${val.toFixed(1).replace('.', ',')}` : ' Sem dados';
+            }
+          }
+        },
+        // Reference line at 6.0
+        annotation: undefined, // Chart.js não tem annotation nativo, usamos plugin inline
+      }
+    },
+    plugins: [{
+      id: 'referenceLine',
+      afterDraw(chart) {
+        const yScale = chart.scales.y;
+        const ctx = chart.ctx;
+        const yPos = yScale.getPixelForValue(6);
+
+        ctx.save();
+        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = '#d97706';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(chart.chartArea.left, yPos);
+        ctx.lineTo(chart.chartArea.right, yPos);
+        ctx.stroke();
+
+        ctx.fillStyle = '#d97706';
+        ctx.font = "11px 'Inter', sans-serif";
+        ctx.textAlign = 'left';
+        ctx.fillText('Aprovação (6,0)', chart.chartArea.left + 4, yPos - 6);
+        ctx.restore();
+      }
+    }]
+  });
+
+  activeChartInstances.push(chart);
+}
+
+// --- CHART 4: Recuperação ER (Stacked Bar) ---
+
+function renderRecuperacaoChart(ctx, alunos, periodos, container) {
+  // Build ER data per period
+  const erData = periodos.map(periodo => {
+    const numMatch = periodo.match(/\d+/);
+    if (!numMatch) return { label: periodo, comER: 0, recuperou: 0, naoRecuperou: 0 };
+    const numPeriodo = numMatch[0];
+    const isSemestre = periodo.toLowerCase().includes('sem');
+
+    let comER = 0, recuperou = 0, naoRecuperou = 0;
+
+    for (const aluno of alunos) {
+      if (!aluno.notas) continue;
+
+      // Find original trim/sem note for this period
+      let trimNota = null;
+      let erNota = null;
+
+      for (const item of aluno.notas) {
+        const nome = (item.trimestre || item.nomePeriodo || '').toLowerCase();
+        if (!nome || !nome.includes(numPeriodo)) continue;
+
+        if (nome.includes('er')) {
+          const val = parseFloat(String(item.nota || '').replace(',', '.'));
+          if (!isNaN(val)) erNota = val;
+        } else if ((isSemestre && nome.includes('sem')) || (!isSemestre && nome.includes('trim'))) {
+          const val = parseFloat(String(item.nota || '').replace(',', '.'));
+          if (!isNaN(val)) trimNota = val;
+        }
+      }
+
+      // Only count if student had trim < 6 (needed recovery) and has an ER note
+      if (erNota !== null && trimNota !== null && trimNota < 6) {
+        comER++;
+        if (erNota >= 6) recuperou++;
+        else naoRecuperou++;
+      }
+    }
+
+    return { label: periodo, comER, recuperou, naoRecuperou };
+  });
+
+  const temER = erData.some(d => d.comER > 0);
+
+  if (!temER) {
+    ctx.canvas.style.display = 'none';
+    const msg = createEl('div', { className: 'charts-empty-state' }, [
+      createEl('i', { 'data-lucide': 'info', style: 'width: 40px; height: 40px; color: #9ca3af; margin-bottom: 12px;' }),
+      createEl('div', { style: 'font-size: 1rem; font-weight: 600; color: #6b7280; margin-bottom: 4px;' }, ['Nenhum Exame de Recuperação registrado']),
+      createEl('div', { style: 'font-size: 0.85rem; color: #9ca3af;' }, ['Os dados de ER aparecerão aqui quando houver notas de recuperação lançadas.']),
+    ]);
+    container.appendChild(msg);
+    lucide.createIcons({ nodes: [msg] });
+    return;
+  }
+
+  // Summary card
+  const totalER = erData.reduce((s, d) => s + d.comER, 0);
+  const totalRecuperou = erData.reduce((s, d) => s + d.recuperou, 0);
+  const pctRecuperou = totalER > 0 ? ((totalRecuperou / totalER) * 100).toFixed(0) : 0;
+
+  const summaryEl = createEl('div', { className: 'charts-er-summary' }, [
+    createEl('span', {}, [`Total: ${totalER} alunos foram para ER`]),
+    createEl('span', { style: 'color: #16a34a; font-weight: 600;' }, [`${totalRecuperou} recuperaram (${pctRecuperou}%)`]),
+    createEl('span', { style: 'color: #dc2626; font-weight: 600;' }, [`${totalER - totalRecuperou} não recuperaram (${totalER > 0 ? (100 - pctRecuperou) : 0}%)`]),
+  ]);
+  container.insertBefore(summaryEl, ctx.canvas);
+
+  const chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: erData.map(d => d.label),
+      datasets: [
+        {
+          label: 'Recuperou (ER ≥ 6)',
+          data: erData.map(d => d.recuperou),
+          backgroundColor: '#16a34a',
+          borderRadius: { topLeft: 6, topRight: 6 },
+          borderSkipped: false,
+          maxBarThickness: 56,
+        },
+        {
+          label: 'Não Recuperou (ER < 6)',
+          data: erData.map(d => d.naoRecuperou),
+          backgroundColor: '#dc2626',
+          borderRadius: { topLeft: 6, topRight: 6 },
+          borderSkipped: false,
+          maxBarThickness: 56,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: {
+          beginAtZero: true,
+          stacked: true,
+          ticks: {
+            stepSize: 1,
+            font: { family: "'Inter', sans-serif" },
+            color: '#6b7280',
+          },
+          grid: { color: '#f1f5f9' },
+          title: {
+            display: true,
+            text: 'Nº de Alunos',
+            font: { family: "'Inter', sans-serif", size: 12, weight: '600' },
+            color: '#6b7280',
+          }
+        },
+        x: {
+          stacked: true,
+          ticks: {
+            font: { family: "'Inter', sans-serif", size: 12 },
+            color: '#6b7280',
+          },
+          grid: { display: false },
+        }
+      },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            padding: 16,
+            font: { family: "'Inter', sans-serif", size: 13 },
+            usePointStyle: true,
+            pointStyleWidth: 12,
+          }
+        },
+        title: {
+          display: true,
+          text: 'Recuperação por Exame (ER) — por Período',
+          font: { family: "'Inter', sans-serif", size: 15, weight: '600' },
+          color: '#1f2937',
+          padding: { bottom: 16 }
+        },
+        tooltip: {
+          callbacks: {
+            afterBody: (items) => {
+              const idx = items[0].dataIndex;
+              const d = erData[idx];
+              const pct = d.comER > 0 ? ((d.recuperou / d.comER) * 100).toFixed(0) : 0;
+              return `\nTotal ER: ${d.comER} | Taxa de recuperação: ${pct}%`;
+            }
+          }
+        }
+      }
+    }
+  });
+
+  activeChartInstances.push(chart);
 }
