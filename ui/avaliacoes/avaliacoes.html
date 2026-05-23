@@ -14,20 +14,7 @@
         <header class="header">
             <div class="header-content">
                 <h1>Gerenciamento de Avaliações</h1>
-                <div class="header-actions" style="display: flex; gap: 10px; align-items: center;">
-                    <select id="selectPeriodo" class="form-control" style="max-width: 150px; padding-top: 5px; padding-bottom: 5px; height: auto;">
-                        <option value="">Aguarde...</option>
-                    </select>
-                    
-                    <button id="btnExport" class="btn btn-outline" title="Baixar Diários em Lote (Excel)">
-                        <i data-lucide="download"></i> Gerar
-                    </button>
-
-                    <input type="file" id="fileUpload" accept=".xls,.xlsx" style="display: none;">
-                    <button id="btnImport" class="btn btn-outline" title="Carregar Diários Alterados (Excel)">
-                        <i data-lucide="upload"></i> Importar
-                    </button>
-                    
+                    <div class="header-actions" style="display: flex; gap: 10px; align-items: center;">
                     <button id="btnVoltar" class="btn btn-secondary" style="margin-left: 10px;">
                         <i data-lucide="arrow-left"></i> Voltar
                     </button>
@@ -71,7 +58,6 @@
                         </div>
                     </div>
 
-                    <!-- Header da Tabela (Fica oculto inicialmente) -->
                     <div class="grid-header hidden" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                         <div style="display: flex; flex-direction: column;">
                             <h3 class="grid-title" style="margin: 0; font-size: 1.2rem; color: var(--text);"></h3>
@@ -81,6 +67,9 @@
                             <i data-lucide="arrow-left"></i> Voltar para Turmas
                         </button>
                     </div>
+
+                    <!-- Abas de Período -->
+                    <div class="period-tabs-container hidden" style="display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap;"></div>
 
                     <!-- Tabela DataGrid Native -->
                     <div class="hidden data-grid-container grid-container-wrapper">
@@ -111,29 +100,6 @@
                     </div>
                 </div>
             </template>
-            
-            <div id="importModal" class="modal-overlay hidden">
-                <div class="modal-content" style="max-width: 600px;">
-                    <div class="modal-header">
-                        <h2>Validando Planilha <span id="importStatus" style="font-size:0.8rem; font-weight:normal; color:#666;"></span></h2>
-                        <button id="btnCloseModal" class="btn-close"><i data-lucide="x"></i></button>
-                    </div>
-                    <div class="modal-body">
-                        <div id="importLog" class="import-log">
-                            <!-- Logs de validação / envio serão inseridos aqui -->
-                        </div>
-                        <div class="progress-bar-container hidden" id="uploadProgressContainer">
-                            <div class="progress-bar" id="uploadProgressBar"></div>
-                        </div>
-                        <div style="text-align: right; margin-top: 15px;">
-                            <button id="btnConfirmarUpload" class="btn btn-primary hidden">
-                                Confirmar e Enviar Múltiplas Notas
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
             <div id="toastContainer" class="toast-container"></div>
         </main>
     </div>

@@ -500,7 +500,7 @@ class AvaliacoesService {
         }
 
         if (instrumentosApi.length === 0) {
-            throw new Error("Nenhum instrumento de avaliação encontrado para esta disciplina no período selecionado.");
+            // Não lança erro, vamos apenas retornar a lista de alunos sem instrumentos
         }
 
         // Tenta reaproveitar a cache do dashboard
@@ -548,6 +548,27 @@ class AvaliacoesService {
                     
                 });
             });
+        }
+
+        if (instrumentosApi.length === 0) {
+            const extractRecords = [];
+            for (const [key, alunoObj] of alunosMap.entries()) {
+                const isAtivo = alunoObj && alunoObj.situacao ? alunoObj.situacao.ativo : true;
+                if (isAtivo) {
+                    extractRecords.push({
+                        matricula: alunoObj.matricula,
+                        nome: alunoObj.nomeExibicao,
+                        notas: {}
+                    });
+                }
+            }
+            
+            extractRecords.sort((a, b) => a.nome.localeCompare(b.nome));
+
+            return {
+                instrumentos: [],
+                alunos: extractRecords
+            };
         }
 
         // 3. Pegar o XLS original para obter as notas atuais formatadas corretamente pela SEDUC

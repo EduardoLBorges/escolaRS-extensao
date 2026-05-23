@@ -135,6 +135,37 @@
     display: block; /* avaliacoes-layout uses grid, so we will handle it via JS if needed, or flex */
 }
 
+/* Period Tabs Styling */
+.period-tabs-container {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.period-tab-button {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 6px 14px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.period-tab-button:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.period-tab-button.active {
+    background: var(--primary);
+    color: #ffffff;
+    border-color: var(--primary);
+}
+
 /* DataGrid Native Styling */
 .data-grid-container {
     overflow-y: auto;

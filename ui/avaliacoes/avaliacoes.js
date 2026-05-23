@@ -157,17 +157,8 @@ class TabController {
                     // Usando o client oficial da API que faz silent refresh e tratamentos de 401
                     const arrayAvals = await fetchEscolaRS(`listarAvaliacoesTurma/${data.turmaId}/${data.discId}/${data.idRecHumano}`, service.cacheInfo.token);
                     
-                    const selectPeriodoGlobal = document.getElementById('selectPeriodo');
-                    const pId = selectPeriodoGlobal ? selectPeriodoGlobal.value : null;
-                    
                     let instrumentosApi = [];
-                    if (pId) {
-                         const periodoEncontrado = arrayAvals.find(a => parseInt(a.id) === parseInt(pId));
-                         if (periodoEncontrado && periodoEncontrado.instrumentos) instrumentosApi = periodoEncontrado.instrumentos;
-                    } else {
-                         // Sem período, pega do primeiro período ativo ou junta todos
-                         if (arrayAvals[0] && arrayAvals[0].instrumentos) instrumentosApi = arrayAvals[0].instrumentos;
-                    }
+                    if (arrayAvals[0] && arrayAvals[0].instrumentos) instrumentosApi = arrayAvals[0].instrumentos;
 
                     const container = data.cardEl.querySelector('.turma-card-instruments');
                     container.innerHTML = '';
@@ -192,22 +183,38 @@ class TabController {
         this.cardsLoading.classList.add('hidden');
     }
 
-    async carregarTabela(escola, turma, disciplina) {
-        const selectPeriodoGlobal = document.getElementById('selectPeriodo');
-        const pId = selectPeriodoGlobal ? selectPeriodoGlobal.value : null;
-        
-        if (!pId) {
-            window.showToast('Selecione um Período no cabeçalho superior primeiro.', 'warning');
+    async carregarTabela(escola, turma, disciplina, periodoId = null) {
+        if (!periodoId && window.periodosGlobais && window.periodosGlobais.length > 0) {
+            periodoId = window.periodosGlobais[0].id;
+        }
+
+        if (!periodoId) {
+            window.showToast('Nenhum período disponível para carregar.', 'warning');
             return;
         }
 
-        const perNome = selectPeriodoGlobal.options[selectPeriodoGlobal.selectedIndex].text;
+        const periodoObj = window.periodosGlobais.find(p => p.id == periodoId);
+        const perNome = periodoObj ? periodoObj.descricao : 'Período';
         const isSemestre = perNome.toLowerCase().includes('sem');
         
         const discNome = disciplina.disciplina || disciplina.nome;
         const turmNome = turma.nome;
         
         this.cardsView.classList.add('hidden');
+
+        // Render period tabs
+        const periodTabsContainer = this.viewEl.querySelector('.period-tabs-container');
+        periodTabsContainer.innerHTML = '';
+        window.periodosGlobais.forEach(p => {
+            const btn = document.createElement('button');
+            btn.className = `period-tab-button ${p.id == periodoId ? 'active' : ''}`;
+            btn.textContent = p.descricao;
+            btn.addEventListener('click', () => {
+                this.carregarTabela(escola, turma, disciplina, p.id);
+            });
+            periodTabsContainer.appendChild(btn);
+        });
+        periodTabsContainer.classList.remove('hidden');
         
         this.gridTitle.textContent = `${discNome}`;
         this.gridSubtitle.textContent = `${escola.nome} • ${turmNome} • ${perNome}`;
@@ -218,7 +225,7 @@ class TabController {
         if (window.lucide) window.lucide.createIcons();
 
         try {
-            const data = await service.carregarDadosTabelaDireta(turma.id, disciplina.id, isSemestre, pId, service.cacheInfo.idRecHumano);
+            const data = await service.carregarDadosTabelaDireta(turma.id, disciplina.id, isSemestre, periodoId, service.cacheInfo.idRecHumano);
             this.renderizarDataGrid(data.instrumentos, data.alunos);
             
             this.gridContainer.classList.remove('hidden');
@@ -244,53 +251,66 @@ class TabController {
         this.headRow.innerHTML = `<th style="width: 80px;">Nº Matr.</th><th>Nome do Aluno</th>`;
         this.bodyRow.innerHTML = '';
         
-        instrumentos.forEach(ins => {
+        if (instrumentos.length === 0) {
             const th = document.createElement('th');
-            th.innerHTML = `${ins.nome}<br><small style="color:var(--text-muted);font-weight:normal;">Peso: ${ins.peso || 1}</small>`;
+            th.innerHTML = `Avaliações`;
+            th.style.textAlign = 'center';
             this.headRow.appendChild(th);
-        });
+        } else {
+            instrumentos.forEach(ins => {
+                const th = document.createElement('th');
+                th.innerHTML = `${ins.nome}<br><small style="color:var(--text-muted);font-weight:normal;">Peso: ${ins.peso || 1}</small>`;
+                this.headRow.appendChild(th);
+            });
+        }
 
         alunos.forEach(alu => {
             const tr = document.createElement('tr');
             tr.innerHTML = `<td class="cell-text"><span style="font-family:monospace; color:var(--text-muted);">${alu.matricula}</span></td>
                             <td class="cell-text" style="font-weight: 500;">${alu.nome}</td>`;
             
-            instrumentos.forEach(ins => {
+            if (instrumentos.length === 0) {
                 const td = document.createElement('td');
-                const prevVal = alu.notas[ins.id] !== undefined ? alu.notas[ins.id] : '';
-                
-                const inp = document.createElement('input');
-                inp.type = 'number';
-                inp.step = '0.1';
-                inp.min = '0';
-                inp.max = '10';
-                inp.className = 'grade-input';
-                inp.value = prevVal;
-                inp.setAttribute('data-id-aluno', alu.matricula);
-                inp.setAttribute('data-id-inst', ins.id);
-                inp.setAttribute('data-original-val', prevVal);
-                
-                let dataParaEnvio = ins.dataAplicacao || ins.dataRealizacao || ins.data;
-                const dataMat = alu.dataMatricula; 
-                const hojeStr = new Date().toISOString().split('T')[0];
+                td.innerHTML = `<div style="color:var(--text-muted); font-size: 0.9rem; font-style: italic; text-align: center; padding: 10px;">Nenhuma avaliação registrada para o período.</div>`;
+                tr.appendChild(td);
+            } else {
+                instrumentos.forEach(ins => {
+                    const td = document.createElement('td');
+                    const prevVal = alu.notas[ins.id] !== undefined ? alu.notas[ins.id] : '';
+                    
+                    const inp = document.createElement('input');
+                    inp.type = 'number';
+                    inp.step = '0.1';
+                    inp.min = '0';
+                    inp.max = '10';
+                    inp.className = 'grade-input';
+                    inp.value = prevVal;
+                    inp.setAttribute('data-id-aluno', alu.matricula);
+                    inp.setAttribute('data-id-inst', ins.id);
+                    inp.setAttribute('data-original-val', prevVal);
+                    
+                    let dataParaEnvio = ins.dataAplicacao || ins.dataRealizacao || ins.data;
+                    const dataMat = alu.dataMatricula; 
+                    const hojeStr = new Date().toISOString().split('T')[0];
 
-                if (dataParaEnvio && dataMat) {
-                    const dInst = new Date(dataParaEnvio);
-                    const dMat = new Date(dataMat);
-                    if (dMat > dInst) {
+                    if (dataParaEnvio && dataMat) {
+                        const dInst = new Date(dataParaEnvio);
+                        const dMat = new Date(dataMat);
+                        if (dMat > dInst) {
+                            dataParaEnvio = hojeStr;
+                        }
+                    } else if (!dataParaEnvio) {
                         dataParaEnvio = hojeStr;
                     }
-                } else if (!dataParaEnvio) {
-                    dataParaEnvio = hojeStr;
-                }
-           
-                inp.setAttribute('data-data-realizacao', dataParaEnvio);
-                
-                inp.addEventListener('input', () => this.registrarMudanca(inp));
-                
-                td.appendChild(inp);
-                tr.appendChild(td);
-            });
+               
+                    inp.setAttribute('data-data-realizacao', dataParaEnvio);
+                    
+                    inp.addEventListener('input', () => this.registrarMudanca(inp));
+                    
+                    td.appendChild(inp);
+                    tr.appendChild(td);
+                });
+            }
             
             this.bodyRow.appendChild(tr);
         });
@@ -423,25 +443,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const tabTemplate = document.getElementById('tabTemplate');
     
     // Globais do Header
-    const selectPeriodo = document.getElementById('selectPeriodo');
-    const btnExport = document.getElementById('btnExport');
-    const btnImport = document.getElementById('btnImport');
-    const fileUpload = document.getElementById('fileUpload');
     const btnVoltar = document.getElementById('btnVoltar');
-    
-    // Import Modal globais
-    const importModal = document.getElementById('importModal');
-    const importLog = document.getElementById('importLog');
-    const importStatus = document.getElementById('importStatus');
-    const btnCloseModal = document.getElementById('btnCloseModal');
-    const btnConfirmarUpload = document.getElementById('btnConfirmarUpload');
-    const uploadProgressContainer = document.getElementById('uploadProgressContainer');
-    const uploadProgressBar = document.getElementById('uploadProgressBar');
 
     // Expondo vars pro Escopo da Classe Externa
     window.cacheDashboard = null;
     window.periodosGlobais = [];
-    let preparedPayloads = [];
 
     // Gerenciamento de Abas
     let tabCount = 0;
@@ -457,17 +463,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         // Puxar os períodos
         window.periodosGlobais = await service.carregarPeriodos();
-        selectPeriodo.innerHTML = '<option value="">Obrigatório...</option>';
-
-        if (window.periodosGlobais.length > 0) {
-            window.periodosGlobais.forEach(p => {
-                const opt = document.createElement('option');
-                opt.value = p.id;
-                opt.textContent = p.descricao;
-                selectPeriodo.appendChild(opt);
-            });
-            selectPeriodo.selectedIndex = 1;
-        }
 
         // Carregar dados de Escolas do cache do dashboard para os combos
         const stData = await chrome.storage.local.get(['dashboardCache']);
@@ -571,95 +566,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
 
-    // --- Sistema Legado: Exportação em Lote pelo Top Header --- //
-    btnExport.addEventListener('click', async () => {
-        const pId = selectPeriodo.value;
-        if (!pId) {
-            showToast('Top Header: Selecione o período antes de exportar o lote global.', 'warning');
-            return;
-        }
-        
-        btnExport.disabled = true;
-        const originalText = btnExport.innerHTML;
-        
-        try {
-            await service.exportarMassa(pId, (prog) => {
-                btnExport.innerHTML = `<i data-lucide="loader" class="spinner-small"></i> ${prog.pct}%`;
-            });
-            showToast('Arquivos de lote baixados com sucesso!', 'success');
-        } catch (err) {
-            showToast(`Erro na exportação em lote: ${err.message}`, 'error');
-        } finally {
-            btnExport.disabled = false;
-            btnExport.innerHTML = originalText;
-        }
-    });
-
-    // --- Fluxo de Importação pelo Top Header --- //
-    btnImport.addEventListener('click', () => fileUpload.click());
-
-    fileUpload.addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        // Reset state
-        importStatus.textContent = `(${file.name})`;
-        importLog.innerHTML = `<div class="info">Lendo arquivo excel massivo...</div>`;
-        btnConfirmarUpload.classList.add('hidden');
-        uploadProgressContainer.classList.add('hidden');
-        importModal.classList.remove('hidden');
-        preparedPayloads = [];
-
-        try {
-            preparedPayloads = await service.parseUploadedFile(file);
-            if (preparedPayloads.length === 0) {
-                logMessage('Nenhuma nota com ID detectada no arquivo global.', 'error');
-                return;
-            }
-
-            logMessage(`Foram detectadas ${preparedPayloads.length} avaliações para atualizar massivamente.`, 'success');
-            btnConfirmarUpload.classList.remove('hidden');
-
-        } catch (err) {
-            logMessage(`Falha Excel: ${err.message}`, 'error');
-        } finally {
-            fileUpload.value = '';
-        }
-    });
-
-    btnConfirmarUpload.addEventListener('click', async () => {
-        btnConfirmarUpload.disabled = true;
-        btnCloseModal.disabled = true;
-        uploadProgressContainer.classList.remove('hidden');
-        uploadProgressBar.style.width = '0%';
-
-        try {
-            const sucessos = await service.enviarNotas(preparedPayloads, 
-            (prog) => uploadProgressBar.style.width = `${prog.pct}%`, 
-            (msg, tipo) => logMessage(msg, tipo));
-
-            logMessage(`Massivo concluído: ${sucessos} lançamentos validados!`, 'success');
-            showToast(`Lote Global: ${sucessos} notas salvas.`, 'success');
-            
-        } catch (err) {
-            logMessage(`Interrompido: ${err.message}`, 'error');
-        } finally {
-            btnConfirmarUpload.disabled = false;
-            btnConfirmarUpload.classList.add('hidden');
-            btnCloseModal.disabled = false;
-        }
-    });
-
-    btnCloseModal.addEventListener('click', () => importModal.classList.add('hidden'));
-
     // --- Helpers Utilitários --- //
-    function logMessage(text, tipo) {
-        const d = document.createElement('div');
-        d.className = tipo;
-        d.textContent = `> ${text}`;
-        importLog.appendChild(d);
-        importLog.scrollTop = importLog.scrollHeight;
-    }
 
     function showToast(message, type = 'info') {
         const container = document.getElementById('toastContainer');
