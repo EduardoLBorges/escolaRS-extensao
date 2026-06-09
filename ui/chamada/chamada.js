@@ -1861,6 +1861,9 @@ function openPlanosModal() {
     else if (action === 'cancelAddAula') document.getElementById(`addAulaForm-${planoId}`).classList.add('hidden');
     else if (action === 'savePlano') await savePlano();
     else if (action === 'cancelPlanoForm') document.getElementById('planosFormContainer').classList.add('hidden');
+    else if (action === 'editAula') editAulaInline(planoId, aulaId);
+    else if (action === 'saveEditAula') await saveEditAulaInline(planoId, aulaId);
+    else if (action === 'cancelEditAula') renderPlanosList();
   };
   modal.addEventListener('click', modal._planosDelegate);
 }
@@ -1920,7 +1923,10 @@ function renderPlanosList() {
               ${aula.habilidade ? `<br><small><b>Habilidade:</b> ${aula.habilidade}</small>` : ''}
               ${aula.estrategia ? `<br><small><b>Estratégia:</b> ${aula.estrategia}</small>` : ''}
             </div>
-            <button class="btn btn-sm btn-danger plano-action-btn" data-action="deleteAula" data-plano-id="${plano.id}" data-aula-id="${aula.idAula}"><i data-lucide="x"></i></button>
+            <div style="display:flex; gap:6px;">
+              <button class="btn btn-sm btn-secondary plano-action-btn" data-action="editAula" data-plano-id="${plano.id}" data-aula-id="${aula.idAula}"><i data-lucide="edit-2"></i></button>
+              <button class="btn btn-sm btn-danger plano-action-btn" data-action="deleteAula" data-plano-id="${plano.id}" data-aula-id="${aula.idAula}"><i data-lucide="x"></i></button>
+            </div>
           </div>
         `).join('');
 
@@ -1929,12 +1935,14 @@ function renderPlanosList() {
             <summary class="plano-serie-summary">
               ${serieLabel}
               <div style="display:inline-flex;gap:6px;margin-left:10px;">
-                <button class="btn btn-sm btn-primary plano-action-btn" data-action="showAddAulaForm" data-plano-id="${plano.id}">+ Aula</button>
-                <button class="btn btn-sm btn-danger plano-action-btn" data-action="deletePlano" data-plano-id="${plano.id}"><i data-lucide="trash-2"></i> Remover</button>
+                <button class="btn btn-sm btn-danger plano-action-btn" data-action="deletePlano" data-plano-id="${plano.id}"><i data-lucide="trash-2"></i> Remover Plano</button>
               </div>
             </summary>
             <div class="plano-aulas-list" id="aulasList-${plano.id}">
               ${aulaItems || '<p style="padding:10px;color:#888;">Nenhuma aula adicionada.</p>'}
+              <div style="padding: 10px 12px;">
+                <button class="btn btn-sm btn-secondary plano-action-btn" data-action="showAddAulaForm" data-plano-id="${plano.id}" style="width: 100%; border: 1px dashed var(--primary); background: transparent;"><i data-lucide="plus"></i> Adicionar Nova Aula</button>
+              </div>
             </div>
             <div id="addAulaForm-${plano.id}" class="plano-add-aula-form hidden" style="padding:15px;border-top:1px solid var(--border);">
               <div class="form-group">
@@ -2150,14 +2158,19 @@ function setupDragAndDrop() {
       const plano = state.planosDeAula.find(p => p.id === planoId);
       if (!plano) return;
 
-      const fromAula = plano.aulas.find(a => a.idAula === fromAulaId);
-      const toAula = plano.aulas.find(a => a.idAula === toAulaId);
-      if (!fromAula || !toAula) return;
+      plano.aulas.sort((a, b) => a.ordem - b.ordem);
+      const fromIndex = plano.aulas.findIndex(a => a.idAula === fromAulaId);
+      const toIndex = plano.aulas.findIndex(a => a.idAula === toAulaId);
+      if (fromIndex === -1 || toIndex === -1) return;
 
-      // Swap de ordem
-      const tempOrdem = fromAula.ordem;
-      fromAula.ordem = toAula.ordem;
-      toAula.ordem = tempOrdem;
+      // Insert logic
+      const [movedAula] = plano.aulas.splice(fromIndex, 1);
+      plano.aulas.splice(toIndex, 0, movedAula);
+
+      // Recalcula ordens
+      plano.aulas.forEach((a, i) => {
+        a.ordem = i + 1;
+      });
 
       await savePlano(plano, false);
       renderPlanosList();
@@ -2338,6 +2351,57 @@ window.deleteDiaLetivo = async (data) => {
   renderCalendar();
   renderClassesForSelectedDay();
 };
+
+window.editAulaInline = (planoId, aulaId) => {
+  const plano = state.planosDeAula.find(p => String(p.id) === String(planoId));
+  if (!plano) return;
+  const aula = plano.aulas.find(a => String(a.idAula) === String(aulaId));
+  if (!aula) return;
+
+  const itemDiv = document.querySelector(`.plano-aula-item[data-plano-id="${planoId}"][data-aula-id="${aulaId}"]`);
+  if (!itemDiv) return;
+
+  itemDiv.innerHTML = `
+    <div style="width: 100%; display: flex; flex-direction: column; gap: 10px;">
+      <div class="form-group">
+        <label>Objeto do Conhecimento (Aula ${aula.ordem})</label>
+        <input type="text" id="editAulaObjeto-${aulaId}" class="form-control" value="${(aula.objetoConhecimento || '').replace(/"/g, '&quot;')}">
+      </div>
+      <div class="form-group">
+        <label>Habilidade Trabalhada</label>
+        <textarea id="editAulaHabilidade-${aulaId}" class="form-control" rows="2">${(aula.habilidade || '')}</textarea>
+      </div>
+      <div class="form-group">
+        <label>Estratégia Adotada</label>
+        <textarea id="editAulaEstrategia-${aulaId}" class="form-control" rows="2">${(aula.estrategia || '')}</textarea>
+      </div>
+      <div class="class-actions" style="padding-top:8px;">
+        <button class="btn btn-primary plano-action-btn" data-action="saveEditAula" data-plano-id="${planoId}" data-aula-id="${aulaId}">Salvar Alterações</button>
+        <button class="btn btn-secondary plano-action-btn" data-action="cancelEditAula" style="margin-left:8px;">Cancelar</button>
+      </div>
+    </div>
+  `;
+};
+
+window.saveEditAulaInline = async (planoId, aulaId) => {
+  const plano = state.planosDeAula.find(p => String(p.id) === String(planoId));
+  if (!plano) return;
+  const aula = plano.aulas.find(a => String(a.idAula) === String(aulaId));
+  if (!aula) return;
+
+  const novoObj = document.getElementById(`editAulaObjeto-${aulaId}`).value.trim();
+  const novaHab = document.getElementById(`editAulaHabilidade-${aulaId}`).value.trim();
+  const novaEst = document.getElementById(`editAulaEstrategia-${aulaId}`).value.trim();
+
+  aula.objetoConhecimento = novoObj;
+  aula.habilidade = novaHab;
+  aula.estrategia = novaEst;
+
+  await savePlano(plano, false);
+  renderPlanosList();
+  showToast('Aula editada com sucesso!', 'success');
+};
+
 
 
 
