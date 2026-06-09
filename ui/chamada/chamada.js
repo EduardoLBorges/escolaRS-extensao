@@ -16,6 +16,9 @@ let state = {
   horariosCustomizados: [],
   infrequentes: [],
   planosDeAula: [], // { id, disciplinaId, serie, aulas: [{ idAula, ordem, habilidade, estrategia, objetoConhecimento }] }
+  diasLetivos: [], // { data: 'YYYY-MM-DD', tipo: 'adicionar'|'remover', diaSemanaRef: 1-5, observacao: '...' }
+  currentDateDL: new Date(),
+  selectedDateDL: null,
   viewFilters: { escola: '', turma: '' },
   isWeekView: false
 };
@@ -98,6 +101,9 @@ function setupEventListeners() {
   document.getElementById('btnSettings').addEventListener('click', openSettingsModal);
   document.getElementById('btnCloseModal').addEventListener('click', () => {
     document.getElementById('settingsModal').classList.add('hidden');
+    document.getElementById('diasLetivosContainer').classList.add('hidden');
+    document.getElementById('schedulesList').classList.remove('hidden');
+    document.getElementById('scheduleFormContainer').classList.add('hidden');
     renderCalendar();
     renderClassesForSelectedDay();
   });
@@ -112,6 +118,23 @@ function setupEventListeners() {
 
   document.getElementById('btnImport').addEventListener('click', () => document.getElementById('btnImportFile').click());
   document.getElementById('btnImportFile').addEventListener('change', importSchedules);
+
+  // Dias Letivos
+  document.getElementById('btnDiasLetivos').addEventListener('click', openDiasLetivos);
+  document.getElementById('prevMonthDL').addEventListener('click', () => {
+    state.currentDateDL.setMonth(state.currentDateDL.getMonth() - 1);
+    renderCalendarDL();
+  });
+  document.getElementById('nextMonthDL').addEventListener('click', () => {
+    state.currentDateDL.setMonth(state.currentDateDL.getMonth() + 1);
+    renderCalendarDL();
+  });
+  document.getElementById('dlTipo').addEventListener('change', (e) => {
+    const isAdicionar = e.target.value === 'adicionar';
+    document.getElementById('dlGroupDiaReferencia').style.display = isAdicionar ? 'block' : 'none';
+  });
+  document.getElementById('btnSaveDiaLetivo').addEventListener('click', saveDiaLetivo);
+
 
   // Modal de Infrequentes
   document.getElementById('btnInfrequentes').addEventListener('click', openInfrequentesModal);
@@ -170,13 +193,13 @@ async function loadData() {
   setLoading(true, 'Carregando autenticação...');
 
   try {
-    let authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc", "escolaRsIgnorados", "escolaRsHorariosCustomizados", "escolaRsInfrequentes", "escolaRsPlanosDeAula"]);
+    let authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc", "escolaRsIgnorados", "escolaRsHorariosCustomizados", "escolaRsInfrequentes", "escolaRsPlanosDeAula", "escolaRsDiasLetivos"]);
 
     if (!authData.escolaRsToken) {
       console.log('[Chamada] Token ausente. Tentando renovação silenciosa inicial...');
       try {
         await trySilentTokenRefresh();
-        authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc", "escolaRsIgnorados", "escolaRsHorariosCustomizados", "escolaRsInfrequentes", "escolaRsPlanosDeAula"]);
+        authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc", "escolaRsIgnorados", "escolaRsHorariosCustomizados", "escolaRsInfrequentes", "escolaRsPlanosDeAula", "escolaRsDiasLetivos"]);
       } catch (e) {
         console.warn('[Chamada] Renovação inicial falhou:', e);
       }
@@ -192,6 +215,7 @@ async function loadData() {
     state.horariosCustomizados = authData.escolaRsHorariosCustomizados || [];
     state.infrequentes = authData.escolaRsInfrequentes || [];
     state.planosDeAula = authData.escolaRsPlanosDeAula || [];
+    state.diasLetivos = authData.escolaRsDiasLetivos || [];
 
     setLoading(true, 'Buscando turmas e alunos...');
     // Busca dados com a API (do arquivo api/escolaRS.js incluído no HTML)
@@ -369,11 +393,26 @@ function renderCalendar() {
     const isoDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
     // Tem aula neste dia? 
+    // Verifica Dias Letivos Configurados
+    const dlItem = state.diasLetivos.find(dl => dl.data === isoDate);
+    let jsDay = dayOfWeek;
+    if (dlItem && dlItem.tipo === 'adicionar') {
+      jsDay = dlItem.diaSemanaRef;
+    }
+
     const customSchedule = getCustomScheduleForDate(isoDate);
     let aulasRegulares = [];
 
-    if (customSchedule) {
-      const customClasses = customSchedule.aulas.filter(a => a.diaSemana == dayOfWeek);
+    if (dlItem && dlItem.tipo === 'remover') {
+      aulasRegulares = [];
+      dayDiv.classList.add('disabled'); // Marca visualmente como feriado/removido
+      dayDiv.title = dlItem.observacao || 'Feriado / Dia não letivo';
+    } else if (!dlItem && (dayOfWeek === 0 || dayOfWeek === 6)) {
+      aulasRegulares = [];
+      dayDiv.classList.add('disabled'); // Bloqueado por padrão no final de semana
+      dayDiv.title = 'Final de Semana';
+    } else if (customSchedule) {
+      const customClasses = customSchedule.aulas.filter(a => a.diaSemana == jsDay);
       customClasses.forEach(c => {
         const foundAulaConfig = buildAulaConfigFromIds(c.idTurma, c.idDisciplina);
         if (foundAulaConfig) {
@@ -382,8 +421,13 @@ function renderCalendar() {
         }
       });
     } else {
-      const aulasDesteDiaSemana = state.mapaAulasPorDiaDaSemana.get(dayOfWeek) || [];
-      aulasRegulares = aulasDesteDiaSemana.filter(aula => isClassActiveOnDate(aula, currentIterDate));
+      const aulasDesteDiaSemana = state.mapaAulasPorDiaDaSemana.get(jsDay) || [];
+      aulasRegulares = aulasDesteDiaSemana.filter(aula => (dlItem && dlItem.tipo === 'adicionar') || isClassActiveOnDate(aula, currentIterDate));
+    }
+
+    if (dlItem && dlItem.tipo === 'adicionar') {
+      dayDiv.style.borderBottom = '3px solid var(--primary)';
+      dayDiv.title = dlItem.observacao || 'Dia letivo adicionado';
     }
 
     // Histórico de aulas específicas para esta data
@@ -551,12 +595,26 @@ function renderClassesForSelectedDay() {
 }
 
 function getClassesObjForDate(dateObj) {
-  const jsDay = dateObj.getDay();
+  let jsDay = dateObj.getDay();
   const isoDate = formatDateIso(dateObj);
+  
+  // Verifica Dias Letivos Configurados
+  const dlItem = state.diasLetivos.find(dl => dl.data === isoDate);
+  if (dlItem && dlItem.tipo === 'adicionar') {
+    jsDay = dlItem.diaSemanaRef;
+  }
+
   const customSchedule = getCustomScheduleForDate(isoDate);
 
   let aulasRegulares = [];
-  if (customSchedule) {
+  
+  if (dlItem && dlItem.tipo === 'remover') {
+    // Feriado ou recesso: sem aulas regulares
+    aulasRegulares = [];
+  } else if (!dlItem && (dateObj.getDay() === 0 || dateObj.getDay() === 6)) {
+    // Finais de semana bloqueados por padrão se não forem "Adicionados"
+    aulasRegulares = [];
+  } else if (customSchedule) {
     const customClasses = customSchedule.aulas.filter(a => a.diaSemana == jsDay);
     customClasses.forEach(c => {
       const foundAulaConfig = buildAulaConfigFromIds(c.idTurma, c.idDisciplina);
@@ -567,7 +625,8 @@ function getClassesObjForDate(dateObj) {
     });
   } else {
     const rawAulas = state.mapaAulasPorDiaDaSemana.get(jsDay) || [];
-    aulasRegulares = rawAulas.filter(aula => isClassActiveOnDate(aula, dateObj));
+    // Se for dia adicionado, ignoramos isClassActiveOnDate para não barrar o sábado que geralmente estaria inativo
+    aulasRegulares = rawAulas.filter(aula => (dlItem && dlItem.tipo === 'adicionar') || isClassActiveOnDate(aula, dateObj));
   }
 
   const aulasHistorico = state.mapaAulasPorDataEspecifica.get(isoDate) || [];
@@ -1508,10 +1567,11 @@ function exportSchedules() {
   const config = {
     horariosCustomizados: state.horariosCustomizados || [],
     infrequentes: state.infrequentes || [],
-    planosDeAula: state.planosDeAula || []
+    planosDeAula: state.planosDeAula || [],
+    diasLetivos: state.diasLetivos || []
   };
 
-  if (config.horariosCustomizados.length === 0 && config.infrequentes.length === 0 && config.planosDeAula.length === 0) {
+  if (config.horariosCustomizados.length === 0 && config.infrequentes.length === 0 && config.planosDeAula.length === 0 && config.diasLetivos.length === 0) {
     alert("Não há configurações para exportar.");
     return;
   }
@@ -1539,6 +1599,7 @@ function importSchedules(event) {
         if (parsed.horariosCustomizados) state.horariosCustomizados = parsed.horariosCustomizados;
         if (parsed.infrequentes) state.infrequentes = parsed.infrequentes;
         if (parsed.planosDeAula) state.planosDeAula = parsed.planosDeAula;
+        if (parsed.diasLetivos) state.diasLetivos = parsed.diasLetivos;
       } else {
         throw new Error('Formato inválido.');
       }
@@ -1546,7 +1607,8 @@ function importSchedules(event) {
       await chrome.storage.local.set({
         escolaRsHorariosCustomizados: state.horariosCustomizados,
         escolaRsInfrequentes: state.infrequentes,
-        escolaRsPlanosDeAula: state.planosDeAula
+        escolaRsPlanosDeAula: state.planosDeAula,
+        escolaRsDiasLetivos: state.diasLetivos
       });
       showToast('Configurações importadas com sucesso!', 'success');
       renderSchedulesList();
@@ -2102,5 +2164,180 @@ function setupDragAndDrop() {
     });
   });
 }
+
+// --- DIAS LETIVOS ---
+function openDiasLetivos() {
+  document.getElementById('schedulesList').classList.add('hidden');
+  document.getElementById('scheduleFormContainer').classList.add('hidden');
+  document.getElementById('diasLetivosContainer').classList.remove('hidden');
+  
+  state.currentDateDL = new Date();
+  state.selectedDateDL = null;
+  document.getElementById('dlFormFields').classList.add('hidden');
+  document.getElementById('dlSelectedDateTitle').textContent = 'Selecione um dia no calendário';
+  
+  renderCalendarDL();
+  renderDiasLetivosList();
+}
+
+function renderCalendarDL() {
+  const year = state.currentDateDL.getFullYear();
+  const month = state.currentDateDL.getMonth();
+  const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+  document.getElementById('currentMonthYearDL').textContent = `${monthNames[month]} ${year}`;
+
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const startDayOfWeek = firstDay.getDay();
+  const totalDays = lastDay.getDate();
+
+  const calendarDays = document.getElementById('calendarDaysDL');
+  calendarDays.innerHTML = '';
+
+  for (let i = 0; i < startDayOfWeek; i++) {
+    const emptyDiv = document.createElement('div');
+    emptyDiv.className = 'cal-day empty';
+    calendarDays.appendChild(emptyDiv);
+  }
+
+  const today = new Date();
+
+  for (let d = 1; d <= totalDays; d++) {
+    const dayDiv = document.createElement('div');
+    dayDiv.className = 'cal-day';
+    dayDiv.textContent = d;
+
+    const isoDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+    if (d === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
+      dayDiv.classList.add('today');
+    }
+
+    if (state.selectedDateDL && d === state.selectedDateDL.getDate() && month === state.selectedDateDL.getMonth() && year === state.selectedDateDL.getFullYear()) {
+      dayDiv.classList.add('selected');
+    }
+
+    const dlItem = state.diasLetivos.find(dl => dl.data === isoDate);
+    if (dlItem) {
+      if (dlItem.tipo === 'remover') {
+        dayDiv.style.border = '2px solid var(--danger)';
+      } else {
+        dayDiv.style.border = '2px solid var(--primary)';
+      }
+    }
+
+    dayDiv.addEventListener('click', () => {
+      state.selectedDateDL = new Date(year, month, d);
+      renderCalendarDL();
+      
+      const dataStr = `${String(d).padStart(2, '0')}/${String(month + 1).padStart(2, '0')}/${year}`;
+      document.getElementById('dlSelectedDateTitle').innerHTML = `Configurar <span class="text-primary">${dataStr}</span>`;
+      document.getElementById('dlFormFields').classList.remove('hidden');
+      
+      if (dlItem) {
+        document.getElementById('dlTipo').value = dlItem.tipo;
+        if (dlItem.tipo === 'adicionar') {
+          document.getElementById('dlGroupDiaReferencia').style.display = 'block';
+          document.getElementById('dlDiaSemanaRef').value = dlItem.diaSemanaRef;
+        } else {
+          document.getElementById('dlGroupDiaReferencia').style.display = 'none';
+        }
+        document.getElementById('dlObservacao').value = dlItem.observacao || '';
+      } else {
+        document.getElementById('dlTipo').value = 'adicionar';
+        document.getElementById('dlGroupDiaReferencia').style.display = 'block';
+        document.getElementById('dlDiaSemanaRef').value = '1';
+        document.getElementById('dlObservacao').value = '';
+      }
+    });
+
+    calendarDays.appendChild(dayDiv);
+  }
+}
+
+function renderDiasLetivosList() {
+  const container = document.getElementById('diasLetivosList');
+  container.innerHTML = '';
+
+  if (state.diasLetivos.length === 0) {
+    container.innerHTML = '<p class="empty-state">Nenhum dia letivo configurado.</p>';
+    return;
+  }
+
+  // Ordenar por data
+  const ordenados = [...state.diasLetivos].sort((a, b) => new Date(a.data) - new Date(b.data));
+
+  ordenados.forEach((dl) => {
+    const [y, m, d] = dl.data.split('-');
+    const dataStr = `${d}/${m}/${y}`;
+    const tipoStr = dl.tipo === 'adicionar' ? 'Adicionado (Sábado Letivo/Reposição)' : 'Removido (Feriado/Recesso)';
+    let refStr = '';
+    if (dl.tipo === 'adicionar') {
+      const dias = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+      refStr = ` - Ref: ${dias[dl.diaSemanaRef]}`;
+    }
+
+    const div = document.createElement('div');
+    div.className = 'dia-letivo-item';
+    div.innerHTML = `
+      <div>
+        <div class="dl-date">${dataStr}</div>
+        <div class="dl-type ${dl.tipo}">${tipoStr}${refStr}</div>
+        <div class="dl-obs">${dl.observacao || ''}</div>
+      </div>
+      <button class="btn btn-sm btn-secondary" onclick="deleteDiaLetivo('${dl.data}')"><i data-lucide="trash"></i></button>
+    `;
+    container.appendChild(div);
+  });
+  lucide.createIcons();
+}
+
+async function saveDiaLetivo() {
+  if (!state.selectedDateDL) {
+    showToast('Selecione uma data no calendário.', 'error');
+    return;
+  }
+
+  const isoDate = `${state.selectedDateDL.getFullYear()}-${String(state.selectedDateDL.getMonth() + 1).padStart(2, '0')}-${String(state.selectedDateDL.getDate()).padStart(2, '0')}`;
+  const tipo = document.getElementById('dlTipo').value;
+  const diaSemanaRef = parseInt(document.getElementById('dlDiaSemanaRef').value);
+  const observacao = document.getElementById('dlObservacao').value.trim();
+
+  const index = state.diasLetivos.findIndex(dl => dl.data === isoDate);
+  const novoItem = { data: isoDate, tipo, observacao };
+  if (tipo === 'adicionar') {
+    novoItem.diaSemanaRef = diaSemanaRef;
+  }
+
+  if (index >= 0) {
+    state.diasLetivos[index] = novoItem;
+  } else {
+    state.diasLetivos.push(novoItem);
+  }
+
+  await chrome.storage.local.set({ escolaRsDiasLetivos: state.diasLetivos });
+  showToast('Dia letivo salvo com sucesso!', 'success');
+  
+  renderCalendarDL();
+  renderDiasLetivosList();
+  
+  // Update main calendar
+  renderCalendar();
+  renderClassesForSelectedDay();
+}
+
+window.deleteDiaLetivo = async (data) => {
+  state.diasLetivos = state.diasLetivos.filter(dl => dl.data !== data);
+  await chrome.storage.local.set({ escolaRsDiasLetivos: state.diasLetivos });
+  showToast('Dia letivo removido com sucesso!', 'success');
+  
+  renderCalendarDL();
+  renderDiasLetivosList();
+  
+  // Update main calendar
+  renderCalendar();
+  renderClassesForSelectedDay();
+};
+
 
 

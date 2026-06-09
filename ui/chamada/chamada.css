@@ -918,3 +918,43 @@ body {
 .btn-danger:hover {
   background: var(--danger-hover);
 }
+/* ===== Dias Letivos ===== */
+.dias-letivos-layout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+@media (max-width: 768px) {
+  .dias-letivos-layout {
+    flex-direction: column;
+  }
+  .calendar-sidebar {
+    max-width: 100% !important;
+  }
+}
+.dias-letivos-form-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.dias-letivos-list {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: white;
+}
+.dia-letivo-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.dia-letivo-item:last-child {
+  border-bottom: none;
+}
+.dl-date { font-weight: bold; }
+.dl-type.remover { color: var(--danger); font-size: 0.85rem; font-weight: 500; }
+.dl-type.adicionar { color: var(--primary); font-size: 0.85rem; font-weight: 500; }
+.dl-obs { color: var(--text-muted); font-size: 0.85rem; margin-top: 4px; }

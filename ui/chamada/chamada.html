@@ -126,9 +126,14 @@
           <div class="modal-body">
 
             <div class="settings-toolbar">
-              <button id="btnNewSchedule" class="btn btn-primary">
-                <i data-lucide="plus"></i> Novo Quadro de Horário
-              </button>
+              <div style="display:flex; gap: 10px;">
+                <button id="btnNewSchedule" class="btn btn-primary">
+                  <i data-lucide="plus"></i> Novo Quadro de Horário
+                </button>
+                <button id="btnDiasLetivos" class="btn btn-secondary">
+                  <i data-lucide="calendar-days"></i> Dias Letivos
+                </button>
+              </div>
               <div>
                 <button id="btnExport" class="btn btn-secondary">
                   <i data-lucide="download"></i> Exportar
@@ -146,6 +151,65 @@
 
             <div id="schedulesList" class="schedules-list">
               <!-- JS Injects active schedules here -->
+            </div>
+
+            <div id="diasLetivosContainer" class="hidden">
+              <div class="dias-letivos-layout">
+                <!-- Esquerda: Calendário -->
+                <div class="calendar-sidebar" style="width: 100%; max-width: 320px;">
+                  <div class="calendar-header">
+                    <button id="prevMonthDL" class="btn-icon"><i data-lucide="chevron-left"></i></button>
+                    <h2 id="currentMonthYearDL">Abril 2026</h2>
+                    <button id="nextMonthDL" class="btn-icon"><i data-lucide="chevron-right"></i></button>
+                  </div>
+                  <div class="calendar-grid-header">
+                    <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
+                  </div>
+                  <div id="calendarDaysDL" class="calendar-days">
+                    <!-- Dias injetados via JS -->
+                  </div>
+                </div>
+
+                <!-- Direita: Formulário e Lista -->
+                <div class="dias-letivos-form-list">
+                  <div id="formDiasLetivos" class="card" style="padding: 15px; margin-bottom: 20px;">
+                    <h3 id="dlSelectedDateTitle" style="margin-bottom: 15px;">Selecione um dia no calendário</h3>
+                    <div id="dlFormFields" class="hidden">
+                      <div class="form-group">
+                        <label>Tipo de Ajuste</label>
+                        <select id="dlTipo" class="form-control">
+                          <option value="adicionar">Adicionar Dia Letivo (Sábado, etc.)</option>
+                          <option value="remover">Remover Dia Letivo (Feriado, Recesso)</option>
+                        </select>
+                      </div>
+                      <div class="form-group" id="dlGroupDiaReferencia">
+                        <label>Dia da Semana de Referência (Horários)</label>
+                        <select id="dlDiaSemanaRef" class="form-control">
+                          <option value="1">Segunda-feira</option>
+                          <option value="2">Terça-feira</option>
+                          <option value="3">Quarta-feira</option>
+                          <option value="4">Quinta-feira</option>
+                          <option value="5">Sexta-feira</option>
+                        </select>
+                      </div>
+                      <div class="form-group">
+                        <label>Observação</label>
+                        <input type="text" id="dlObservacao" class="form-control" placeholder="Ex: Feriado Nacional, Sábado de Recuperação">
+                      </div>
+                      <button id="btnSaveDiaLetivo" class="btn btn-primary" style="width: 100%;">
+                        <i data-lucide="save"></i> Salvar Dia
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="card" style="padding: 15px;">
+                    <h3 style="margin-bottom: 15px;">Dias Configurados</h3>
+                    <div id="diasLetivosList" class="dias-letivos-list">
+                      <!-- Lista de dias injetada via JS -->
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
           </div>
