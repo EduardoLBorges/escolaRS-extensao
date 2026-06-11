@@ -125,6 +125,22 @@ body {
   background: #90d381;
 }
 
+.btn-success {
+  background: #10b981;
+  color: white;
+}
+
+.btn-success:hover:not(:disabled) {
+  background: #059669;
+  transform: translateY(-1px);
+}
+
+.btn-enviar-todos {
+  width: 100%;
+  margin-top: 15px;
+  margin-bottom: 20px;
+}
+
 /* Main Layout */
 .calendar-layout {
   display: grid;
@@ -615,6 +631,43 @@ body {
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--border);
+}
+
+/* Dropdown Menu */
+.dropdown-menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  z-index: 10;
+  min-width: 180px;
+  overflow: hidden;
+}
+
+.dropdown-item {
+  width: 100%;
+  text-align: left;
+  padding: 10px 15px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-main);
+  font-size: 0.9rem;
+  transition: background 0.15s;
+}
+
+.dropdown-item:hover {
+  background: var(--bg-color);
+}
+
+.dropdown-item.text-danger {
+  color: var(--danger);
 }
 
 /* Loading & Toast */

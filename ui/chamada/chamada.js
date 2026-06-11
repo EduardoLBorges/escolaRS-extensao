@@ -40,6 +40,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 function setupEventListeners() {
+  document.addEventListener('click', (e) => {
+    const isDropdownToggle = e.target.closest('.dropdown-toggle');
+    if (isDropdownToggle) {
+      const toggleBtn = e.target.closest('.dropdown-toggle');
+      const menu = toggleBtn.nextElementSibling;
+      const isHidden = menu.classList.contains('hidden');
+      document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.add('hidden'));
+      if (isHidden) menu.classList.remove('hidden');
+    } else if (!e.target.closest('.dropdown-menu')) {
+      document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.add('hidden'));
+    }
+  });
+
   document.getElementById('btnVoltar').addEventListener('click', () => {
     window.location.href = '../dashboard/dashboard.html';
   });
@@ -592,6 +605,44 @@ function renderClassesForSelectedDay() {
     btnExtra.onclick = () => renderExtraClassForm(dataStr, isoDate);
     container.appendChild(btnExtra);
   }
+
+  // Adiciona o botão "Enviar Todos" se houver aulas listadas
+  const submitBtns = container.querySelectorAll('.submit-attendance');
+  if (submitBtns.length > 0) {
+    const btnEnviarTodos = document.createElement('button');
+    btnEnviarTodos.className = 'btn btn-success btn-enviar-todos';
+    btnEnviarTodos.innerHTML = '<i data-lucide="check-circle"></i> Enviar Todos os Registros';
+    btnEnviarTodos.onclick = async () => {
+      const originalText = btnEnviarTodos.innerHTML;
+      btnEnviarTodos.disabled = true;
+      btnEnviarTodos.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px;border-top-color:white;"></div> Enviando Todos...';
+      
+      const btns = container.querySelectorAll('.submit-attendance');
+      for (const btn of btns) {
+        await window.submitAttendance(
+          btn.dataset.formIndex,
+          parseInt(btn.dataset.idTurma),
+          parseInt(btn.dataset.idDisciplina),
+          parseInt(btn.dataset.qtPeriodos),
+          btn.dataset.dataStr,
+          btn.dataset.idPeriodoAula,
+          btn
+        );
+      }
+      
+      btnEnviarTodos.innerHTML = '<i data-lucide="check"></i> Todos Enviados!';
+      lucide.createIcons({ nodes: [btnEnviarTodos] });
+      
+      setTimeout(() => {
+        btnEnviarTodos.disabled = false;
+        btnEnviarTodos.innerHTML = originalText;
+        lucide.createIcons({ nodes: [btnEnviarTodos] });
+      }, 3000);
+    };
+    container.appendChild(btnEnviarTodos);
+  }
+  
+  lucide.createIcons({ nodes: [container] });
 }
 
 function getClassesObjForDate(dateObj) {
@@ -823,7 +874,16 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
         <h3 class="class-title">${turma.nome} - ${disciplina.nome}</h3>
         <p class="class-meta">${escolaNome} • ${qtPeriodos} Período(s): ${periodos.join(', ')}</p>
       </div>
-      <button class="btn btn-secondary ignore-class-btn" data-id-turma="${turma.id}" data-id-disciplina="${disciplina.id}" data-iso-date="${isoDate}">Ignorar Pendência</button>
+      <div class="dropdown" style="position: relative;">
+        <button type="button" class="btn-icon dropdown-toggle" title="Opções" style="background:transparent; border:none; color:var(--text-muted);">
+          <i data-lucide="more-vertical"></i>
+        </button>
+        <div class="dropdown-menu hidden">
+          <button type="button" class="dropdown-item text-danger ignore-class-btn" data-id-turma="${turma.id}" data-id-disciplina="${disciplina.id}" data-iso-date="${isoDate}">
+            <i data-lucide="eye-off"></i> Ignorar Pendência
+          </button>
+        </div>
+      </div>
     </div>
     ${sliderHtml}
     <div class="form-group">
@@ -1041,8 +1101,9 @@ window.submitAttendance = async (formIndex, idTurma, idDisciplina, qtPeriodos, d
 
 // Event Delegation para Ignore
 document.getElementById('classesList').addEventListener('click', async (e) => {
-  if (e.target.classList.contains('ignore-class-btn')) {
-    const btn = e.target;
+  const ignoreBtn = e.target.closest('.ignore-class-btn');
+  if (ignoreBtn) {
+    const btn = ignoreBtn;
     const isoDate = btn.dataset.isoDate;
     const key = `${btn.dataset.idTurma}-${btn.dataset.idDisciplina}`;
 
