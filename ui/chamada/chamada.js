@@ -1070,6 +1070,18 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
       const walk = (x - startX) * 1.2; // Multiplicador de velocidade
       wrapper.scrollLeft = startScrollLeft - walk;
     });
+
+    // Auto-scroll para a primeira aula não utilizada
+    setTimeout(() => {
+      const firstUnused = wrapper.querySelector('.plano-chip:not(.used-chip)');
+      if (firstUnused) {
+        const wrapperRect = wrapper.getBoundingClientRect();
+        const chipRect = firstUnused.getBoundingClientRect();
+        // Calcula a posição exata baseada nas dimensões em tela
+        const scrollAmount = wrapper.scrollLeft + (chipRect.left - wrapperRect.left) - 15;
+        wrapper.scrollTo({ left: Math.max(0, scrollAmount), behavior: 'smooth' });
+      }
+    }, 150);
   }
 
   // Renderizar ícones nos elementos dinâmicos do card
