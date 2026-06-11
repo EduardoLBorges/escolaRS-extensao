@@ -67,12 +67,22 @@ function setupEventListeners() {
     renderCalendar();
   });
 
+  // Monitorar alterações nos campos de texto
+  document.getElementById('classesList').addEventListener('input', (e) => {
+    if (e.target.tagName === 'TEXTAREA') {
+      const card = e.target.closest('.class-card');
+      if (card) card.classList.add('has-changes');
+    }
+  });
+
   // Event Delegation para botões de presença e botões de envio (corrige erro CSP do Chrome)
   document.getElementById('classesList').addEventListener('click', (e) => {
     if (e.target.classList.contains('attendance-btn')) {
       const row = e.target.closest('.attendance-toggle');
       row.querySelectorAll('.attendance-btn').forEach(b => b.classList.remove('active'));
       e.target.classList.add('active');
+      const card = e.target.closest('.class-card');
+      if (card) card.classList.add('has-changes');
     }
 
     if (e.target.classList.contains('submit-attendance')) {
@@ -614,11 +624,30 @@ function renderClassesForSelectedDay() {
     btnEnviarTodos.innerHTML = '<i data-lucide="check-circle"></i> Enviar Todos os Registros';
     btnEnviarTodos.onclick = async () => {
       const originalText = btnEnviarTodos.innerHTML;
-      btnEnviarTodos.disabled = true;
-      btnEnviarTodos.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px;border-top-color:white;"></div> Enviando Todos...';
       
-      const btns = container.querySelectorAll('.submit-attendance');
-      for (const btn of btns) {
+      const allBtns = container.querySelectorAll('.submit-attendance');
+      const btnsToSend = [];
+      for (const btn of allBtns) {
+        const card = btn.closest('.class-card');
+        if (!card.classList.contains('completed') || card.classList.contains('has-changes')) {
+          btnsToSend.push(btn);
+        }
+      }
+
+      if (btnsToSend.length === 0) {
+        btnEnviarTodos.innerHTML = '<i data-lucide="check"></i> Nada novo para enviar!';
+        lucide.createIcons({ nodes: [btnEnviarTodos] });
+        setTimeout(() => {
+          btnEnviarTodos.innerHTML = originalText;
+          lucide.createIcons({ nodes: [btnEnviarTodos] });
+        }, 3000);
+        return;
+      }
+
+      btnEnviarTodos.disabled = true;
+      btnEnviarTodos.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px;border-top-color:white;"></div> Enviando ' + btnsToSend.length + '...';
+      
+      for (const btn of btnsToSend) {
         await window.submitAttendance(
           btn.dataset.formIndex,
           parseInt(btn.dataset.idTurma),
@@ -839,26 +868,68 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
 
   const qtPeriodos = periodos.length || 1;
 
-  // --- Slider de sugestões do Plano de Aula ---
+  // --- Slider de sugestões do Plano de Aula (Autopreenchimento) ---
   let sliderHtml = '';
+  let registroConteudoInicial = registroConteudo;
+
   const planosDaTurmaDisc = (state.planosDeAula || []).filter(p =>
     String(p.disciplinaId) === String(disciplina.id) &&
     String(p.serie) === String(turma.idSerie)
   );
   const todasAulasDosPlanos = planosDaTurmaDisc.flatMap(p => p.aulas || []).sort((a, b) => a.ordem - b.ordem);
+  
   if (todasAulasDosPlanos.length > 0) {
-    const chips = todasAulasDosPlanos.map(aula => `
-      <div class="plano-chip" 
-           data-form-index="${index}" 
-           data-habilidade="${(aula.habilidade || '').replace(/"/g, '&quot;')}" 
-           data-estrategia="${(aula.estrategia || '').replace(/"/g, '&quot;')}"
-           data-objeto="${(aula.objetoConhecimento || '').replace(/"/g, '&quot;')}"
-           title="Estratégia: ${(aula.estrategia || '').replace(/"/g, '&quot;')}"
-           role="button">
-        <span class="plano-chip-num">Aula ${aula.ordem}</span>
-        <span class="plano-chip-text">${aula.objetoConhecimento || '—'}</span>
-      </div>
-    `).join('');
+    // Analisar histórico para autopreenchimento
+    const historicoConteudos = (disciplina.chamadas || [])
+      .filter(c => c.data !== isoDate)
+      .map(c => c.registroConteudo || '');
+      
+    let highestUsedIndex = -1;
+    todasAulasDosPlanos.forEach((aula, idx) => {
+      const objText = (aula.objetoConhecimento || '').trim();
+      const hasMatch = objText && historicoConteudos.some(hc => hc.includes(objText));
+      if (hasMatch) highestUsedIndex = idx;
+    });
+
+    let autoFillIndex = -1;
+    if (!chamadaExistente) {
+      if (highestUsedIndex >= 0 && highestUsedIndex < todasAulasDosPlanos.length - 1) {
+        autoFillIndex = highestUsedIndex + 1;
+      } else if (highestUsedIndex === -1) {
+        autoFillIndex = 0;
+      }
+      
+      if (autoFillIndex !== -1) {
+        const nextAula = todasAulasDosPlanos[autoFillIndex];
+        const hab = nextAula.habilidade ? `Habilidade: ${nextAula.habilidade}\n` : '';
+        const est = nextAula.estrategia ? `Estratégia: ${nextAula.estrategia}\n` : '';
+        const obj = nextAula.objetoConhecimento || '';
+        registroConteudoInicial = `${obj}\n${hab}${est}`.trim();
+      }
+    }
+
+    const chips = todasAulasDosPlanos.map((aula, idx) => {
+      const isUsed = idx <= highestUsedIndex;
+      const isAutoFilled = idx === autoFillIndex;
+      const extraClass = isUsed ? 'used-chip' : (isAutoFilled ? 'plano-chip--active' : '');
+      const icon = isUsed ? '<i data-lucide="check" style="width:12px;height:12px;margin-right:4px;"></i>' : '';
+      const opacity = isUsed ? 'opacity: 0.6;' : '';
+      
+      return `
+        <div class="plano-chip ${extraClass}" 
+             style="${opacity}"
+             data-form-index="${index}" 
+             data-habilidade="${(aula.habilidade || '').replace(/"/g, '&quot;')}" 
+             data-estrategia="${(aula.estrategia || '').replace(/"/g, '&quot;')}"
+             data-objeto="${(aula.objetoConhecimento || '').replace(/"/g, '&quot;')}"
+             title="Estratégia: ${(aula.estrategia || '').replace(/"/g, '&quot;')}"
+             role="button">
+          ${icon}<span class="plano-chip-num">Aula ${aula.ordem}</span>
+          <span class="plano-chip-text">${aula.objetoConhecimento || '—'}</span>
+        </div>
+      `;
+    }).join('');
+
     sliderHtml = `
       <div class="plano-sugestoes-wrapper">
         <span class="plano-sugestoes-label"><i data-lucide="lightbulb"></i> Sugestões do Plano</span>
@@ -888,7 +959,7 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
     ${sliderHtml}
     <div class="form-group">
       <label>Conteúdo da Aula</label>
-      <textarea class="form-control" rows="3" id="conteudo-${index}" placeholder="Digite o conteúdo abordado ou observações...">${registroConteudo}</textarea>
+      <textarea class="form-control" rows="3" id="conteudo-${index}" placeholder="Digite o conteúdo abordado ou observações...">${registroConteudoInicial}</textarea>
     </div>
     
     <div class="form-group">
@@ -916,15 +987,56 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
 
   // Event Listener do slider (auto-fill)
   div.querySelectorAll('.plano-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      const textarea = document.getElementById(`conteudo-${index}`);
-      if (!textarea) return;
-      const habilidade = chip.dataset.habilidade ? `Habilidade: ${chip.dataset.habilidade}\n` : '';
-      const estrategia = chip.dataset.estrategia ? `Estratégia: ${chip.dataset.estrategia}\n` : '';
-      const objeto = chip.dataset.objeto || '';
-      textarea.value = `${objeto}\n${habilidade}${estrategia}`.trim();
-      chip.classList.add('plano-chip--active');
-      setTimeout(() => chip.classList.remove('plano-chip--active'), 600);
+    chip.addEventListener('click', (e) => {
+      const applyToForm = (targetDiv, formIndex, targetChip) => {
+        const textarea = document.getElementById(`conteudo-${formIndex}`);
+        if (!textarea) return;
+        const habilidade = targetChip.dataset.habilidade ? `Habilidade: ${targetChip.dataset.habilidade}\n` : '';
+        const estrategia = targetChip.dataset.estrategia ? `Estratégia: ${targetChip.dataset.estrategia}\n` : '';
+        const objeto = targetChip.dataset.objeto || '';
+        textarea.value = `${objeto}\n${habilidade}${estrategia}`.trim();
+        targetChip.classList.add('plano-chip--active');
+        setTimeout(() => targetChip.classList.remove('plano-chip--active'), 600);
+        targetDiv.classList.add('has-changes');
+      };
+
+      // Aplica ao form atual
+      applyToForm(div, index, chip);
+
+      // Triple click logic para replicar
+      if (e.detail === 3) {
+        const targetObjeto = chip.dataset.objeto;
+        if (!targetObjeto) return;
+        
+        const allCards = document.querySelectorAll('.class-card');
+        let appliedCount = 0;
+        
+        allCards.forEach(card => {
+          if (card === div) return; // já aplicado
+          
+          // Procura um chip idêntico (mesmo objeto de conhecimento) no card
+          const chipsInCard = card.querySelectorAll('.plano-chip');
+          let matchingChip = null;
+          for (const c of chipsInCard) {
+            if (c.dataset.objeto === targetObjeto) {
+              matchingChip = c;
+              break;
+            }
+          }
+          
+          if (matchingChip) {
+            const cardFormIndex = matchingChip.dataset.formIndex;
+            applyToForm(card, cardFormIndex, matchingChip);
+            appliedCount++;
+          }
+        });
+        
+        if (appliedCount > 0) {
+          showToast(`Conteúdo replicado para mais ${appliedCount} turma(s)!`, 'success');
+        } else {
+          showToast(`Nenhuma outra turma possui este mesmo plano no dia.`, 'error');
+        }
+      }
     });
   });
   // Drag-to-scroll no wrapper de sugestões
@@ -1083,6 +1195,7 @@ window.submitAttendance = async (formIndex, idTurma, idDisciplina, qtPeriodos, d
     const card = btn.closest('.class-card');
     if (card) {
       card.classList.add('completed');
+      card.classList.remove('has-changes');
     }
 
     // Muda o texto original para não voltar para "Enviar Chamada"
