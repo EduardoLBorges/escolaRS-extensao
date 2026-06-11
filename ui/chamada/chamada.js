@@ -624,7 +624,7 @@ function renderClassesForSelectedDay() {
     btnEnviarTodos.innerHTML = '<i data-lucide="check-circle"></i> Enviar Todos os Registros';
     btnEnviarTodos.onclick = async () => {
       const originalText = btnEnviarTodos.innerHTML;
-      
+
       const allBtns = container.querySelectorAll('.submit-attendance');
       const btnsToSend = [];
       for (const btn of allBtns) {
@@ -646,7 +646,7 @@ function renderClassesForSelectedDay() {
 
       btnEnviarTodos.disabled = true;
       btnEnviarTodos.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px;border-top-color:white;"></div> Enviando ' + btnsToSend.length + '...';
-      
+
       for (const btn of btnsToSend) {
         await window.submitAttendance(
           btn.dataset.formIndex,
@@ -658,10 +658,10 @@ function renderClassesForSelectedDay() {
           btn
         );
       }
-      
+
       btnEnviarTodos.innerHTML = '<i data-lucide="check"></i> Todos Enviados!';
       lucide.createIcons({ nodes: [btnEnviarTodos] });
-      
+
       setTimeout(() => {
         btnEnviarTodos.disabled = false;
         btnEnviarTodos.innerHTML = originalText;
@@ -670,14 +670,14 @@ function renderClassesForSelectedDay() {
     };
     container.appendChild(btnEnviarTodos);
   }
-  
+
   lucide.createIcons({ nodes: [container] });
 }
 
 function getClassesObjForDate(dateObj) {
   let jsDay = dateObj.getDay();
   const isoDate = formatDateIso(dateObj);
-  
+
   // Verifica Dias Letivos Configurados
   const dlItem = state.diasLetivos.find(dl => dl.data === isoDate);
   if (dlItem && dlItem.tipo === 'adicionar') {
@@ -687,7 +687,7 @@ function getClassesObjForDate(dateObj) {
   const customSchedule = getCustomScheduleForDate(isoDate);
 
   let aulasRegulares = [];
-  
+
   if (dlItem && dlItem.tipo === 'remover') {
     // Feriado ou recesso: sem aulas regulares
     aulasRegulares = [];
@@ -877,13 +877,13 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
     String(p.serie) === String(turma.idSerie)
   );
   const todasAulasDosPlanos = planosDaTurmaDisc.flatMap(p => p.aulas || []).sort((a, b) => a.ordem - b.ordem);
-  
+
   if (todasAulasDosPlanos.length > 0) {
     // Analisar histórico para autopreenchimento
     const historicoConteudos = (disciplina.chamadas || [])
       .filter(c => c.data !== isoDate)
       .map(c => c.registroConteudo || '');
-      
+
     let highestUsedIndex = -1;
     todasAulasDosPlanos.forEach((aula, idx) => {
       const objText = (aula.objetoConhecimento || '').trim();
@@ -898,7 +898,7 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
       } else if (highestUsedIndex === -1) {
         autoFillIndex = 0;
       }
-      
+
       if (autoFillIndex !== -1) {
         const nextAula = todasAulasDosPlanos[autoFillIndex];
         const hab = nextAula.habilidade ? `Habilidade: ${nextAula.habilidade}\n` : '';
@@ -914,7 +914,7 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
       const extraClass = isUsed ? 'used-chip' : (isAutoFilled ? 'plano-chip--active' : '');
       const icon = isUsed ? '<i data-lucide="check" style="width:12px;height:12px;margin-right:4px;"></i>' : '';
       const opacity = isUsed ? 'opacity: 0.6;' : '';
-      
+
       return `
         <div class="plano-chip ${extraClass}" 
              style="${opacity}"
@@ -1007,13 +1007,13 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
       if (e.detail === 3) {
         const targetObjeto = chip.dataset.objeto;
         if (!targetObjeto) return;
-        
+
         const allCards = document.querySelectorAll('.class-card');
         let appliedCount = 0;
-        
+
         allCards.forEach(card => {
           if (card === div) return; // já aplicado
-          
+
           // Procura um chip idêntico (mesmo objeto de conhecimento) no card
           const chipsInCard = card.querySelectorAll('.plano-chip');
           let matchingChip = null;
@@ -1023,14 +1023,14 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
               break;
             }
           }
-          
+
           if (matchingChip) {
             const cardFormIndex = matchingChip.dataset.formIndex;
             applyToForm(card, cardFormIndex, matchingChip);
             appliedCount++;
           }
         });
-        
+
         if (appliedCount > 0) {
           showToast(`Conteúdo replicado para mais ${appliedCount} turma(s)!`, 'success');
         } else {
@@ -2327,14 +2327,14 @@ function setupDragAndDrop() {
       item.classList.remove('plano-item--dragover');
       const { planoId, aulaId: fromAulaId } = JSON.parse(e.dataTransfer.getData('text/plain'));
       const toAulaId = item.dataset.aulaId;
-      if (fromAulaId === toAulaId || planoId !== item.dataset.planoId) return;
+      if (String(fromAulaId) === String(toAulaId) || String(planoId) !== String(item.dataset.planoId)) return;
 
-      const plano = state.planosDeAula.find(p => p.id === planoId);
+      const plano = state.planosDeAula.find(p => String(p.id) === String(planoId));
       if (!plano) return;
 
       plano.aulas.sort((a, b) => a.ordem - b.ordem);
-      const fromIndex = plano.aulas.findIndex(a => a.idAula === fromAulaId);
-      const toIndex = plano.aulas.findIndex(a => a.idAula === toAulaId);
+      const fromIndex = plano.aulas.findIndex(a => String(a.idAula) === String(fromAulaId));
+      const toIndex = plano.aulas.findIndex(a => String(a.idAula) === String(toAulaId));
       if (fromIndex === -1 || toIndex === -1) return;
 
       // Insert logic
@@ -2346,7 +2346,7 @@ function setupDragAndDrop() {
         a.ordem = i + 1;
       });
 
-      await savePlano(plano, false);
+      await chrome.storage.local.set({ escolaRsPlanosDeAula: state.planosDeAula });
       renderPlanosList();
     });
   });
@@ -2357,12 +2357,12 @@ function openDiasLetivos() {
   document.getElementById('schedulesList').classList.add('hidden');
   document.getElementById('scheduleFormContainer').classList.add('hidden');
   document.getElementById('diasLetivosContainer').classList.remove('hidden');
-  
+
   state.currentDateDL = new Date();
   state.selectedDateDL = null;
   document.getElementById('dlFormFields').classList.add('hidden');
   document.getElementById('dlSelectedDateTitle').textContent = 'Selecione um dia no calendário';
-  
+
   renderCalendarDL();
   renderDiasLetivosList();
 }
@@ -2416,11 +2416,11 @@ function renderCalendarDL() {
     dayDiv.addEventListener('click', () => {
       state.selectedDateDL = new Date(year, month, d);
       renderCalendarDL();
-      
+
       const dataStr = `${String(d).padStart(2, '0')}/${String(month + 1).padStart(2, '0')}/${year}`;
       document.getElementById('dlSelectedDateTitle').innerHTML = `Configurar <span class="text-primary">${dataStr}</span>`;
       document.getElementById('dlFormFields').classList.remove('hidden');
-      
+
       if (dlItem) {
         document.getElementById('dlTipo').value = dlItem.tipo;
         if (dlItem.tipo === 'adicionar') {
@@ -2504,10 +2504,10 @@ async function saveDiaLetivo() {
 
   await chrome.storage.local.set({ escolaRsDiasLetivos: state.diasLetivos });
   showToast('Dia letivo salvo com sucesso!', 'success');
-  
+
   renderCalendarDL();
   renderDiasLetivosList();
-  
+
   // Update main calendar
   renderCalendar();
   renderClassesForSelectedDay();
@@ -2517,10 +2517,10 @@ window.deleteDiaLetivo = async (data) => {
   state.diasLetivos = state.diasLetivos.filter(dl => dl.data !== data);
   await chrome.storage.local.set({ escolaRsDiasLetivos: state.diasLetivos });
   showToast('Dia letivo removido com sucesso!', 'success');
-  
+
   renderCalendarDL();
   renderDiasLetivosList();
-  
+
   // Update main calendar
   renderCalendar();
   renderClassesForSelectedDay();
@@ -2571,7 +2571,7 @@ window.saveEditAulaInline = async (planoId, aulaId) => {
   aula.habilidade = novaHab;
   aula.estrategia = novaEst;
 
-  await savePlano(plano, false);
+  await chrome.storage.local.set({ escolaRsPlanosDeAula: state.planosDeAula });
   renderPlanosList();
   showToast('Aula editada com sucesso!', 'success');
 };
