@@ -12,7 +12,8 @@
     "storage",
     "tabs",
     "notifications",
-    "webRequest"
+    "webRequest",
+    "clipboardWrite"
   ],
   "host_permissions": [
     "https://*.procergs.com.br/*",
@@ -43,6 +44,8 @@
         "ui/dashboard/dashboard.html",
         "ui/chamada/chamada.html",
         "ui/avaliacoes/avaliacoes.html",
+        "ui/omr/omr.html",
+        "ui/omr/omr-worker.js",
         "libs/xlsx.full.min.js",
         "tests/gerar_dados_xls.html",
         "tests/gerar_dados_xls.js"

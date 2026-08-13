@@ -1,0 +1,706 @@
+/**
+ * leitor.js — Orquestrador do fluxo de 4 passos do Leitor OMR
+ *
+ * Fluxo:
+ *   Passo 1: Configuração de Gabarito (turma, disciplina, formas A/B/...)
+ *   Passo 2: Upload de Fotos
+ *   Passo 3: Revisão Manual foto-a-foto (overlay + associação de aluno)
+ *   Passo 4: Lançamento de Notas no EscolaRS
+ */
+
+'use strict';
+
+// ─── Estado Global ────────────────────────────────────────────────────────────
+const state = {
+  activeStep: 1,
+  formas: [],           // [{ id, label, answers: { 1: 'A', 2: 'B', ... } }]
+  fotos: [],            // [{ file, imageData, width, height }]
+  resultados: [],       // [{ fotoIdx, alunoMatricula, alunoNome, formaId, answers, nota, confirmed }]
+  reviewIdx: 0,
+  config: { numQuestoes: 20, alternativas: 'ABCDE', pontosPorQuestao: 0.5 },
+  dashData: null,       // dados do dashboardCache
+  turmaAlunos: [],      // lista de alunos da turma selecionada
+  turmaId: null,
+  discId: null,
+  instrumento: null,
+};
+
+// ─── Helpers de UI ────────────────────────────────────────────────────────────
+function showToast(msg, type = 'info') {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.innerHTML = `<span>${msg}</span>`;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 4500);
+}
+
+function goToStep(n) {
+  state.activeStep = n;
+  [1, 2, 3, 4].forEach(i => {
+    const el = document.getElementById(`leitorStep${i}`);
+    if (el) el.classList.toggle('hidden', i !== n);
+    const ind = document.querySelector(`.step[data-step="${i}"]`);
+    if (ind) {
+      ind.classList.toggle('active', i === n);
+      ind.classList.toggle('done', i < n);
+    }
+  });
+  if (window.lucide) window.lucide.createIcons();
+}
+
+// ─── PASSO 1: Gabarito ────────────────────────────────────────────────────────
+function initStep1() {
+  loadEscolasFromCache();
+  renderFormas();
+
+  document.getElementById('btnAdicionarForma').addEventListener('click', () => {
+    const label = String.fromCharCode(65 + state.formas.length); // A, B, C...
+    state.formas.push({ id: Date.now(), label, answers: {} });
+    renderFormas();
+  });
+
+  document.getElementById('btnStep1Next').addEventListener('click', () => {
+    const nq = parseInt(document.getElementById('ltrQuestoes').value);
+    const alt = document.getElementById('ltrAlt').value;
+    const pts = parseFloat(document.getElementById('ltrPontos').value);
+
+    if (state.formas.length === 0) {
+      showToast('Adicione pelo menos 1 forma de gabarito.', 'warning'); return;
+    }
+
+    state.config = { numQuestoes: nq, alternativas: alt, pontosPorQuestao: pts };
+    collectFormaAnswers();
+
+    const hasComplete = state.formas.every(f => Object.keys(f.answers).length === nq);
+    if (!hasComplete) {
+      showToast('Preencha todas as respostas em todas as formas.', 'warning'); return;
+    }
+
+    if (!state.instrumento) {
+      showToast('Selecione o instrumento de avaliação antes de continuar.', 'warning'); return;
+    }
+
+    goToStep(2);
+  });
+}
+
+function loadEscolasFromCache() {
+  if (typeof chrome === 'undefined' || !chrome.storage?.local) {
+    showToast('A extensão precisa estar ativa para carregar suas turmas.', 'warning');
+    return;
+  }
+  chrome.storage.local.get(['dashboardCache'], res => {
+    if (!res?.dashboardCache?.data) {
+      showToast('Nenhum dado de turmas. Abra o Dashboard primeiro.', 'warning'); return;
+    }
+    state.dashData = res.dashboardCache.data;
+
+    const escolasSel = document.getElementById('ltrEscola');
+    const turmasSel  = document.getElementById('ltrTurma');
+    const discSel    = document.getElementById('ltrDisciplina');
+
+    state.dashData.escolas.forEach(e => {
+      const opt = document.createElement('option');
+      opt.value = e.nome; opt.textContent = e.nome;
+      escolasSel.appendChild(opt);
+    });
+
+    escolasSel.addEventListener('change', () => {
+      turmasSel.innerHTML = '<option value="">— Selecione —</option>';
+      discSel.innerHTML   = '<option value="">— Selecione —</option>';
+      turmasSel.disabled = true; discSel.disabled = true;
+
+      const escola = state.dashData.escolas.find(e => e.nome === escolasSel.value);
+      if (!escola) return;
+      escola.turmas.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t.id; opt.textContent = t.nome;
+        turmasSel.appendChild(opt);
+      });
+      turmasSel.disabled = false;
+    });
+
+    turmasSel.addEventListener('change', () => {
+      discSel.innerHTML = '<option value="">— Selecione —</option>';
+      discSel.disabled = true;
+
+      const escola = state.dashData.escolas.find(e => e.nome === escolasSel.value);
+      const turma  = escola?.turmas.find(t => String(t.id) === turmasSel.value);
+      if (!turma) return;
+
+      state.turmaId = turma.id;
+      state.turmaAlunos = [];
+      turma.disciplinas.forEach(d => {
+        const alunosAtivos = (d.alunos || []).filter(a => a.situacao?.ativo === true);
+        alunosAtivos.forEach(a => {
+          if (!state.turmaAlunos.find(x => x.matricula === a.matricula)) {
+            state.turmaAlunos.push({ matricula: a.matricula, nome: a.nome });
+          }
+        });
+
+        const opt = document.createElement('option');
+        opt.value = d.id; opt.textContent = d.disciplina || d.nome;
+        discSel.appendChild(opt);
+      });
+      state.turmaAlunos.sort((a, b) => a.nome.localeCompare(b.nome));
+      discSel.disabled = false;
+    });
+
+    discSel.addEventListener('change', async () => {
+      state.discId = discSel.value || null;
+      state.instrumento = null;
+
+      // Reseta seletores de período e instrumento
+      const periodSel = document.getElementById('ltrPeriodo');
+      const instrSel  = document.getElementById('ltrInstrumento');
+      periodSel.innerHTML = '<option value="">— Selecione a disciplina primeiro —</option>';
+      periodSel.disabled = true;
+      instrSel.innerHTML  = '<option value="">— Aguardando período —</option>';
+      instrSel.disabled   = true;
+
+      if (discSel.value) {
+        await loadInstrumentos(state.turmaId, discSel.value);
+      }
+    });
+  });
+}
+
+// ─── Carregamento de Instrumentos via API ─────────────────────────────────────
+async function loadInstrumentos(turmaId, discId) {
+  const periodSel = document.getElementById('ltrPeriodo');
+  const instrSel  = document.getElementById('ltrInstrumento');
+  const indicator = document.getElementById('instrLoadingIndicator');
+
+  periodSel.innerHTML = '<option value="">Carregando períodos...</option>';
+  indicator?.classList.remove('hidden');
+  if (window.lucide) window.lucide.createIcons();
+
+  try {
+    const authData = await chrome.storage.local.get(['escolaRsToken']);
+    const token = authData.escolaRsToken;
+    if (!token) throw new Error('Token ausente.');
+
+    const idRecHumano = state.dashData?.idRecHumano;
+    if (!idRecHumano) throw new Error('idRecHumano ausente. Atualize o Dashboard.');
+
+    const avaliacoes = await listarAvaliacoesTurma(turmaId, discId, idRecHumano, token);
+
+    periodSel.innerHTML = '<option value="">— Selecione o período —</option>';
+    avaliacoes.forEach(av => {
+      if (!av.instrumentos?.length) return;
+      const opt = document.createElement('option');
+      opt.value = av.id;
+      opt.textContent = av.descricao;
+      opt.dataset.instrumentos = JSON.stringify(av.instrumentos);
+      periodSel.appendChild(opt);
+    });
+
+    if (periodSel.options.length <= 1) {
+      periodSel.innerHTML = '<option value="">Nenhum período com avaliações</option>';
+      return;
+    }
+    periodSel.disabled = false;
+
+    // Clona o select para remover listeners anteriores
+    const newPeriodSel = periodSel.cloneNode(true);
+    periodSel.parentNode.replaceChild(newPeriodSel, periodSel);
+    newPeriodSel.disabled = false;
+
+    const newInstrSel = instrSel.cloneNode(true);
+    instrSel.parentNode.replaceChild(newInstrSel, instrSel);
+
+    newInstrSel.addEventListener('change', () => {
+      state.instrumento = newInstrSel.value ? parseInt(newInstrSel.value) : null;
+    });
+
+    newPeriodSel.addEventListener('change', () => {
+      newInstrSel.innerHTML = '<option value="">— Selecione o instrumento —</option>';
+      newInstrSel.disabled = true;
+      state.instrumento = null;
+
+      const selected = newPeriodSel.options[newPeriodSel.selectedIndex];
+      if (!selected?.dataset?.instrumentos) return;
+
+      try {
+        const instrumentos = JSON.parse(selected.dataset.instrumentos);
+        if (!instrumentos.length) {
+          newInstrSel.innerHTML = '<option value="">Sem instrumentos neste período</option>';
+          return;
+        }
+        instrumentos.forEach(ins => {
+          const opt = document.createElement('option');
+          opt.value = ins.id;
+          opt.textContent = `${ins.nome}${ins.peso ? ` — Peso ${ins.peso}` : ''}`;
+          newInstrSel.appendChild(opt);
+        });
+        newInstrSel.disabled = false;
+      } catch (e) { console.error(e); }
+    });
+
+  } catch (err) {
+    periodSel.innerHTML = `<option value="">Erro: ${err.message}</option>`;
+    showToast(`Erro ao carregar instrumentos: ${err.message}`, 'error');
+  } finally {
+    indicator?.classList.add('hidden');
+  }
+}
+
+function renderFormas() {
+  const container = document.getElementById('formasContainer');
+  container.innerHTML = '';
+  const nq  = parseInt(document.getElementById('ltrQuestoes').value) || 20;
+  const alt  = document.getElementById('ltrAlt').value || 'ABCDE';
+  const opts = alt.split('');
+
+  state.formas.forEach((forma, fi) => {
+    const card = document.createElement('div');
+    card.className = 'forma-card';
+
+    let answersHtml = '<div class="answers-grid">';
+    for (let q = 1; q <= nq; q++) {
+      answersHtml += `
+        <div class="answer-cell">
+          <label>Q${String(q).padStart(2,'0')}</label>
+          <select data-forma="${fi}" data-questao="${q}">
+            <option value="">—</option>
+            ${opts.map(o => `<option value="${o}" ${forma.answers[q] === o ? 'selected' : ''}>${o}</option>`).join('')}
+          </select>
+        </div>`;
+    }
+    answersHtml += '</div>';
+
+    card.innerHTML = `
+      <div class="forma-header">
+        <span class="forma-title">Forma ${forma.label}</span>
+        <button class="btn btn-secondary btn-sm" data-del="${fi}">
+          <i data-lucide="x"></i> Remover
+        </button>
+      </div>
+      ${answersHtml}
+    `;
+
+    card.querySelector(`[data-del="${fi}"]`).addEventListener('click', () => {
+      state.formas.splice(fi, 1);
+      renderFormas();
+    });
+
+    container.appendChild(card);
+  });
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function collectFormaAnswers() {
+  document.querySelectorAll('[data-forma][data-questao]').forEach(sel => {
+    const fi = parseInt(sel.dataset.forma);
+    const q  = parseInt(sel.dataset.questao);
+    if (state.formas[fi] && sel.value) state.formas[fi].answers[q] = sel.value;
+  });
+}
+
+// ─── PASSO 2: Upload de Fotos ─────────────────────────────────────────────────
+function initStep2() {
+  const dropZone  = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+  const thumbs    = document.getElementById('thumbsGrid');
+  const actions   = document.getElementById('step2Actions');
+  const count     = document.getElementById('photoCount');
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.classList.remove('drag-over');
+    handleFiles([...e.dataTransfer.files]);
+  });
+  fileInput.addEventListener('change', () => handleFiles([...fileInput.files]));
+
+  function handleFiles(files) {
+    const imgs = files.filter(f => f.type.startsWith('image/'));
+    if (!imgs.length) { showToast('Selecione apenas arquivos de imagem.', 'warning'); return; }
+
+    imgs.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const img = new Image();
+        img.onload = () => {
+          const c = document.createElement('canvas');
+          c.width = img.width; c.height = img.height;
+          const ctx = c.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          const id = ctx.getImageData(0, 0, img.width, img.height);
+          state.fotos.push({ file, imageData: id.data, width: img.width, height: img.height });
+          renderThumbs();
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function renderThumbs() {
+    thumbs.innerHTML = '';
+    state.fotos.forEach((foto, i) => {
+      const div = document.createElement('div');
+      div.className = 'thumb-item';
+      const imgEl = document.createElement('img');
+      imgEl.src = URL.createObjectURL(foto.file);
+      const badge = document.createElement('div');
+      badge.className = 'thumb-badge';
+      badge.textContent = `Foto ${i + 1}`;
+      div.appendChild(imgEl); div.appendChild(badge);
+      thumbs.appendChild(div);
+    });
+    count.textContent = state.fotos.length;
+    actions.classList.toggle('hidden', state.fotos.length === 0);
+  }
+
+  document.getElementById('btnStep2Back').addEventListener('click', () => goToStep(1));
+
+  document.getElementById('btnProcessar').addEventListener('click', async () => {
+    if (!state.fotos.length) return;
+    const btn = document.getElementById('btnProcessar');
+    btn.disabled = true;
+    btn.innerHTML = '<i data-lucide="loader"></i> Processando...';
+    if (window.lucide) window.lucide.createIcons();
+
+    state.resultados = [];
+
+    for (let i = 0; i < state.fotos.length; i++) {
+      const foto = state.fotos[i];
+      const thumbEl = thumbs.children[i];
+      try {
+        const answers = await runWorker(foto);
+        state.resultados.push({
+          fotoIdx: i, answers, formaId: state.formas[0]?.id || null,
+          alunoMatricula: null, alunoNome: null, nota: null, confirmed: false
+        });
+        thumbEl.classList.add('processed');
+        thumbEl.querySelector('.thumb-badge').textContent = '✓ OK';
+      } catch (err) {
+        state.resultados.push({
+          fotoIdx: i, answers: null, formaId: null,
+          alunoMatricula: null, alunoNome: null, nota: null, confirmed: false,
+          error: err.message
+        });
+        thumbEl.classList.add('error');
+        thumbEl.querySelector('.thumb-badge').textContent = '✗ Erro';
+      }
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<i data-lucide="cpu"></i> Processar';
+    if (window.lucide) window.lucide.createIcons();
+
+    state.reviewIdx = 0;
+    goToStep(3);
+    renderReview();
+  });
+}
+
+// ─── Worker ───────────────────────────────────────────────────────────────────
+function runWorker(foto) {
+  return new Promise((resolve, reject) => {
+    const workerUrl = chrome.runtime.getURL('ui/omr/omr-worker.js');
+    const worker = new Worker(workerUrl);
+
+    worker.onmessage = e => {
+      const { success, progress, status, error, ...result } = e.data;
+      if (progress !== undefined) return; // mensagem de progresso, ignora
+      worker.terminate();
+      if (success) resolve(result);
+      else reject(new Error(error));
+    };
+
+    worker.onerror = err => { worker.terminate(); reject(err); };
+
+    // Injeta o config no worker via propriedade antes de processar
+    // (workaround simples: enviamos como parte da mensagem e o worker lê self._pendingConfig)
+    worker.postMessage({
+      imageData: foto.imageData,
+      width: foto.width,
+      height: foto.height,
+      _config: state.config,
+    });
+  });
+}
+
+// ─── PASSO 3: Revisão ─────────────────────────────────────────────────────────
+function renderReview() {
+  const idx = state.reviewIdx;
+  const r   = state.resultados[idx];
+  const foto = state.fotos[r.fotoIdx];
+
+  document.getElementById('reviewProgress').textContent =
+    `Foto ${idx + 1} de ${state.resultados.length}`;
+
+  // Overlay canvas
+  const cvs = document.getElementById('reviewCanvas');
+  const ctx  = cvs.getContext('2d');
+  cvs.width  = r.dewarpedWidth  || 400;
+  cvs.height = r.dewarpedHeight || 500;
+
+  if (r.dewarpedImageData) {
+    const id = new ImageData(
+      new Uint8ClampedArray(r.dewarpedImageData),
+      r.dewarpedWidth, r.dewarpedHeight
+    );
+    ctx.putImageData(id, 0, 0);
+  } else {
+    // Sem resultado de visão, mostra a foto original
+    const img = new Image();
+    img.onload = () => { ctx.drawImage(img, 0, 0, cvs.width, cvs.height); };
+    img.src = URL.createObjectURL(foto.file);
+  }
+
+  // Dropdown de alunos
+  const alunoSel = document.getElementById('reviewAluno');
+  alunoSel.innerHTML = '<option value="">— Selecione o aluno —</option>';
+  state.turmaAlunos.forEach(a => {
+    const opt = document.createElement('option');
+    opt.value = a.matricula;
+    opt.textContent = `${a.nome} (${a.matricula})`;
+    if (r.alunoMatricula === a.matricula) opt.selected = true;
+    alunoSel.appendChild(opt);
+  });
+
+  // Dropdown de formas
+  const formaSel = document.getElementById('reviewForma');
+  formaSel.innerHTML = '';
+  state.formas.forEach(f => {
+    const opt = document.createElement('option');
+    opt.value = f.id;
+    opt.textContent = `Forma ${f.label}`;
+    if (r.formaId === f.id) opt.selected = true;
+    formaSel.appendChild(opt);
+  });
+
+  alunoSel.addEventListener('change', () => {
+    const aluno = state.turmaAlunos.find(a => String(a.matricula) === alunoSel.value);
+    r.alunoMatricula = aluno?.matricula || null;
+    r.alunoNome = aluno?.nome || null;
+  });
+
+  formaSel.addEventListener('change', () => {
+    r.formaId = parseInt(formaSel.value);
+    recalcularNota(r);
+    renderAnswersTable(r);
+  });
+
+  recalcularNota(r);
+  renderAnswersTable(r);
+  renderGradeSummary(r);
+}
+
+function recalcularNota(r) {
+  const forma = state.formas.find(f => f.id === r.formaId);
+  if (!r.answers || !forma) { r.nota = null; return; }
+
+  let acertos = 0, erros = 0, branco = 0;
+  const nq = state.config.numQuestoes;
+  for (let q = 1; q <= nq; q++) {
+    const det = r.answers.find(a => a.questao === q);
+    const gab = forma.answers[q];
+    if (!det || det.status !== 'ok') { branco++; continue; }
+    if (det.resposta === gab) acertos++;
+    else erros++;
+  }
+  r.acertos = acertos; r.erros = erros; r.branco = branco;
+  r.nota = parseFloat((acertos * state.config.pontosPorQuestao).toFixed(1));
+  renderGradeSummary(r);
+}
+
+function renderGradeSummary(r) {
+  document.getElementById('reviewAcertos').textContent = r.acertos ?? '—';
+  document.getElementById('reviewErros').textContent   = r.erros   ?? '—';
+  document.getElementById('reviewBranco').textContent  = r.branco  ?? '—';
+  document.getElementById('reviewNota').textContent    = r.nota    != null ? r.nota.toFixed(1) : '—';
+}
+
+function renderAnswersTable(r) {
+  const tbody = document.getElementById('reviewAnswersBody');
+  tbody.innerHTML = '';
+  const forma = state.formas.find(f => f.id === r.formaId);
+  if (!r.answers) return;
+
+  r.answers.forEach(({ questao, resposta, status }) => {
+    const gab = forma?.answers[questao] || '—';
+    const isOk = resposta === gab && status === 'ok';
+    const tr = document.createElement('tr');
+    tr.className = status === 'ok' ? (isOk ? 'correct' : 'wrong') : 'blank';
+    tr.innerHTML = `
+      <td>${String(questao).padStart(2,'0')}</td>
+      <td><strong>${resposta || (status === 'anulada' ? 'ANULADA' : '—')}</strong></td>
+      <td>${gab}</td>
+      <td>${isOk ? '✓' : (status === 'ok' ? '✗' : '○')}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function initStep3() {
+  document.getElementById('btnReviewBack').addEventListener('click', () => {
+    if (state.reviewIdx > 0) { state.reviewIdx--; renderReview(); }
+  });
+
+  document.getElementById('btnReviewNext').addEventListener('click', () => {
+    if (state.reviewIdx < state.resultados.length - 1) { state.reviewIdx++; renderReview(); }
+  });
+
+  document.getElementById('btnConfirmarFoto').addEventListener('click', () => {
+    const r = state.resultados[state.reviewIdx];
+    if (!r.alunoMatricula) { showToast('Selecione o aluno antes de confirmar.', 'warning'); return; }
+    recalcularNota(r);
+    r.confirmed = true;
+    showToast(`Foto ${state.reviewIdx + 1} confirmada!`, 'success');
+
+    // Avança automaticamente
+    if (state.reviewIdx < state.resultados.length - 1) {
+      state.reviewIdx++;
+      renderReview();
+    } else {
+      const allDone = state.resultados.every(r => r.confirmed);
+      if (allDone) { renderStep4(); goToStep(4); }
+      else showToast('Confirme todas as fotos para prosseguir.', 'warning');
+    }
+  });
+}
+
+// ─── PASSO 4: Lançamento ──────────────────────────────────────────────────────
+function renderStep4() {
+  const wrapper = document.getElementById('resultsTable');
+  const confirmed = state.resultados.filter(r => r.confirmed && r.nota != null);
+
+  let html = `
+    <table class="results-table">
+      <thead>
+        <tr>
+          <th>Aluno</th>
+          <th>Matrícula</th>
+          <th>Forma</th>
+          <th>Acertos</th>
+          <th>Nota</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  confirmed.forEach(r => {
+    const forma = state.formas.find(f => f.id === r.formaId);
+    const cls   = r.nota >= 6 ? 'aprov' : r.nota >= 5 ? 'recup' : 'reprov';
+    const status = r.nota >= 6 ? 'Aprovado' : r.nota >= 5 ? 'Recuperação' : 'Reprovado';
+    html += `
+      <tr>
+        <td>${r.alunoNome || '—'}</td>
+        <td><code>${r.alunoMatricula || '—'}</code></td>
+        <td>Forma ${forma?.label || '?'}</td>
+        <td>${r.acertos}/${state.config.numQuestoes}</td>
+        <td><span class="nota-badge ${cls}">${r.nota?.toFixed(1)}</span></td>
+        <td>${status}</td>
+      </tr>
+    `;
+  });
+
+  html += '</tbody></table>';
+  wrapper.innerHTML = html;
+}
+
+function initStep4() {
+  document.getElementById('btnStep4Back').addEventListener('click', () => {
+    state.reviewIdx = 0; renderReview(); goToStep(3);
+  });
+
+  document.getElementById('btnLancar').addEventListener('click', async () => {
+    const btn      = document.getElementById('btnLancar');
+    const progress = document.getElementById('launchProgress');
+    const bar      = document.getElementById('launchBar');
+    const status   = document.getElementById('launchStatus');
+
+    btn.disabled = true;
+    btn.innerHTML = '<i data-lucide="loader"></i> Enviando...';
+    if (window.lucide) window.lucide.createIcons();
+
+    const authData = await chrome.storage.local.get(['escolaRsToken']);
+    if (!authData.escolaRsToken) {
+      showToast('Token ausente. Reabra o portal EscolaRS.', 'error');
+      btn.disabled = false; return;
+    }
+
+    if (!state.instrumento) {
+      showToast('Nenhum instrumento selecionado. Volte ao Passo 1.', 'error');
+      btn.disabled = false; return;
+    }
+
+    const confirmed = state.resultados.filter(r => r.confirmed && r.nota != null && r.alunoMatricula);
+    if (!confirmed.length) {
+      showToast('Nenhuma prova confirmada para lançar.', 'warning');
+      btn.disabled = false; return;
+    }
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const payloads = confirmed.map(r => ({
+      idInstrumento:   state.instrumento,
+      idAluno:         parseInt(r.alunoMatricula),
+      dsAproveitamento: r.nota,
+      dataRealizacao:  todayStr,
+    }));
+
+    progress.classList.remove('hidden');
+    bar.style.width = '10%';
+    status.textContent = `Enviando ${payloads.length} nota(s)...`;
+
+    // Divide em lotes de 20 (mesmo padrão do avaliacoesService.js)
+    const BATCH = 20;
+    let sent = 0;
+    let errors = 0;
+
+    for (let i = 0; i < payloads.length; i += BATCH) {
+      const batch = payloads.slice(i, i + BATCH);
+      try {
+        await registrarResultadoInstrumentoLista(batch, authData.escolaRsToken);
+        sent += batch.length;
+      } catch (err) {
+        errors += batch.length;
+        console.error('[OMR Leitor] Erro no lote:', err);
+        showToast(`Erro em lote: ${err.message}`, 'error');
+      }
+      const pct = Math.round(((i + BATCH) / payloads.length) * 100);
+      bar.style.width = `${Math.min(pct, 100)}%`;
+      status.textContent = `Enviado ${Math.min(i + BATCH, payloads.length)}/${payloads.length}...`;
+    }
+
+    bar.style.width = '100%';
+
+    if (errors === 0) {
+      status.textContent = `✓ ${sent} nota(s) lançada(s) com sucesso!`;
+      showToast(`${sent} notas lançadas no EscolaRS com sucesso!`, 'success');
+      btn.innerHTML = '<i data-lucide="check"></i> Notas Lançadas!';
+    } else {
+      status.textContent = `${sent} enviadas, ${errors} com erro.`;
+      showToast(`${errors} nota(s) com erro. Verifique o console.`, 'warning');
+      btn.innerHTML = '<i data-lucide="alert-triangle"></i> Lançamento Parcial';
+      btn.disabled = false;
+    }
+
+    if (window.lucide) window.lucide.createIcons();
+  });
+}
+
+// ─── Inicialização ─────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  // Observa mudanças de questões/alternativas para re-renderizar formas
+  ['ltrQuestoes', 'ltrAlt'].forEach(id => {
+    document.getElementById(id).addEventListener('change', () => {
+      if (state.formas.length > 0) renderFormas();
+    });
+  });
+
+  initStep1();
+  initStep2();
+  initStep3();
+  initStep4();
+
+  if (window.lucide) window.lucide.createIcons();
+});
