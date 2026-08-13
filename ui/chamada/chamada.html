@@ -9,32 +9,40 @@
 </head>
 
 <body>
-  <div class="app-container">
-    <header class="header">
-      <div class="header-content">
-        <h1>Registro de Aulas e Chamada</h1>
-        <div class="header-actions">
-          <button id="btnPlanosAula" class="btn btn-secondary" style="margin-right: 10px;">
-            <i data-lucide="book-open"></i> Planos de Aula
-          </button>
-          <button id="btnViewSchedule" class="btn btn-primary" style="margin-right: 10px;">
-            <i data-lucide="calendar"></i> Horários
-          </button>
-          <button id="btnInfrequentes" class="btn btn-secondary" style="margin-right: 10px;">
-            <i data-lucide="users"></i> Infrequentes
-          </button>
-          <button id="btnAvaliacoes" class="btn btn-secondary" style="margin-right: 10px;">
-            <i data-lucide="file-check-2"></i> Avaliações
-          </button>
-          <button id="btnVoltar" class="btn btn-secondary">
-            <i data-lucide="arrow-left"></i> Dashboard
-          </button>
+  <header>
+    <div class="header-main">
+      <div class="header-titles">
+        <div class="header-user">
+          <i data-lucide="calendar-check" class="header-avatar"></i>
+          <h1>Registro de Aulas e Chamada</h1>
+        </div>
+        <div class="header-meta">
+          <span><i data-lucide="graduation-cap"></i> Diário de Classe Eletrônico</span>
         </div>
       </div>
-    </header>
 
-    <main class="main-content">
-      <div id="loading" class="loading-state">
+      <div class="header-actions">
+        <button id="btnPlanosAula" class="btn btn-secondary">
+          <i data-lucide="book-open"></i> Planos de Aula
+        </button>
+        <button id="btnViewSchedule" class="btn btn-secondary">
+          <i data-lucide="calendar"></i> Horários
+        </button>
+        <button id="btnInfrequentes" class="btn btn-secondary">
+          <i data-lucide="users"></i> Infrequentes
+        </button>
+        <button id="btnAvaliacoes" class="btn btn-secondary">
+          <i data-lucide="file-check-2"></i> Avaliações
+        </button>
+        <button id="btnVoltar" class="btn btn-secondary">
+          <i data-lucide="arrow-left"></i> Dashboard
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-container">
+    <div id="loading" class="loading-state">
         <div class="spinner"></div>
         <p id="loadingText">Sincronizando dados das turmas...</p>
       </div>
@@ -264,8 +272,7 @@
           </div>
         </div>
       </div>
-    </div>
-  </div>
+  </main>
 
   <script src="../libs/lucide.min.js"></script>
   <script src="../../api/escolaRS.js"></script>

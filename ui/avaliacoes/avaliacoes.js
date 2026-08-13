@@ -157,20 +157,52 @@ class TabController {
                     // Usando o client oficial da API que faz silent refresh e tratamentos de 401
                     const arrayAvals = await fetchEscolaRS(`listarAvaliacoesTurma/${data.turmaId}/${data.discId}/${data.idRecHumano}`, service.cacheInfo.token);
                     
-                    let instrumentosApi = [];
-                    if (arrayAvals[0] && arrayAvals[0].instrumentos) instrumentosApi = arrayAvals[0].instrumentos;
+                    // Group instruments by period
+                    const periodosGrouped = {};
+                    if (Array.isArray(arrayAvals)) {
+                        arrayAvals.forEach(per => {
+                            if (per.instrumentos && Array.isArray(per.instrumentos) && per.instrumentos.length > 0) {
+                                const perNome = per.descricao || 'Outros';
+                                if (!periodosGrouped[perNome]) {
+                                    periodosGrouped[perNome] = [];
+                                }
+                                periodosGrouped[perNome].push(...per.instrumentos);
+                            }
+                        });
+                    }
 
                     const container = data.cardEl.querySelector('.turma-card-instruments');
                     container.innerHTML = '';
-                    if (instrumentosApi.length === 0) {
-                        container.innerHTML = '<span class="instrument-tag" style="background:#fef2f2; color:#991b1b;">Sem instrumentos no período</span>';
+
+                    const periodKeys = Object.keys(periodosGrouped);
+                    if (periodKeys.length === 0) {
+                        container.innerHTML = '<span class="instrument-tag" style="background:#fef2f2; color:#991b1b;">Sem instrumentos cadastrados</span>';
                     } else {
-                        instrumentosApi.forEach(inst => {
-                            const tag = document.createElement('span');
-                            tag.className = 'instrument-tag';
-                            tag.textContent = inst.nome;
-                            tag.title = inst.nome;
-                            container.appendChild(tag);
+                        periodKeys.forEach((pNome, idx) => {
+                            const groupEl = document.createElement('div');
+                            groupEl.className = 'period-group';
+                            if (idx > 0) {
+                                groupEl.classList.add('period-separator');
+                            }
+                            
+                            const titleEl = document.createElement('div');
+                            titleEl.className = 'period-label';
+                            titleEl.textContent = pNome;
+                            groupEl.appendChild(titleEl);
+
+                            const tagsRow = document.createElement('div');
+                            tagsRow.className = 'period-tags-row';
+
+                            periodosGrouped[pNome].forEach(inst => {
+                                const tag = document.createElement('span');
+                                tag.className = 'instrument-tag';
+                                tag.textContent = inst.nome;
+                                tag.title = `${inst.nome} • ${pNome}`;
+                                tagsRow.appendChild(tag);
+                            });
+
+                            groupEl.appendChild(tagsRow);
+                            container.appendChild(groupEl);
                         });
                     }
                 } catch (e) {
@@ -248,7 +280,7 @@ class TabController {
     }
 
     renderizarDataGrid(instrumentos, alunos) {
-        this.headRow.innerHTML = `<th style="width: 80px;">Nº Matr.</th><th>Nome do Aluno</th>`;
+        this.headRow.innerHTML = `<th class="col-aluno">Nome do Aluno</th>`;
         this.bodyRow.innerHTML = '';
         
         if (instrumentos.length === 0) {
@@ -266,8 +298,7 @@ class TabController {
 
         alunos.forEach(alu => {
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td class="cell-text"><span style="font-family:monospace; color:var(--text-muted);">${alu.matricula}</span></td>
-                            <td class="cell-text" style="font-weight: 500;">${alu.nome}</td>`;
+            tr.innerHTML = `<td class="cell-text col-aluno" style="font-weight: 500;">${alu.nome}</td>`;
             
             if (instrumentos.length === 0) {
                 const td = document.createElement('td');

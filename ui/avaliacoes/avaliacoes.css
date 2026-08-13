@@ -170,9 +170,24 @@
 .data-grid-container {
     overflow-y: auto;
     overflow-x: auto;
-    margin-bottom: 80px;
+    max-width: 100%;
+    margin-bottom: 20px;
     border-radius: var(--radius-sm);
     box-shadow: inset 0 0 4px rgba(0,0,0,0.05); /* Inner depth */
+}
+
+.footer-acoes {
+    margin-top: 20px;
+    margin-bottom: 30px;
+    background: var(--surface);
+    padding: 16px 24px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 16px;
 }
 
 .data-grid {
@@ -194,6 +209,41 @@
     position: sticky;
     top: 0;
     z-index: 2;
+}
+
+/* Coluna Aluno Fixa (Sticky Left Side Scroll) */
+.data-grid th.col-aluno {
+    position: sticky;
+    left: 0;
+    top: 0;
+    z-index: 5;
+    background: #f8fafc;
+    border-right: 2px solid var(--border);
+    text-align: left;
+    min-width: 220px;
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.05);
+}
+
+.data-grid td.col-aluno {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: var(--surface);
+    border-right: 2px solid var(--border);
+    text-align: left;
+    min-width: 220px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.05);
+}
+
+.data-grid tbody tr:nth-child(even) td.col-aluno {
+    background-color: #f8fafc;
+}
+
+.data-grid tbody tr:hover td.col-aluno {
+    background-color: #f0fdf4;
 }
 
 .data-grid th:first-child, .data-grid th:nth-child(2) {
@@ -335,17 +385,44 @@
 .turma-card-instruments {
     margin-top: auto;
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+    flex-direction: column;
+    gap: 8px;
     padding-top: 12px;
     border-top: 1px dashed var(--border);
+}
+
+.period-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.period-group.period-separator {
+    border-top: 1px dashed var(--border);
+    padding-top: 10px;
+    margin-top: 4px;
+}
+
+.period-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.period-tags-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
 }
 
 .instrument-tag {
     background: #f1f5f9;
     color: #475569;
     font-size: 0.75rem;
-    padding: 4px 8px;
+    font-weight: 500;
+    padding: 3px 8px;
     border-radius: 4px;
     white-space: nowrap;
     overflow: hidden;
