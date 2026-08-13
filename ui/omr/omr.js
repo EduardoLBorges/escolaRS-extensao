@@ -23,11 +23,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Botão Voltar para a chamada
+  // Botão Voltar para Avaliações
   const btnVoltar = document.getElementById('btnVoltar');
   if (btnVoltar) {
     btnVoltar.addEventListener('click', () => {
-      window.location.href = '../chamada/chamada.html';
+      window.location.href = '../avaliacoes/avaliacoes.html';
     });
   }
 

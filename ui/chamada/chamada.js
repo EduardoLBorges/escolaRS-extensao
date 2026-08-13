@@ -53,6 +53,10 @@ function setupEventListeners() {
     }
   });
 
+  document.getElementById('btnAvaliacoes')?.addEventListener('click', () => {
+    window.location.href = '../avaliacoes/avaliacoes.html';
+  });
+
   document.getElementById('btnVoltar').addEventListener('click', () => {
     window.location.href = '../dashboard/dashboard.html';
   });

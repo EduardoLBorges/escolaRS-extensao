@@ -17,7 +17,8 @@ const state = {
   fotos: [],            // [{ file, imageData, width, height }]
   resultados: [],       // [{ fotoIdx, alunoMatricula, alunoNome, formaId, answers, nota, confirmed }]
   reviewIdx: 0,
-  config: { numQuestoes: 20, alternativas: 'ABCDE', pontosPorQuestao: 0.5 },
+  reviewViewMode: 'full', // 'full' (foto completa) ou 'dewarped' (bloco OMR apenas)
+  config: { numQuestoes: 10, alternativas: 'ABCDE', pontosPorQuestao: 1 },
   dashData: null,       // dados do dashboardCache
   turmaAlunos: [],      // lista de alunos da turma selecionada
   turmaId: null,
@@ -52,9 +53,13 @@ function goToStep(n) {
 // ─── PASSO 1: Gabarito ────────────────────────────────────────────────────────
 function initStep1() {
   loadEscolasFromCache();
+  if (state.formas.length === 0) {
+    state.formas.push({ id: Date.now(), label: 'A', answers: {} });
+  }
   renderFormas();
 
   document.getElementById('btnAdicionarForma').addEventListener('click', () => {
+    collectFormaAnswers();
     const label = String.fromCharCode(65 + state.formas.length); // A, B, C...
     state.formas.push({ id: Date.now(), label, answers: {} });
     renderFormas();
@@ -64,12 +69,13 @@ function initStep1() {
     const nq = parseInt(document.getElementById('ltrQuestoes').value);
     const alt = document.getElementById('ltrAlt').value;
     const pts = parseFloat(document.getElementById('ltrPontos').value);
+    const cols = parseInt(document.getElementById('ltrColunas')?.value || '1', 10);
 
     if (state.formas.length === 0) {
       showToast('Adicione pelo menos 1 forma de gabarito.', 'warning'); return;
     }
 
-    state.config = { numQuestoes: nq, alternativas: alt, pontosPorQuestao: pts };
+    state.config = { numQuestoes: nq, alternativas: alt, pontosPorQuestao: pts, colunas: cols };
     collectFormaAnswers();
 
     const hasComplete = state.formas.every(f => Object.keys(f.answers).length === nq);
@@ -97,8 +103,8 @@ function loadEscolasFromCache() {
     state.dashData = res.dashboardCache.data;
 
     const escolasSel = document.getElementById('ltrEscola');
-    const turmasSel  = document.getElementById('ltrTurma');
-    const discSel    = document.getElementById('ltrDisciplina');
+    const turmasSel = document.getElementById('ltrTurma');
+    const discSel = document.getElementById('ltrDisciplina');
 
     state.dashData.escolas.forEach(e => {
       const opt = document.createElement('option');
@@ -108,7 +114,7 @@ function loadEscolasFromCache() {
 
     escolasSel.addEventListener('change', () => {
       turmasSel.innerHTML = '<option value="">— Selecione —</option>';
-      discSel.innerHTML   = '<option value="">— Selecione —</option>';
+      discSel.innerHTML = '<option value="">— Selecione —</option>';
       turmasSel.disabled = true; discSel.disabled = true;
 
       const escola = state.dashData.escolas.find(e => e.nome === escolasSel.value);
@@ -126,7 +132,7 @@ function loadEscolasFromCache() {
       discSel.disabled = true;
 
       const escola = state.dashData.escolas.find(e => e.nome === escolasSel.value);
-      const turma  = escola?.turmas.find(t => String(t.id) === turmasSel.value);
+      const turma = escola?.turmas.find(t => String(t.id) === turmasSel.value);
       if (!turma) return;
 
       state.turmaId = turma.id;
@@ -153,11 +159,11 @@ function loadEscolasFromCache() {
 
       // Reseta seletores de período e instrumento
       const periodSel = document.getElementById('ltrPeriodo');
-      const instrSel  = document.getElementById('ltrInstrumento');
+      const instrSel = document.getElementById('ltrInstrumento');
       periodSel.innerHTML = '<option value="">— Selecione a disciplina primeiro —</option>';
       periodSel.disabled = true;
-      instrSel.innerHTML  = '<option value="">— Aguardando período —</option>';
-      instrSel.disabled   = true;
+      instrSel.innerHTML = '<option value="">— Aguardando período —</option>';
+      instrSel.disabled = true;
 
       if (discSel.value) {
         await loadInstrumentos(state.turmaId, discSel.value);
@@ -169,7 +175,7 @@ function loadEscolasFromCache() {
 // ─── Carregamento de Instrumentos via API ─────────────────────────────────────
 async function loadInstrumentos(turmaId, discId) {
   const periodSel = document.getElementById('ltrPeriodo');
-  const instrSel  = document.getElementById('ltrInstrumento');
+  const instrSel = document.getElementById('ltrInstrumento');
   const indicator = document.getElementById('instrLoadingIndicator');
 
   periodSel.innerHTML = '<option value="">Carregando períodos...</option>';
@@ -247,10 +253,11 @@ async function loadInstrumentos(turmaId, discId) {
 }
 
 function renderFormas() {
+  collectFormaAnswers();
   const container = document.getElementById('formasContainer');
   container.innerHTML = '';
-  const nq  = parseInt(document.getElementById('ltrQuestoes').value) || 20;
-  const alt  = document.getElementById('ltrAlt').value || 'ABCDE';
+  const nq = parseInt(document.getElementById('ltrQuestoes').value) || 20;
+  const alt = document.getElementById('ltrAlt').value || 'ABCDE';
   const opts = alt.split('');
 
   state.formas.forEach((forma, fi) => {
@@ -261,7 +268,7 @@ function renderFormas() {
     for (let q = 1; q <= nq; q++) {
       answersHtml += `
         <div class="answer-cell">
-          <label>Q${String(q).padStart(2,'0')}</label>
+          <label>Q${String(q).padStart(2, '0')}</label>
           <select data-forma="${fi}" data-questao="${q}">
             <option value="">—</option>
             ${opts.map(o => `<option value="${o}" ${forma.answers[q] === o ? 'selected' : ''}>${o}</option>`).join('')}
@@ -288,24 +295,39 @@ function renderFormas() {
     container.appendChild(card);
   });
 
+  // Atualização em tempo real das respostas quando o usuário seleciona no dropdown
+  container.querySelectorAll('select[data-forma][data-questao]').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const fi = parseInt(sel.dataset.forma, 10);
+      const q = parseInt(sel.dataset.questao, 10);
+      if (state.formas[fi]) {
+        if (sel.value) state.formas[fi].answers[q] = sel.value;
+        else delete state.formas[fi].answers[q];
+      }
+    });
+  });
+
   if (window.lucide) window.lucide.createIcons();
 }
 
 function collectFormaAnswers() {
   document.querySelectorAll('[data-forma][data-questao]').forEach(sel => {
-    const fi = parseInt(sel.dataset.forma);
-    const q  = parseInt(sel.dataset.questao);
-    if (state.formas[fi] && sel.value) state.formas[fi].answers[q] = sel.value;
+    const fi = parseInt(sel.dataset.forma, 10);
+    const q = parseInt(sel.dataset.questao, 10);
+    if (state.formas[fi]) {
+      if (sel.value) state.formas[fi].answers[q] = sel.value;
+      else delete state.formas[fi].answers[q];
+    }
   });
 }
 
 // ─── PASSO 2: Upload de Fotos ─────────────────────────────────────────────────
 function initStep2() {
-  const dropZone  = document.getElementById('dropZone');
+  const dropZone = document.getElementById('dropZone');
   const fileInput = document.getElementById('fileInput');
-  const thumbs    = document.getElementById('thumbsGrid');
-  const actions   = document.getElementById('step2Actions');
-  const count     = document.getElementById('photoCount');
+  const thumbs = document.getElementById('thumbsGrid');
+  const actions = document.getElementById('step2Actions');
+  const count = document.getElementById('photoCount');
 
   dropZone.addEventListener('click', () => fileInput.click());
   dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
@@ -371,9 +393,15 @@ function initStep2() {
       const foto = state.fotos[i];
       const thumbEl = thumbs.children[i];
       try {
-        const answers = await runWorker(foto);
+        const res = await runWorker(foto);
         state.resultados.push({
-          fotoIdx: i, answers, formaId: state.formas[0]?.id || null,
+          fotoIdx: i,
+          answers: res.answers,
+          densities: res.densities,
+          dewarpedImageData: res.dewarpedImageData,
+          dewarpedWidth: res.dewarpedWidth,
+          dewarpedHeight: res.dewarpedHeight,
+          formaId: state.formas[0]?.id || null,
           alunoMatricula: null, alunoNome: null, nota: null, confirmed: false
         });
         thumbEl.classList.add('processed');
@@ -415,44 +443,315 @@ function runWorker(foto) {
 
     worker.onerror = err => { worker.terminate(); reject(err); };
 
-    // Injeta o config no worker via propriedade antes de processar
-    // (workaround simples: enviamos como parte da mensagem e o worker lê self._pendingConfig)
     worker.postMessage({
       imageData: foto.imageData,
       width: foto.width,
       height: foto.height,
       _config: state.config,
+      // Se o usuário calibrou manualmente, envia os fiduciais (em pixels da imagem real)
+      _manualFiducials: foto.manualFiducials || null,
     });
+  });
+}
+
+// ─── Calibração Manual de Cantos ─────────────────────────────────────────────
+// Abre o modal de calibração para uma foto específica.
+// Quando confirmado, salva os 4 pontos em foto.manualFiducials e re-processa.
+function openCalibModal(fotoIdx, onConfirm) {
+  const foto = state.fotos[fotoIdx];
+  const modal = document.getElementById('calibModal');
+  const cvs = document.getElementById('calibCanvas');
+  const ctx = cvs.getContext('2d');
+  const confirmBtn = document.getElementById('calibConfirm');
+  const resetBtn = document.getElementById('calibReset');
+
+  const CORNER_LABELS = ['tl', 'tr', 'bl', 'br'];
+  const CORNER_COLORS = ['#ef4444', '#f97316', '#3b82f6', '#a855f7'];
+  const CORNER_NAMES = ['Superior Esquerdo', 'Superior Direito', 'Inferior Esquerdo', 'Inferior Direito'];
+
+  let points = [];  // { x, y } em coordenadas da imagem real
+  let imgEl = null;
+  let scaleX = 1, scaleY = 1;
+
+  // Carrega a foto no canvas
+  const loadImg = () => new Promise(res => {
+    if (imgEl) { res(); return; }
+    imgEl = new Image();
+    imgEl.onload = () => {
+      // Escala o canvas para caber na tela mantendo aspecto
+      const maxW = Math.min(window.innerWidth * 0.9, 900);
+      const maxH = window.innerHeight * 0.6;
+      const ratio = Math.min(maxW / imgEl.width, maxH / imgEl.height);
+      cvs.width = Math.round(imgEl.width * ratio);
+      cvs.height = Math.round(imgEl.height * ratio);
+      scaleX = imgEl.width / cvs.width;
+      scaleY = imgEl.height / cvs.height;
+      res();
+    };
+    imgEl.src = URL.createObjectURL(foto.file);
+  });
+
+  const draw = () => {
+    ctx.drawImage(imgEl, 0, 0, cvs.width, cvs.height);
+
+    // Guia de retículo em fundo escuro semi-transparente se ainda não completou
+    if (points.length < 4) {
+      ctx.fillStyle = 'rgba(0,0,0,0.08)';
+      ctx.fillRect(0, 0, cvs.width, cvs.height);
+    }
+
+    // Desenha os pontos já selecionados
+    points.forEach(({ cx, cy }, i) => {
+      ctx.beginPath();
+      ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+      ctx.fillStyle = CORNER_COLORS[i] + '99';
+      ctx.fill();
+      ctx.strokeStyle = CORNER_COLORS[i];
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Cruz
+      ctx.beginPath();
+      ctx.moveTo(cx - 14, cy); ctx.lineTo(cx + 14, cy);
+      ctx.moveTo(cx, cy - 14); ctx.lineTo(cx, cy + 14);
+      ctx.strokeStyle = CORNER_COLORS[i];
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Rótulo
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = CORNER_COLORS[i];
+      ctx.lineWidth = 0;
+      ctx.font = 'bold 11px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText((i + 1).toString(), cx, cy + 4);
+    });
+
+    // Indicador do próximo ponto
+    if (points.length < 4) {
+      const next = points.length;
+      ctx.fillStyle = CORNER_COLORS[next];
+      ctx.font = 'bold 13px Inter, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(`► Clique no ponto ${next + 1}: ${CORNER_NAMES[next]}`, 12, cvs.height - 12);
+    }
+  };
+
+  const updateStepIndicators = () => {
+    CORNER_LABELS.forEach((cls, i) => {
+      const el = document.getElementById(`calibStep${i + 1}`);
+      el.className = `calib-dot ${cls}`;
+      if (i < points.length) el.classList.add('done');
+      else if (i === points.length) el.classList.add('active');
+    });
+    confirmBtn.disabled = points.length < 4;
+  };
+
+  const reset = () => {
+    points = [];
+    draw();
+    updateStepIndicators();
+  };
+
+  // Handler de clique no canvas
+  const onCanvasClick = (e) => {
+    if (points.length >= 4) return;
+    const rect = cvs.getBoundingClientRect();
+    // Coordenadas no canvas de exibição
+    const cx = (e.clientX - rect.left) * (cvs.width / rect.width);
+    const cy = (e.clientY - rect.top) * (cvs.height / rect.height);
+    // Coordenadas reais na imagem
+    const rx = cx * scaleX;
+    const ry = cy * scaleY;
+    points.push({ cx, cy, rx, ry });
+    draw();
+    updateStepIndicators();
+  };
+
+  // Abre o modal
+  loadImg().then(() => {
+    modal.classList.remove('hidden');
+    draw();
+    updateStepIndicators();
+    if (window.lucide) window.lucide.createIcons();
+
+    cvs.addEventListener('click', onCanvasClick);
+
+    const close = () => {
+      modal.classList.add('hidden');
+      cvs.removeEventListener('click', onCanvasClick);
+      resetBtn.removeEventListener('click', reset);
+      confirmBtn.removeEventListener('click', handleConfirm);
+      document.getElementById('calibClose').removeEventListener('click', close);
+      document.getElementById('calibBackdrop');
+    };
+
+    const handleConfirm = () => {
+      if (points.length < 4) return;
+      // Salva os fiduciais em coordenadas da imagem real (TL, TR, BL, BR)
+      foto.manualFiducials = {
+        tl: { x: points[0].rx, y: points[0].ry },
+        tr: { x: points[1].rx, y: points[1].ry },
+        bl: { x: points[2].rx, y: points[2].ry },
+        br: { x: points[3].rx, y: points[3].ry },
+      };
+      close();
+      onConfirm();
+    };
+
+    resetBtn.addEventListener('click', reset);
+    confirmBtn.addEventListener('click', handleConfirm);
+    document.getElementById('calibClose').addEventListener('click', close);
+    document.querySelector('.calib-backdrop').addEventListener('click', close);
   });
 }
 
 // ─── PASSO 3: Revisão ─────────────────────────────────────────────────────────
 function renderReview() {
   const idx = state.reviewIdx;
-  const r   = state.resultados[idx];
+  const r = state.resultados[idx];
   const foto = state.fotos[r.fotoIdx];
 
   document.getElementById('reviewProgress').textContent =
     `Foto ${idx + 1} de ${state.resultados.length}`;
 
-  // Overlay canvas
-  const cvs = document.getElementById('reviewCanvas');
-  const ctx  = cvs.getContext('2d');
-  cvs.width  = r.dewarpedWidth  || 400;
-  cvs.height = r.dewarpedHeight || 500;
+  // Configura botão de alternar visão (Foto Completa vs Bloco OMR)
+  const isDewarped = state.reviewViewMode === 'dewarped' && r && r.dewarpedImageData;
+  const lblMode = document.getElementById('lblReviewViewMode');
+  const btnMode = document.getElementById('btnToggleReviewView');
 
-  if (r.dewarpedImageData) {
+  if (btnMode && lblMode) {
+    if (isDewarped) {
+      lblMode.textContent = 'Ver Foto Completa';
+      btnMode.innerHTML = '<i data-lucide="image"></i> <span>Ver Foto Completa</span>';
+    } else {
+      lblMode.textContent = 'Ver Bloco OMR';
+      btnMode.innerHTML = '<i data-lucide="scan"></i> <span>Ver Bloco OMR</span>';
+    }
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  // Canvas de Overlay
+  const cvs = document.getElementById('reviewCanvas');
+  const ctx = cvs.getContext('2d');
+
+  if (isDewarped) {
+    // ── MODO 1: BLOCO OMR DEWARPED (CORRIGIDO) ──────────────────────────────────
+    cvs.width = r.dewarpedWidth || 400;
+    cvs.height = r.dewarpedHeight || 500;
     const id = new ImageData(
       new Uint8ClampedArray(r.dewarpedImageData),
       r.dewarpedWidth, r.dewarpedHeight
     );
     ctx.putImageData(id, 0, 0);
+
+    const outW = r.dewarpedWidth;
+    const outH = r.dewarpedHeight;
+
+    // Cantos dos fiduciais
+    [[0, 0, '#ef4444'], [outW, 0, '#f97316'], [0, outH, '#3b82f6'], [outW, outH, '#a855f7']].forEach(([cx, cy, color]) => {
+      ctx.beginPath();
+      ctx.arc(cx, cy, 7, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+    });
+
+    // Bolhas detectadas em coordenadas escaladas do bloco
+    if (r.answers && r.densities) {
+      r.answers.forEach(ans => {
+        const det = r.densities.filter(d => d.questao === ans.questao);
+        det.forEach(d => {
+          const bx = d.u * outW;
+          const by = d.v * outH;
+          const isSelected = ans.resposta === d.opcao;
+
+          ctx.beginPath();
+          ctx.arc(bx, by, 8, 0, Math.PI * 2);
+          if (isSelected) {
+            ctx.fillStyle = ans.status === 'anulada' ? 'rgba(239, 68, 68, 0.55)' : 'rgba(34, 197, 94, 0.55)';
+            ctx.fill();
+            ctx.strokeStyle = ans.status === 'anulada' ? '#ef4444' : '#22c55e';
+            ctx.lineWidth = 2.5;
+          } else {
+            ctx.strokeStyle = 'rgba(100, 116, 139, 0.6)';
+            ctx.lineWidth = 1;
+          }
+          ctx.stroke();
+        });
+      });
+    }
   } else {
-    // Sem resultado de visão, mostra a foto original
+    // ── MODO 2: FOTO ORIGINAL COMPLETA ─────────────────────────────────────────
     const img = new Image();
-    img.onload = () => { ctx.drawImage(img, 0, 0, cvs.width, cvs.height); };
+    img.onload = () => {
+      cvs.width = foto.width;
+      cvs.height = foto.height;
+      ctx.drawImage(img, 0, 0);
+
+      if (r && !r.error) {
+        // Quad dos fiduciais destacando a área OMR na foto completa
+        if (r.fiducials) {
+          const { tl, tr, bl, br } = r.fiducials;
+          const lineW = Math.max(3, Math.round(foto.width * 0.003));
+          const dotR = Math.max(7, Math.round(foto.width * 0.007));
+
+          ctx.beginPath();
+          ctx.moveTo(tl.x, tl.y);
+          ctx.lineTo(tr.x, tr.y);
+          ctx.lineTo(br.x, br.y);
+          ctx.lineTo(bl.x, bl.y);
+          ctx.closePath();
+          ctx.strokeStyle = 'rgba(37, 99, 235, 0.85)';
+          ctx.lineWidth = lineW;
+          ctx.stroke();
+
+          // Marcadores nos 4 cantos
+          [
+            [tl, '#ef4444'], [tr, '#f97316'],
+            [bl, '#3b82f6'], [br, '#a855f7']
+          ].forEach(([pt, color]) => {
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, dotR, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = Math.max(2, Math.round(lineW * 0.5));
+            ctx.stroke();
+          });
+        }
+
+        // Overlay de bolhas nas coordenadas (x,y) reais da foto completa
+        if (r.answers && r.densities) {
+          const bubbleR = Math.max(8, Math.round((r.fidDistX || foto.width * 0.4) * (r.sampleRadiusRatio || 0.025)));
+          const strokeW = Math.max(1.5, Math.round(foto.width * 0.0018));
+
+          r.answers.forEach(ans => {
+            const det = r.densities.filter(d => d.questao === ans.questao);
+            det.forEach(d => {
+              const bx = d.x;
+              const by = d.y;
+              const isSelected = ans.resposta === d.opcao;
+
+              ctx.beginPath();
+              ctx.arc(bx, by, bubbleR, 0, Math.PI * 2);
+              if (isSelected) {
+                ctx.fillStyle = ans.status === 'anulada' ? 'rgba(239, 68, 68, 0.55)' : 'rgba(34, 197, 94, 0.55)';
+                ctx.fill();
+                ctx.strokeStyle = ans.status === 'anulada' ? '#ef4444' : '#22c55e';
+                ctx.lineWidth = strokeW * 1.8;
+              } else {
+                ctx.strokeStyle = 'rgba(100, 116, 139, 0.6)';
+                ctx.lineWidth = strokeW;
+              }
+              ctx.stroke();
+            });
+          });
+        }
+      }
+    };
     img.src = URL.createObjectURL(foto.file);
   }
+
 
   // Dropdown de alunos
   const alunoSel = document.getElementById('reviewAluno');
@@ -472,21 +771,21 @@ function renderReview() {
     const opt = document.createElement('option');
     opt.value = f.id;
     opt.textContent = `Forma ${f.label}`;
-    if (r.formaId === f.id) opt.selected = true;
+    if (String(r.formaId) === String(f.id)) opt.selected = true;
     formaSel.appendChild(opt);
   });
 
-  alunoSel.addEventListener('change', () => {
+  alunoSel.onchange = () => {
     const aluno = state.turmaAlunos.find(a => String(a.matricula) === alunoSel.value);
     r.alunoMatricula = aluno?.matricula || null;
     r.alunoNome = aluno?.nome || null;
-  });
+  };
 
-  formaSel.addEventListener('change', () => {
-    r.formaId = parseInt(formaSel.value);
+  formaSel.onchange = () => {
+    r.formaId = formaSel.value ? (isNaN(formaSel.value) ? formaSel.value : Number(formaSel.value)) : null;
     recalcularNota(r);
     renderAnswersTable(r);
-  });
+  };
 
   recalcularNota(r);
   renderAnswersTable(r);
@@ -494,14 +793,14 @@ function renderReview() {
 }
 
 function recalcularNota(r) {
-  const forma = state.formas.find(f => f.id === r.formaId);
+  const forma = state.formas.find(f => String(f.id) === String(r.formaId)) || state.formas[0];
   if (!r.answers || !forma) { r.nota = null; return; }
 
   let acertos = 0, erros = 0, branco = 0;
   const nq = state.config.numQuestoes;
   for (let q = 1; q <= nq; q++) {
     const det = r.answers.find(a => a.questao === q);
-    const gab = forma.answers[q];
+    const gab = forma.answers ? forma.answers[q] : null;
     if (!det || det.status !== 'ok') { branco++; continue; }
     if (det.resposta === gab) acertos++;
     else erros++;
@@ -513,24 +812,24 @@ function recalcularNota(r) {
 
 function renderGradeSummary(r) {
   document.getElementById('reviewAcertos').textContent = r.acertos ?? '—';
-  document.getElementById('reviewErros').textContent   = r.erros   ?? '—';
-  document.getElementById('reviewBranco').textContent  = r.branco  ?? '—';
-  document.getElementById('reviewNota').textContent    = r.nota    != null ? r.nota.toFixed(1) : '—';
+  document.getElementById('reviewErros').textContent = r.erros ?? '—';
+  document.getElementById('reviewBranco').textContent = r.branco ?? '—';
+  document.getElementById('reviewNota').textContent = r.nota != null ? r.nota.toFixed(1) : '—';
 }
 
 function renderAnswersTable(r) {
   const tbody = document.getElementById('reviewAnswersBody');
   tbody.innerHTML = '';
-  const forma = state.formas.find(f => f.id === r.formaId);
+  const forma = state.formas.find(f => String(f.id) === String(r.formaId)) || state.formas[0];
   if (!r.answers) return;
 
   r.answers.forEach(({ questao, resposta, status }) => {
-    const gab = forma?.answers[questao] || '—';
+    const gab = forma?.answers ? (forma.answers[questao] || '—') : '—';
     const isOk = resposta === gab && status === 'ok';
     const tr = document.createElement('tr');
     tr.className = status === 'ok' ? (isOk ? 'correct' : 'wrong') : 'blank';
     tr.innerHTML = `
-      <td>${String(questao).padStart(2,'0')}</td>
+      <td>${String(questao).padStart(2, '0')}</td>
       <td><strong>${resposta || (status === 'anulada' ? 'ANULADA' : '—')}</strong></td>
       <td>${gab}</td>
       <td>${isOk ? '✓' : (status === 'ok' ? '✗' : '○')}</td>
@@ -540,6 +839,14 @@ function renderAnswersTable(r) {
 }
 
 function initStep3() {
+  const toggleBtn = document.getElementById('btnToggleReviewView');
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      state.reviewViewMode = state.reviewViewMode === 'dewarped' ? 'full' : 'dewarped';
+      renderReview();
+    });
+  }
+
   document.getElementById('btnReviewBack').addEventListener('click', () => {
     if (state.reviewIdx > 0) { state.reviewIdx--; renderReview(); }
   });
@@ -565,6 +872,40 @@ function initStep3() {
       else showToast('Confirme todas as fotos para prosseguir.', 'warning');
     }
   });
+
+  // Botão Calibrar: abre modal e re-processa a foto atual com os cantos manuais
+  document.getElementById('btnRecalibrar').addEventListener('click', async () => {
+    const idx = state.reviewIdx;
+    const r = state.resultados[idx];
+    const foto = state.fotos[r.fotoIdx];
+
+    openCalibModal(r.fotoIdx, async () => {
+      showToast('Re-processando com cantos manuais...', 'info');
+      const btn = document.getElementById('btnRecalibrar');
+      btn.disabled = true;
+
+      try {
+        const res = await runWorker(foto);
+        state.resultados[idx] = {
+          ...r,
+          answers: res.answers,
+          densities: res.densities,
+          dewarpedImageData: res.dewarpedImageData,
+          dewarpedWidth: res.dewarpedWidth,
+          dewarpedHeight: res.dewarpedHeight,
+          nota: null, confirmed: false,
+        };
+        recalcularNota(state.resultados[idx]);
+        renderReview();
+        showToast('Re-processado com sucesso!', 'success');
+      } catch (err) {
+        showToast(`Erro: ${err.message}`, 'error');
+      } finally {
+        btn.disabled = false;
+        if (window.lucide) window.lucide.createIcons();
+      }
+    });
+  });
 }
 
 // ─── PASSO 4: Lançamento ──────────────────────────────────────────────────────
@@ -588,8 +929,8 @@ function renderStep4() {
   `;
 
   confirmed.forEach(r => {
-    const forma = state.formas.find(f => f.id === r.formaId);
-    const cls   = r.nota >= 6 ? 'aprov' : r.nota >= 5 ? 'recup' : 'reprov';
+    const forma = state.formas.find(f => String(f.id) === String(r.formaId)) || state.formas[0];
+    const cls = r.nota >= 6 ? 'aprov' : r.nota >= 5 ? 'recup' : 'reprov';
     const status = r.nota >= 6 ? 'Aprovado' : r.nota >= 5 ? 'Recuperação' : 'Reprovado';
     html += `
       <tr>
@@ -613,10 +954,10 @@ function initStep4() {
   });
 
   document.getElementById('btnLancar').addEventListener('click', async () => {
-    const btn      = document.getElementById('btnLancar');
+    const btn = document.getElementById('btnLancar');
     const progress = document.getElementById('launchProgress');
-    const bar      = document.getElementById('launchBar');
-    const status   = document.getElementById('launchStatus');
+    const bar = document.getElementById('launchBar');
+    const status = document.getElementById('launchStatus');
 
     btn.disabled = true;
     btn.innerHTML = '<i data-lucide="loader"></i> Enviando...';
@@ -641,10 +982,10 @@ function initStep4() {
 
     const todayStr = new Date().toISOString().split('T')[0];
     const payloads = confirmed.map(r => ({
-      idInstrumento:   state.instrumento,
-      idAluno:         parseInt(r.alunoMatricula),
+      idInstrumento: state.instrumento,
+      idAluno: parseInt(r.alunoMatricula),
       dsAproveitamento: r.nota,
-      dataRealizacao:  todayStr,
+      dataRealizacao: todayStr,
     }));
 
     progress.classList.remove('hidden');
@@ -688,15 +1029,49 @@ function initStep4() {
   });
 }
 
-// ─── Inicialização ─────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-  // Observa mudanças de questões/alternativas para re-renderizar formas
-  ['ltrQuestoes', 'ltrAlt'].forEach(id => {
-    document.getElementById(id).addEventListener('change', () => {
-      if (state.formas.length > 0) renderFormas();
+// ─── Navegação por clique nos Indicadores de Passo ───────────────────────────
+function initStepIndicator() {
+  document.querySelectorAll('.step-indicator .step[data-step]').forEach(el => {
+    el.addEventListener('click', () => {
+      const step = parseInt(el.dataset.step, 10);
+      if (!step) return;
+
+      if (step === 1) {
+        goToStep(1);
+      } else if (step === 2) {
+        goToStep(2);
+      } else if (step === 3) {
+        if (!state.resultados || state.resultados.length === 0) {
+          showToast('Faça o upload e processe as fotos primeiro (Passo 2).', 'warning');
+          return;
+        }
+        goToStep(3);
+        renderReview();
+      } else if (step === 4) {
+        if (!state.resultados || state.resultados.length === 0) {
+          showToast('Processe e revise as fotos primeiro antes do Lançamento.', 'warning');
+          return;
+        }
+        renderStep4();
+        goToStep(4);
+      }
     });
   });
+}
 
+// ─── Inicialização ─────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  // Observa mudanças de questões/alternativas/colunas para re-renderizar formas
+  ['ltrQuestoes', 'ltrAlt', 'ltrColunas'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('change', () => {
+        if (state.formas.length > 0) renderFormas();
+      });
+    }
+  });
+
+  initStepIndicator();
   initStep1();
   initStep2();
   initStep3();

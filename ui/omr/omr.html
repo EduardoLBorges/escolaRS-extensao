@@ -205,6 +205,13 @@
               <label for="ltrPontos">Pontos por Questão</label>
               <input type="number" id="ltrPontos" class="form-control" value="0.5" min="0.1" max="10" step="0.1">
             </div>
+            <div class="form-group">
+              <label for="ltrColunas">Colunas no Bloco</label>
+              <select id="ltrColunas" class="form-control">
+                <option value="1" selected>1 coluna</option>
+                <option value="2">2 colunas</option>
+              </select>
+            </div>
           </div>
 
           <!-- Seletores de Período e Instrumento -->
@@ -280,6 +287,11 @@
           <div class="review-layout">
             <!-- Imagem processada com overlay -->
             <div class="review-image-panel">
+              <div class="image-panel-controls">
+                <button id="btnToggleReviewView" class="btn btn-secondary btn-sm" title="Alternar entre Foto Completa e Bloco OMR">
+                  <i data-lucide="scan"></i> <span id="lblReviewViewMode">Ver Bloco OMR</span>
+                </button>
+              </div>
               <canvas id="reviewCanvas"></canvas>
             </div>
 
@@ -334,6 +346,9 @@
 
               <div class="review-nav">
                 <button id="btnReviewBack" class="btn btn-secondary btn-sm">Anterior</button>
+                <button id="btnRecalibrar" class="btn btn-warning btn-sm" title="Marcar cantos manualmente">
+                  <i data-lucide="crosshair"></i> Calibrar
+                </button>
                 <button id="btnConfirmarFoto" class="btn btn-success btn-sm">
                   Confirmar <i data-lucide="check"></i>
                 </button>
@@ -371,6 +386,35 @@
     </main>
 
     <div id="toastContainer" class="toast-container"></div>
+  </div>
+
+  <!-- ══ Modal de Calibração Manual de Cantos ══════════════════════════════ -->
+  <div id="calibModal" class="calib-modal hidden">
+    <div class="calib-backdrop"></div>
+    <div class="calib-container">
+      <div class="calib-header">
+        <h3><i data-lucide="crosshair"></i> Calibrar Cantos Manualmente</h3>
+        <button id="calibClose" class="btn btn-secondary btn-sm"><i data-lucide="x"></i></button>
+      </div>
+      <div class="calib-instructions">
+        <p>Clique nos <strong>4 quadrados pretos</strong> do bloco OMR, em ordem:</p>
+        <div class="calib-steps">
+          <span id="calibStep1" class="calib-dot tl active">1 — Superior Esquerdo</span>
+          <span id="calibStep2" class="calib-dot tr">2 — Superior Direito</span>
+          <span id="calibStep3" class="calib-dot bl">3 — Inferior Esquerdo</span>
+          <span id="calibStep4" class="calib-dot br">4 — Inferior Direito</span>
+        </div>
+      </div>
+      <div class="calib-canvas-wrapper">
+        <canvas id="calibCanvas"></canvas>
+      </div>
+      <div class="calib-footer">
+        <button id="calibReset" class="btn btn-secondary"><i data-lucide="rotate-ccw"></i> Recomeçar</button>
+        <button id="calibConfirm" class="btn btn-primary" disabled>
+          <i data-lucide="check-circle"></i> Confirmar Cantos
+        </button>
+      </div>
+    </div>
   </div>
 
   <script src="../libs/lucide.min.js"></script>

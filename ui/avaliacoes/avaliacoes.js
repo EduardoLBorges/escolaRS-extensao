@@ -488,6 +488,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.location.href = '../chamada/chamada.html';
     });
 
+    const btnOMR = document.getElementById('btnOMR');
+    if (btnOMR) {
+        btnOMR.addEventListener('click', () => {
+            window.location.href = '../omr/omr.html';
+        });
+    }
+
     // --- Módulo Multi-Abas --- //
 
     btnNovaAba.addEventListener('click', () => criarAba());

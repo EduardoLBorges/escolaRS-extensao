@@ -14,13 +14,29 @@
 'use strict';
 
 // ─── Constantes de Layout ────────────────────────────────────────────────────
-const FID_SIZE  = 14;   // Tamanho do marcador fiducial (px)
-const FID_INSET = 10;   // Margem da borda ao centro do marcador
-const ROW_H     = 22;   // Altura compacta por linha de questão
-const Q_W       = 24;   // Largura da coluna do número da questão
-const BUB_R     = 7.5;  // Raio das bolhas
-const BUB_SP    = 22;   // Espaçamento centro-a-centro entre bolhas
-const COL_GAP   = 26;   // Espaço entre colunas
+// Marcadores fiduciais: padrão "olho de touro" (bullseye) concêntrico.
+// Anel externo preto → anel branco → ponto interno preto.
+// Esse padrão preto→branco→preto é extremamente raro em texto impresso normal,
+// tornando a detecção automática muito mais confiável.
+//
+// Proporções (em px no canvas lógico):
+//   FID_OUTER = 10  ← raio do quadrado preto externo
+//   FID_MID   =  6  ← raio do quadrado branco (gap)
+//   FID_INNER =  3  ← raio do ponto preto interno
+//   FID_HALO  =  3  ← zona branca ao redor do marcador (isolamento)
+//
+// FID_SIZE é o "raio total" usado para cálculo de posição (= FID_OUTER + FID_HALO)
+const FID_OUTER = 10;  // raio do quadrado externo preto
+const FID_MID   = 6;   // raio do quadrado branco (separador)
+const FID_INNER = 3;   // raio do ponto interno preto
+const FID_HALO  = 3;   // zona branca de isolamento ao redor
+const FID_SIZE  = FID_OUTER + FID_HALO; // = 13 (compatível com posições existentes)
+const FID_INSET = 12;  // Margem da borda ao centro do marcador
+const ROW_H     = 22;  // Altura compacta por linha de questão
+const Q_W       = 24;  // Largura da coluna do número da questão
+const BUB_R     = 7.5; // Raio das bolhas
+const BUB_SP    = 22;  // Espaçamento centro-a-centro entre bolhas
+const COL_GAP   = 26;  // Espaço entre colunas
 
 // ─── Cálculo de Dimensões do Canvas ──────────────────────────────────────────
 function calcDimensions(config) {
@@ -74,22 +90,33 @@ function renderGrade(canvas, config) {
   ctx.lineWidth = 0.8;
   ctx.strokeRect(1, 1, W - 2, H - 2);
 
-  // ── Marcadores Fiduciais (Alinhados na altura de yRow0 e yRowLast) ────────
-  const fidPositions = [
-    [xFidL - FID_SIZE / 2, yRow0 - FID_SIZE / 2],    // TL
-    [xFidR - FID_SIZE / 2, yRow0 - FID_SIZE / 2],    // TR
-    [xFidL - FID_SIZE / 2, yRowLast - FID_SIZE / 2], // BL
-    [xFidR - FID_SIZE / 2, yRowLast - FID_SIZE / 2], // BR
+  // ── Marcadores Fiduciais Bullseye (Alinhados na altura de yRow0 e yRowLast) ──
+  // Cada marcador é um "olho de touro": quadrado preto → quadrado branco → ponto preto.
+  // Os centros ficam em (xFidL, yRow0), (xFidR, yRow0), (xFidL, yRowLast), (xFidR, yRowLast).
+  const fidCenters = [
+    [xFidL, yRow0],    // TL
+    [xFidR, yRow0],    // TR
+    [xFidL, yRowLast], // BL
+    [xFidR, yRowLast], // BR
   ];
 
-  ctx.fillStyle = '#ffffff';
-  fidPositions.forEach(([fx, fy]) => {
-    ctx.fillRect(fx - 2, fy - 2, FID_SIZE + 4, FID_SIZE + 4);
-  });
+  fidCenters.forEach(([cx, cy]) => {
+    // Zona branca de isolamento (garante fundo limpo ao redor)
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(cx - (FID_OUTER + FID_HALO), cy - (FID_OUTER + FID_HALO),
+                 (FID_OUTER + FID_HALO) * 2, (FID_OUTER + FID_HALO) * 2);
 
-  ctx.fillStyle = '#000000';
-  fidPositions.forEach(([fx, fy]) => {
-    ctx.fillRect(fx, fy, FID_SIZE, FID_SIZE);
+    // Quadrado preto externo
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(cx - FID_OUTER, cy - FID_OUTER, FID_OUTER * 2, FID_OUTER * 2);
+
+    // Quadrado branco (gap)
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(cx - FID_MID, cy - FID_MID, FID_MID * 2, FID_MID * 2);
+
+    // Ponto preto interno
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(cx - FID_INNER, cy - FID_INNER, FID_INNER * 2, FID_INNER * 2);
   });
 
   // ── Cabeçalho (Opcional) ──────────────────────────────────────────────────
