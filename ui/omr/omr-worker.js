@@ -68,126 +68,184 @@ function binarize(gray, threshold) {
   return bin;
 }
 
-// ─── 3. Detecção de Marcadores Fiduciais ──────────────────────────────────────
+// ─── 3. Detecção de Marcadores Fiduciais — QR Finder Pattern ─────────────────
 //
-// Estratégia robusta em 5 fases:
-//   A) Mapa de densidade downscalado (4×) para velocidade
-//   B) Varredura global com sliding window multi-escala → lista de candidatos
-//   C) Non-maximum suppression → top candidatos distintos
-//   D) Seleciona os 4 candidatos que formam o melhor retângulo
-//   E) Refina centróide de cada marcador na imagem original (alta resolução)
+// Algoritmo idêntico ao usado por leitores de QR Code reais:
+//   A) Varredura horizontal: procura sequências preto→branco→preto→branco→preto
+//      com ratio ≈ 1:1:3:1:1 (invariante à escala)
+//   B) Verificação cruzada vertical: para cada candidato horizontal, verifica
+//      se o mesmo ratio existe na direção vertical passando pelo centro.
+//      Isso elimina >95% dos falsos positivos (texto, bordas, etc.)
+//   C) Clustering: agrupa candidatos próximos com centróide ponderado
+//   D) Seleciona os 4 que formam o melhor retângulo
+//   E) Refina centróide com alta precisão
 //
-// Funciona independentemente de onde o bloco OMR esteja na foto.
 function detectFiducials(bin, w, h) {
   const minDim = Math.min(w, h);
+  const RATIO_TOL = 0.55; // tolerância de ratio (45%-155% do esperado)
 
-  // ── A. Mapa de densidade (downscale 4×) ────────────────────────────────────
-  const DS = 4;
-  const dw = Math.floor(w / DS);
-  const dh = Math.floor(h / DS);
-  const densMap = new Float32Array(dw * dh);
-
-  for (let dy = 0; dy < dh; dy++) {
-    for (let dx = 0; dx < dw; dx++) {
-      let black = 0;
-      for (let ky = 0; ky < DS; ky++) {
-        for (let kx = 0; kx < DS; kx++) {
-          if (bin[(dy * DS + ky) * w + (dx * DS + kx)] === 0) black++;
-        }
-      }
-      densMap[dy * dw + dx] = black / (DS * DS);
-    }
-  }
-
-  // ── B. Pontuação Bullseye global ───────────────────────────────────────────
-  // Bullseye score = preto_interno × (1 - branco_gap) × preto_externo
-  //
-  // Proporções do gerador (em px lógicos):
-  //   OUTER=10, MID=6, INNER=3 → escala para imagem via ratio
-  //
-  // Varremos a imagem downscalada com 3 escalas de janela para cobrir variações
-  // de tamanho (bloco pequeno ou grande na foto).
-  const candidates = [];
-
-  // Tentamos 3 tamanhos de "outer_radius" relativos à menor dimensão
-  const OUTER_FRACS = [0.018, 0.035, 0.06, 0.09]; // fração de minDim para outer_r
-
-  for (const frac of OUTER_FRACS) {
-    const outerR = Math.max(4, Math.round(minDim * frac));
-    const midR   = Math.round(outerR * 6 / 10);   // proporção: 6/10 do outer
-    const innerR = Math.round(outerR * 3 / 10);   // proporção: 3/10 do outer
-
-    // No mapa downscalado
-    const outerDs  = Math.max(1, Math.round(outerR / DS));
-    const midDs    = Math.max(1, Math.round(midR   / DS));
-    const innerDs  = Math.max(1, Math.round(innerR / DS));
-
-    // Função auxiliar: densidade média numa janela quadrada centrada em (cx,cy) no mapa ds
-    const boxDens = (cx, cy, r) => {
-      let sum = 0, cnt = 0;
-      for (let ky = -r; ky <= r; ky++) {
-        for (let kx = -r; kx <= r; kx++) {
-          const px = cx + kx, py = cy + ky;
-          if (px >= 0 && px < dw && py >= 0 && py < dh) { sum += densMap[py * dw + px]; cnt++; }
-        }
-      }
-      return cnt > 0 ? sum / cnt : 0;
+  // ── Função de verificação de ratio 1:1:3:1:1 ──────────────────────────────
+  function checkRatio(r0, r1, r2, r3, r4) {
+    const total = r0 + r1 + r2 + r3 + r4;
+    if (total < 7) return false;
+    const unit = total / 7;
+    const ok = (val, expected) => {
+      const ratio = val / (unit * expected);
+      return ratio >= (1 - RATIO_TOL) && ratio <= (1 + RATIO_TOL);
     };
+    return ok(r0, 1) && ok(r1, 1) && ok(r2, 3) && ok(r3, 1) && ok(r4, 1);
+  }
 
-    for (let dy = outerDs; dy < dh - outerDs; dy++) {
-      for (let dx = outerDs; dx < dw - outerDs; dx++) {
-        const dOuter = boxDens(dx, dy, outerDs);
-        const dMid   = boxDens(dx, dy, midDs);
-        const dInner = boxDens(dx, dy, innerDs);
+  // ── A. Varredura Horizontal ────────────────────────────────────────────────
+  // Percorre cada linha da imagem binarizada coletando "runs" (sequências de
+  // mesma cor). Para cada janela de 5 runs que começa com PRETO e satisfaz
+  // o ratio 1:1:3:1:1, registra o centro como candidato horizontal.
+  const hCandidates = [];
 
-        // Assinatura bullseye: centro preto, anel branco, borda preta
-        // score = dInner * (1 - dMid_anel) * dOuter_anel
-        // dMid_anel = densidade SÓ no anel entre innerDs e midDs (aproximado)
-        const midRingDens  = Math.max(0, (dMid  - dInner) / (1 - dInner + 0.01));
-        const outerRingDens = Math.max(0, (dOuter - dMid)   / (1 - dMid + 0.01));
+  for (let y = 0; y < h; y++) {
+    // Coleta runs desta linha: [{color, len, start}, ...]
+    const runs = [];
+    let start = 0;
+    let color = bin[y * w];
+    for (let x = 1; x < w; x++) {
+      const px = bin[y * w + x];
+      if (px !== color) {
+        runs.push({ color, len: x - start, start });
+        start = x;
+        color = px;
+      }
+    }
+    runs.push({ color, len: w - start, start });
 
-        const score = dInner * (1 - midRingDens) * outerRingDens;
+    if (runs.length < 5) continue;
 
-        if (score >= 0.08) {  // threshold mínimo para evitar ruído
-          candidates.push({
-            cx: dx * DS,
-            cy: dy * DS,
-            density: score,   // reuso do campo "density" para o score bullseye
-            scale: outerR,    // escala estimada para refino posterior
-          });
-        }
+    for (let i = 0; i <= runs.length - 5; i++) {
+      // O padrão começa com PRETO (cor 0)
+      if (runs[i].color !== 0) continue;
+
+      const r0 = runs[i].len, r1 = runs[i+1].len, r2 = runs[i+2].len;
+      const r3 = runs[i+3].len, r4 = runs[i+4].len;
+
+      if (checkRatio(r0, r1, r2, r3, r4)) {
+        const total = r0 + r1 + r2 + r3 + r4;
+        const cx = runs[i].start + r0 + r1 + r2 / 2;
+        hCandidates.push({
+          cx: Math.round(cx),
+          cy: y,
+          moduleSize: total / 7,
+        });
       }
     }
   }
 
-  if (candidates.length < 4) {
-    throw new Error(`Marcadores bullseye não encontrados (${candidates.length} candidatos). Tente calibrar manualmente.`);
+  if (hCandidates.length < 4) {
+    throw new Error(`Padrão QR Finder horizontal não encontrado (${hCandidates.length}). Tente calibrar manualmente.`);
   }
 
-  // ── C. Non-maximum suppression ────────────────────────────────────────────
-  const suppRadius = WIN_MAX;
-  candidates.sort((a, b) => b.density - a.density);
+  // ── B. Verificação Cruzada Vertical ────────────────────────────────────────
+  // Para cada candidato horizontal, varre a coluna vertical no ponto cx
+  // procurando o mesmo ratio 1:1:3:1:1. Só mantém candidatos verificados.
+  const verified = [];
 
-  const kept = [];
-  const used = new Uint8Array(candidates.length);
-  for (let i = 0; i < candidates.length; i++) {
-    if (used[i]) continue;
-    kept.push(candidates[i]);
-    for (let j = i + 1; j < candidates.length; j++) {
-      if (used[j]) continue;
-      const dx = candidates[i].cx - candidates[j].cx;
-      const dy = candidates[i].cy - candidates[j].cy;
-      if (dx * dx + dy * dy < suppRadius * suppRadius) used[j] = 1;
+  for (const cand of hCandidates) {
+    const x = cand.cx;
+    if (x < 0 || x >= w) continue;
+
+    // Coleta runs verticais na coluna x
+    const runs = [];
+    let start = 0;
+    let color = bin[x]; // pixel (x, 0)
+    for (let y = 1; y < h; y++) {
+      const px = bin[y * w + x];
+      if (px !== color) {
+        runs.push({ color, len: y - start, start });
+        start = y;
+        color = px;
+      }
     }
-    if (kept.length >= 16) break;
+    runs.push({ color, len: h - start, start });
+
+    // Procura a janela de 5 runs que contém cy
+    let found = false;
+    for (let i = 0; i <= runs.length - 5; i++) {
+      if (runs[i].color !== 0) continue;
+
+      const r0 = runs[i].len, r1 = runs[i+1].len, r2 = runs[i+2].len;
+      const r3 = runs[i+3].len, r4 = runs[i+4].len;
+
+      if (!checkRatio(r0, r1, r2, r3, r4)) continue;
+
+      // Centro vertical do padrão encontrado
+      const cy = runs[i].start + r0 + r1 + r2 / 2;
+
+      // Verifica se o centro vertical está próximo do candidato horizontal
+      const dist = Math.abs(cy - cand.cy);
+      const total = r0 + r1 + r2 + r3 + r4;
+      const moduleV = total / 7;
+
+      if (dist < moduleV * 4) { // tolerância: 4 módulos de diferença
+        const avgModule = (cand.moduleSize + moduleV) / 2;
+        verified.push({
+          cx: cand.cx,
+          cy: Math.round((cand.cy + cy) / 2), // média dos centros H e V
+          moduleSize: avgModule,
+          scale: Math.round(avgModule * 3.5),
+        });
+        found = true;
+        break;
+      }
+    }
   }
 
-  if (kept.length < 4) {
-    throw new Error(`Poucos marcadores distintos (${kept.length}). Tente calibrar manualmente.`);
+  if (verified.length < 4) {
+    throw new Error(`Verificação cruzada falhou (${verified.length} marcadores confirmados). Tente calibrar manualmente.`);
   }
+
+  // ── C. Clustering com centróide ponderado ──────────────────────────────────
+  // Agrupa candidatos verificados que estão próximos e calcula centróide médio.
+  const clusterRadius = Math.max(15, Math.round(minDim * 0.03));
+  const clusters = [];
+  const clusterUsed = new Uint8Array(verified.length);
+
+  for (let i = 0; i < verified.length; i++) {
+    if (clusterUsed[i]) continue;
+    let sumX = verified[i].cx;
+    let sumY = verified[i].cy;
+    let sumM = verified[i].moduleSize;
+    let count = 1;
+    clusterUsed[i] = 1;
+
+    for (let j = i + 1; j < verified.length; j++) {
+      if (clusterUsed[j]) continue;
+      const dx = verified[i].cx - verified[j].cx;
+      const dy = verified[i].cy - verified[j].cy;
+      if (dx * dx + dy * dy < clusterRadius * clusterRadius) {
+        sumX += verified[j].cx;
+        sumY += verified[j].cy;
+        sumM += verified[j].moduleSize;
+        count++;
+        clusterUsed[j] = 1;
+      }
+    }
+    clusters.push({
+      cx: Math.round(sumX / count),
+      cy: Math.round(sumY / count),
+      moduleSize: sumM / count,
+      scale: Math.round((sumM / count) * 3.5),
+      votes: count, // mais votos = mais confiável
+    });
+  }
+
+  if (clusters.length < 4) {
+    throw new Error(`Poucos marcadores distintos (${clusters.length}). Tente calibrar manualmente.`);
+  }
+
+  // Ordena por número de votos (mais confirmações = mais confiável)
+  clusters.sort((a, b) => b.votes - a.votes);
+  const kept = clusters.slice(0, Math.min(clusters.length, 12));
 
   // ── D. Melhor retângulo entre as combinações C(N,4) ───────────────────────
-  const topN = Math.min(kept.length, 12);
+  const topN = kept.length;
   let bestScore = -Infinity;
   let bestQuad = null;
 
@@ -217,14 +275,14 @@ function detectFiducials(bin, w, h) {
           const avgH = (hLeft + hRight) / 2;
           const area = avgW * avgH;
 
-          if (area < minDim * minDim * 0.004) continue; // muito pequeno → ignora
+          if (area < minDim * minDim * 0.002) continue; // muito pequeno → ignora
 
           const parallelScore = 1 - (Math.abs(wTop - wBot) + Math.abs(hLeft - hRight)) / (avgW + avgH + 1);
           const diagScore     = 1 - Math.abs(d1 - d2) / ((d1 + d2) / 2 + 1);
-          const densScore     = pts.reduce((s, p) => s + p.density, 0) / 4;
+          const voteScore     = pts.reduce((s, p) => s + (p.votes || 1), 0) / 4;
           const sizeBonus     = Math.log(area + 1) * 0.001;
 
-          const score = parallelScore * 0.45 + diagScore * 0.30 + densScore * 0.25 + sizeBonus;
+          const score = parallelScore * 0.40 + diagScore * 0.30 + Math.min(voteScore * 0.02, 0.20) + sizeBonus;
 
           if (score > bestScore) { bestScore = score; bestQuad = quad; }
         }
@@ -232,41 +290,27 @@ function detectFiducials(bin, w, h) {
     }
   }
 
-  if (!bestQuad || bestScore < 0.25) {
+  if (!bestQuad || bestScore < 0.15) {
     throw new Error('Não foi possível identificar os 4 marcadores. Tente calibrar manualmente.');
   }
 
   // ── E. Refina centróide na imagem original ────────────────────────────────
-  // Usa a escala estimada do candidato para janela de refino proporcional.
-  // Considera apenas os pixels pretos que NÃO estão no anel branco central
-  // (usa uma janela do tamanho do anel externo: outerR e exclui a região midR).
-  const avgScale = (bestQuad.tl.scale + bestQuad.tr.scale + bestQuad.bl.scale + bestQuad.br.scale) / 4;
-  const refineOuter = Math.round(avgScale * 1.4);
-  const refineMid   = Math.round(avgScale * 0.6 / 1.0); // zona branca a excluir
+  // Para cada marcador QR finder, encontra o centróide de TODOS os pixels pretos
+  // dentro de uma janela proporcional ao moduleSize detectado.
+  const refine = ({ cx, cy, moduleSize }) => {
+    const halfSize = Math.round((moduleSize || 10) * 4.5); // janela = ~9 módulos
+    const x0 = Math.max(0, cx - halfSize);
+    const y0 = Math.max(0, cy - halfSize);
+    const x1 = Math.min(w, cx + halfSize);
+    const y1 = Math.min(h, cy + halfSize);
 
-  const refine = ({ cx, cy }) => {
-    const x0 = Math.max(0, Math.round(cx - refineOuter));
-    const y0 = Math.max(0, Math.round(cy - refineOuter));
-    const x1 = Math.min(w, Math.round(cx + refineOuter));
-    const y1 = Math.min(h, Math.round(cy + refineOuter));
     let sx = 0, sy = 0, count = 0;
     for (let py = y0; py < y1; py++) {
       for (let px = x0; px < x1; px++) {
-        // Só conta pixels no ANEL EXTERNO (exclui a zona branca central)
-        const dr2 = (px - cx) * (px - cx) + (py - cy) * (py - cy);
-        if (dr2 < refineMid * refineMid) continue; // zona branca: pula
         if (bin[py * w + px] === 0) { sx += px; sy += py; count++; }
       }
     }
-    // Se não achou pixels no anel externo, tenta centróide de todos os pretos
-    if (!count) {
-      for (let py = y0; py < y1; py++) {
-        for (let px = x0; px < x1; px++) {
-          if (bin[py * w + px] === 0) { sx += px; sy += py; count++; }
-        }
-      }
-    }
-    return count ? { x: sx / count, y: sy / count } : { x: cx, y: cy };
+    return count > 0 ? { x: sx / count, y: sy / count } : { x: cx, y: cy };
   };
 
   return [

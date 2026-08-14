@@ -14,24 +14,26 @@
 'use strict';
 
 // ─── Constantes de Layout ────────────────────────────────────────────────────
-// Marcadores fiduciais: padrão "olho de touro" (bullseye) concêntrico.
-// Anel externo preto → anel branco → ponto interno preto.
-// Esse padrão preto→branco→preto é extremamente raro em texto impresso normal,
-// tornando a detecção automática muito mais confiável.
+// Marcadores fiduciais: padrão QR Code Finder Pattern.
+// Idêntico ao marcador de canto dos QR Codes: 7 módulos × M px cada.
+// Ratio de varredura 1:1:3:1:1 (preto:branco:preto:branco:preto) em qualquer direção.
+// Esse padrão é o padrão da indústria para detecção robusta a qualquer escala,
+// rotação e condição de iluminação — é exatamente o que torna QR codes tão confiáveis.
 //
-// Proporções (em px no canvas lógico):
-//   FID_OUTER = 10  ← raio do quadrado preto externo
-//   FID_MID   =  6  ← raio do quadrado branco (gap)
-//   FID_INNER =  3  ← raio do ponto preto interno
-//   FID_HALO  =  3  ← zona branca ao redor do marcador (isolamento)
+// Estrutura (M = tamanho do módulo em px):
+//   7×M × 7×M  → quadrado preto externo (borda de 1 módulo)
+//   5×M × 5×M  → quadrado branco interno (separador de 1 módulo)
+//   3×M × 3×M  → quadrado preto central
+//   + 1×M de halo branco ao redor (separação do conteúdo)
 //
-// FID_SIZE é o "raio total" usado para cálculo de posição (= FID_OUTER + FID_HALO)
-const FID_OUTER = 10;  // raio do quadrado externo preto
-const FID_MID   = 6;   // raio do quadrado branco (separador)
-const FID_INNER = 3;   // raio do ponto interno preto
-const FID_HALO  = 3;   // zona branca de isolamento ao redor
-const FID_SIZE  = FID_OUTER + FID_HALO; // = 13 (compatível com posições existentes)
-const FID_INSET = 12;  // Margem da borda ao centro do marcador
+// Total do marcador: 9×M × 9×M (incluindo halo)
+const FID_M     = 3.5;           // px por módulo (tamanho reduzido para mais elegância)
+const FID_OUT   = 7 * FID_M / 2; // meio-lado do quadrado preto externo = 12.25px (largura total: ~24.5px)
+const FID_MID   = 5 * FID_M / 2; // meio-lado do quadrado branco = 8.75px
+const FID_INNER = 3 * FID_M / 2; // meio-lado do ponto preto interno = 5.25px
+const FID_HALO  = FID_M;         // 1 módulo de halo branco ao redor
+const FID_SIZE  = FID_OUT + FID_HALO; // raio total incluindo halo
+const FID_INSET = Math.round(FID_SIZE) + 2; // Margem da borda ao centro do marcador
 const ROW_H     = 22;  // Altura compacta por linha de questão
 const Q_W       = 24;  // Largura da coluna do número da questão
 const BUB_R     = 7.5; // Raio das bolhas
@@ -90,9 +92,9 @@ function renderGrade(canvas, config) {
   ctx.lineWidth = 0.8;
   ctx.strokeRect(1, 1, W - 2, H - 2);
 
-  // ── Marcadores Fiduciais Bullseye (Alinhados na altura de yRow0 e yRowLast) ──
-  // Cada marcador é um "olho de touro": quadrado preto → quadrado branco → ponto preto.
-  // Os centros ficam em (xFidL, yRow0), (xFidR, yRow0), (xFidL, yRowLast), (xFidR, yRowLast).
+  // ── Marcadores QR Finder Pattern (Alinhados na altura de yRow0 e yRowLast) ──
+  // Padrão QR Code Finder: 7×7 preto → 5×5 branco → 3×3 preto (em módulos).
+  // Ratio de varredura: 1:1:3:1:1 — detectável a qualquer escala e rotação.
   const fidCenters = [
     [xFidL, yRow0],    // TL
     [xFidR, yRow0],    // TR
@@ -101,20 +103,19 @@ function renderGrade(canvas, config) {
   ];
 
   fidCenters.forEach(([cx, cy]) => {
-    // Zona branca de isolamento (garante fundo limpo ao redor)
+    // 1. Halo branco de isolamento (9×9 módulos ao redor do padrão)
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(cx - (FID_OUTER + FID_HALO), cy - (FID_OUTER + FID_HALO),
-                 (FID_OUTER + FID_HALO) * 2, (FID_OUTER + FID_HALO) * 2);
+    ctx.fillRect(cx - FID_SIZE, cy - FID_SIZE, FID_SIZE * 2, FID_SIZE * 2);
 
-    // Quadrado preto externo
+    // 2. Quadrado preto externo (7 módulos × 7 módulos)
     ctx.fillStyle = '#000000';
-    ctx.fillRect(cx - FID_OUTER, cy - FID_OUTER, FID_OUTER * 2, FID_OUTER * 2);
+    ctx.fillRect(cx - FID_OUT, cy - FID_OUT, FID_OUT * 2, FID_OUT * 2);
 
-    // Quadrado branco (gap)
+    // 3. Quadrado branco interior (5 módulos × 5 módulos)
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(cx - FID_MID, cy - FID_MID, FID_MID * 2, FID_MID * 2);
 
-    // Ponto preto interno
+    // 4. Quadrado preto central (3 módulos × 3 módulos)
     ctx.fillStyle = '#000000';
     ctx.fillRect(cx - FID_INNER, cy - FID_INNER, FID_INNER * 2, FID_INNER * 2);
   });
