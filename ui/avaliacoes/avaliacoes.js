@@ -515,16 +515,122 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadingState.innerHTML = `<p style="color:var(--error);">Falha: ${err.message}</p>`;
     }
 
-    btnVoltar.addEventListener('click', () => {
-        window.location.href = '../chamada/chamada.html';
-    });
+    // Floating Nav Drawer Toggle
+    const btnNavToggle = document.querySelector('#btnNavToggle');
+    const floatingNav = document.querySelector('#floatingNav');
+    if (btnNavToggle && floatingNav) {
+        btnNavToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            floatingNav.classList.toggle('hidden');
+        });
 
-    const btnOMR = document.getElementById('btnOMR');
-    if (btnOMR) {
-        btnOMR.addEventListener('click', () => {
-            window.location.href = '../omr/omr.html';
+        document.addEventListener('click', (e) => {
+            if (!floatingNav.contains(e.target) && !btnNavToggle.contains(e.target)) {
+                floatingNav.classList.add('hidden');
+            }
         });
     }
+
+    // Backup Handlers
+    document.querySelector('#nav-export-backup')?.addEventListener('click', async () => {
+        const data = await chrome.storage.local.get([
+            'escolaRsHorariosCustomizados',
+            'escolaRsInfrequentes',
+            'escolaRsPlanosDeAula',
+            'escolaRsDiasLetivos'
+        ]);
+
+        const config = {
+            horariosCustomizados: data.escolaRsHorariosCustomizados || [],
+            infrequentes: data.escolaRsInfrequentes || [],
+            planosDeAula: data.escolaRsPlanosDeAula || [],
+            diasLetivos: data.escolaRsDiasLetivos || []
+        };
+
+        if (!config.horariosCustomizados.length && !config.infrequentes.length && !config.planosDeAula.length && !config.diasLetivos.length) {
+            alert("Não há dados de configurações para exportar.");
+            return;
+        }
+
+        const jsonStr = JSON.stringify(config, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `backup_escolaRS_${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    });
+
+    const navImportFile = document.querySelector('#nav-import-file');
+    document.querySelector('#nav-import-backup')?.addEventListener('click', () => {
+        navImportFile?.click();
+    });
+
+    navImportFile?.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            try {
+                const parsed = JSON.parse(evt.target.result);
+                let storageUpdate = {};
+
+                if (Array.isArray(parsed)) {
+                    storageUpdate.escolaRsHorariosCustomizados = parsed;
+                } else if (parsed && typeof parsed === 'object') {
+                    if (parsed.horariosCustomizados) storageUpdate.escolaRsHorariosCustomizados = parsed.horariosCustomizados;
+                    if (parsed.infrequentes) storageUpdate.escolaRsInfrequentes = parsed.infrequentes;
+                    if (parsed.planosDeAula) storageUpdate.escolaRsPlanosDeAula = parsed.planosDeAula;
+                    if (parsed.diasLetivos) storageUpdate.escolaRsDiasLetivos = parsed.diasLetivos;
+                } else {
+                    throw new Error('Formato JSON inválido.');
+                }
+
+                await chrome.storage.local.set(storageUpdate);
+                alert('Backup das configurações importado com sucesso!');
+                window.location.reload();
+            } catch (err) {
+                alert('Erro ao importar backup: ' + err.message);
+            }
+            e.target.value = '';
+        };
+        reader.readAsText(file);
+    });
+
+    // Modal OMR Handlers
+    const btnOMR = document.getElementById('btnOMR');
+    const omrModal = document.getElementById('omrModal');
+    const btnCloseOMRModal = document.getElementById('btnCloseOMRModal');
+
+    const openOMRModal = () => {
+        if (!omrModal) return;
+        omrModal.classList.remove('hidden');
+        if (window.lucide) window.lucide.createIcons();
+        if (typeof window.atualizarPreviewGrade === 'function') {
+            window.atualizarPreviewGrade();
+        }
+    };
+
+    btnOMR?.addEventListener('click', openOMRModal);
+    document.getElementById('nav-omr')?.addEventListener('click', openOMRModal);
+
+    btnCloseOMRModal?.addEventListener('click', () => {
+        omrModal?.classList.add('hidden');
+    });
+
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('open') === 'omr') {
+        openOMRModal();
+    }
+
+    document.getElementById('nav-dashboard')?.addEventListener('click', () => {
+        window.location.href = '../dashboard/dashboard.html';
+    });
+
+    document.getElementById('nav-chamadas')?.addEventListener('click', () => {
+        window.location.href = '../chamada/chamada.html';
+    });
 
     // --- Módulo Multi-Abas --- //
 

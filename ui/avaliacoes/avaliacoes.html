@@ -6,12 +6,42 @@
     <title>Importar/Exportar Avaliações em Massa</title>
     <link rel="stylesheet" href="../chamada/chamada.css">
     <link rel="stylesheet" href="avaliacoes.css">
+    <link rel="stylesheet" href="../omr/omr.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 
 <body>
     <header>
         <div class="header-main">
+            <div class="nav-drawer-container">
+                <button id="btnNavToggle" class="btn-nav-toggle" type="button" title="Menu de Navegação">
+                    <i data-lucide="menu"></i>
+                    <span>Menu</span>
+                </button>
+                <nav id="floatingNav" class="floating-nav hidden">
+                    <div class="nav-section-title">Menu Principal</div>
+                    <button id="nav-dashboard" class="nav-btn" type="button">
+                        <i data-lucide="layout-dashboard"></i> Dashboard
+                    </button>
+                    <button id="nav-chamadas" class="nav-btn" type="button">
+                        <i data-lucide="calendar-check"></i> Chamadas
+                    </button>
+                    <button id="nav-avaliacoes" class="nav-btn active" type="button">
+                        <i data-lucide="file-check-2"></i> Avaliações
+                    </button>
+
+                    <div class="nav-divider"></div>
+                    <div class="nav-section-title">Backup & Dados</div>
+                    <button id="nav-export-backup" class="nav-btn" type="button" title="Exportar backup de configurações em JSON">
+                        <i data-lucide="download"></i> Exportar Backup
+                    </button>
+                    <button id="nav-import-backup" class="nav-btn" type="button" title="Importar backup de configurações em JSON">
+                        <i data-lucide="upload"></i> Importar Backup
+                    </button>
+                    <input type="file" id="nav-import-file" style="display: none;" accept=".json">
+                </nav>
+            </div>
+
             <div class="header-titles">
                 <div class="header-user">
                     <i data-lucide="file-check-2" class="header-avatar"></i>
@@ -22,12 +52,11 @@
                 </div>
             </div>
             <div class="header-actions">
-                <button id="btnOMR" class="btn btn-secondary">
-                    <i data-lucide="grid-3x3"></i> Grade OMR
-                </button>
-                <button id="btnVoltar" class="btn btn-secondary">
-                    <i data-lucide="arrow-left"></i> Voltar
-                </button>
+                <div class="secondary-actions">
+                    <button id="btnOMR" class="btn btn-secondary btn-sm" type="button" title="Módulo OMR — Grade de Respostas e Leitor Óptico">
+                        <i data-lucide="grid-3x3"></i> Grade OMR
+                    </button>
+                </div>
             </div>
         </div>
     </header>
@@ -109,11 +138,382 @@
             <div id="toastContainer" class="toast-container"></div>
         </main>
 
+    <!-- ══ Modal Overlay de Grade OMR ════════════════════════════════════════ -->
+    <div id="omrModal" class="modal-overlay hidden">
+        <div class="modal-content omr-modal-container" style="max-width: 1100px; width: 95vw; max-height: 92vh; display: flex; flex-direction: column; overflow: hidden; padding: 0;">
+            <div class="modal-header" style="padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+                <h2 style="display:inline-flex;align-items:center;gap:8px;margin:0;font-size:1.15rem;">
+                    <i data-lucide="grid-3x3"></i> Módulo OMR — Grade de Respostas
+                </h2>
+                <div style="display:flex; align-items:center; gap: 12px;">
+                    <div class="tab-nav">
+                        <button class="tab-nav-btn active" data-tab="gerador" type="button">
+                            <i data-lucide="grid-3x3"></i> Gerador
+                        </button>
+                        <button class="tab-nav-btn" data-tab="leitor" type="button">
+                            <i data-lucide="scan"></i> Leitor
+                        </button>
+                    </div>
+                    <button id="btnCloseOMRModal" class="btn-close" type="button"><i data-lucide="x"></i></button>
+                </div>
+            </div>
+
+            <div class="modal-body" style="overflow-y: auto; padding: 20px; flex: 1;">
+                <!-- TAB: GERADOR -->
+                <section id="tab-gerador" class="tab-content active">
+                    <div class="two-col-layout">
+                        <!-- Painel de Configuração -->
+                        <div class="config-panel card">
+                            <h2 class="panel-title">
+                                <i data-lucide="settings-2"></i> Configurações
+                            </h2>
+                            <div class="form-group">
+                                <label for="cfgQuestoes">Número de Questões</label>
+                                <select id="cfgQuestoes" class="form-control">
+                                    <option value="5">5 questões</option>
+                                    <option value="10" selected>10 questões</option>
+                                    <option value="15">15 questões</option>
+                                    <option value="20">20 questões</option>
+                                    <option value="25">25 questões</option>
+                                    <option value="30">30 questões</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="cfgAlternativas">Alternativas</label>
+                                <select id="cfgAlternativas" class="form-control">
+                                    <option value="AB">A–B (2 opções)</option>
+                                    <option value="ABCD">A–D (4 opções)</option>
+                                    <option value="ABCDE" selected>A–E (5 opções)</option>
+                                    <option value="VF">V/F (Verdadeiro/Falso)</option>
+                                    <option value="CE">C/E (Certo/Errado)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Colunas</label>
+                                <div class="radio-group">
+                                    <label class="radio-label">
+                                        <input type="radio" name="cfgColunas" value="1"> 1 coluna
+                                    </label>
+                                    <label class="radio-label">
+                                        <input type="radio" name="cfgColunas" value="2" checked> 2 colunas
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="cfgEscala">Resolução do PNG</label>
+                                <select id="cfgEscala" class="form-control">
+                                    <option value="1">1× — Preview rápido</option>
+                                    <option value="2" selected>2× — Impressão padrão</option>
+                                    <option value="3">3× — Alta qualidade (300 DPI)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="cfgTitulo">Rótulo do bloco (opcional)</label>
+                                <input type="text" id="cfgTitulo" class="form-control" placeholder="Ex: Folha de Respostas — Física">
+                            </div>
+                            <div class="btn-group-vertical">
+                                <button id="btnDownload" class="btn btn-primary" type="button">
+                                    <i data-lucide="download"></i> Download PNG
+                                </button>
+                                <button id="btnCopiar" class="btn btn-secondary" type="button">
+                                    <i data-lucide="clipboard-copy"></i> Copiar para Área de Transferência
+                                </button>
+                            </div>
+                            <div id="copyFeedback" class="feedback hidden"></div>
+                            <div class="info-box">
+                                <i data-lucide="info"></i>
+                                <p>Cole o PNG no final da sua prova no Word, Google Docs ou qualquer editor. O bloco possui marcadores de alinhamento nos cantos para leitura automática.</p>
+                            </div>
+                        </div>
+
+                        <!-- Preview Canvas -->
+                        <div class="preview-panel card">
+                            <div class="preview-header">
+                                <h2 class="panel-title">
+                                    <i data-lucide="eye"></i> Preview
+                                </h2>
+                                <span id="previewDims" class="preview-dims">—</span>
+                            </div>
+                            <div class="canvas-wrapper">
+                                <canvas id="gradeCanvas"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB: LEITOR -->
+                <section id="tab-leitor" class="tab-content hidden">
+                    <!-- Indicador de Passo -->
+                    <div class="step-indicator">
+                        <div class="step active" data-step="1">
+                            <div class="step-num">1</div>
+                            <span>Gabarito</span>
+                        </div>
+                        <div class="step-line"></div>
+                        <div class="step" data-step="2">
+                            <div class="step-num">2</div>
+                            <span>Fotos</span>
+                        </div>
+                        <div class="step-line"></div>
+                        <div class="step" data-step="3">
+                            <div class="step-num">3</div>
+                            <span>Revisão</span>
+                        </div>
+                        <div class="step-line"></div>
+                        <div class="step" data-step="4">
+                            <div class="step-num">4</div>
+                            <span>Lançamento</span>
+                        </div>
+                    </div>
+
+                    <!-- Passo 1: Configuração do Gabarito -->
+                    <div id="leitorStep1" class="step-content card">
+                        <h2 class="panel-title"><i data-lucide="book-open"></i> Configurar Gabarito</h2>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="ltrEscola">Escola</label>
+                                <select id="ltrEscola" class="form-control">
+                                    <option value="">— Selecione —</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="ltrTurma">Turma</label>
+                                <select id="ltrTurma" class="form-control" disabled>
+                                    <option value="">— Selecione —</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="ltrDisciplina">Disciplina</label>
+                                <select id="ltrDisciplina" class="form-control" disabled>
+                                    <option value="">— Selecione —</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="ltrQuestoes">Nº de Questões da Prova</label>
+                                <select id="ltrQuestoes" class="form-control">
+                                    <option value="5">5</option>
+                                    <option value="10" selected>10</option>
+                                    <option value="15">15</option>
+                                    <option value="20">20</option>
+                                    <option value="25">25</option>
+                                    <option value="30">30</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="ltrAlt">Alternativas</label>
+                                <select id="ltrAlt" class="form-control">
+                                    <option value="AB">A–B</option>
+                                    <option value="ABCD">A–D</option>
+                                    <option value="ABCDE" selected>A–E</option>
+                                    <option value="VF">V/F</option>
+                                    <option value="CE">C/E</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="ltrPontos">Pontos por Questão</label>
+                                <input type="number" id="ltrPontos" class="form-control" value="1" min="0.1" max="10" step="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label for="ltrColunas">Colunas no Bloco</label>
+                                <select id="ltrColunas" class="form-control">
+                                    <option value="1">1 coluna</option>
+                                    <option value="2" selected>2 colunas</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="ltrPeriodo">Período da Avaliação</label>
+                                <select id="ltrPeriodo" class="form-control" disabled>
+                                    <option value="">— Selecione a disciplina primeiro —</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="ltrInstrumento">Instrumento (Avaliação)</label>
+                                <select id="ltrInstrumento" class="form-control" disabled>
+                                    <option value="">— Aguardando período —</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="justify-content: flex-end; padding-top: 22px;">
+                                <div id="instrLoadingIndicator" class="hidden" style="display:flex; align-items:center; gap:6px; color:var(--text-muted); font-size:0.82rem;">
+                                    <i data-lucide="loader" style="width:14px;height:14px;"></i> Carregando...
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="forms-header">
+                            <h3>Gabaritos <span class="badge">Suporta múltiplas formas (A, B, C...)</span></h3>
+                            <button id="btnAdicionarForma" class="btn btn-secondary btn-sm" type="button">
+                                <i data-lucide="plus"></i> Adicionar Forma
+                            </button>
+                        </div>
+                        <div id="formasContainer"></div>
+
+                        <div class="step-nav">
+                            <span></span>
+                            <button id="btnStep1Next" class="btn btn-primary" type="button">
+                                Próximo <i data-lucide="arrow-right"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Passo 2: Upload de Fotos -->
+                    <div id="leitorStep2" class="step-content card hidden">
+                        <h2 class="panel-title"><i data-lucide="camera"></i> Upload de Fotos das Provas</h2>
+                        <div id="dropZone" class="drop-zone">
+                            <i data-lucide="upload-cloud"></i>
+                            <p>Arraste as fotos aqui ou clique para selecionar</p>
+                            <small>Aceita JPG, PNG, HEIC — várias fotos de uma vez</small>
+                            <input type="file" id="fileInput" accept="image/*" multiple style="display:none">
+                        </div>
+                        <div id="thumbsGrid" class="thumbs-grid"></div>
+                        <div id="step2Actions" class="step-nav hidden">
+                            <button id="btnStep2Back" class="btn btn-secondary" type="button">
+                                <i data-lucide="arrow-left"></i> Voltar
+                            </button>
+                            <button id="btnProcessar" class="btn btn-primary" type="button">
+                                <i data-lucide="cpu"></i> Processar <span id="photoCount">0</span> foto(s)
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Passo 3: Revisão Individual -->
+                    <div id="leitorStep3" class="step-content card hidden">
+                        <div class="review-header">
+                            <h2 class="panel-title"><i data-lucide="check-square"></i> Revisão</h2>
+                            <span id="reviewProgress" class="review-progress">Foto 1 de N</span>
+                        </div>
+                        <div class="review-layout">
+                            <div class="review-image-panel">
+                                <div class="image-panel-controls">
+                                    <button id="btnToggleReviewView" class="btn btn-secondary btn-sm" type="button" title="Alternar entre Foto Completa e Bloco OMR">
+                                        <i data-lucide="scan"></i> <span id="lblReviewViewMode">Ver Bloco OMR</span>
+                                    </button>
+                                </div>
+                                <canvas id="reviewCanvas"></canvas>
+                            </div>
+                            <div class="review-data-panel">
+                                <div class="form-group">
+                                    <label for="reviewAluno">Aluno</label>
+                                    <select id="reviewAluno" class="form-control">
+                                        <option value="">— Selecione o aluno —</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="reviewForma">Forma do Gabarito</label>
+                                    <select id="reviewForma" class="form-control"></select>
+                                </div>
+                                <div class="grade-summary">
+                                    <div class="grade-stat">
+                                        <span class="stat-label">Acertos</span>
+                                        <span id="reviewAcertos" class="stat-value green">—</span>
+                                    </div>
+                                    <div class="grade-stat">
+                                        <span class="stat-label">Erros</span>
+                                        <span id="reviewErros" class="stat-value red">—</span>
+                                    </div>
+                                    <div class="grade-stat">
+                                        <span class="stat-label">Em Branco</span>
+                                        <span id="reviewBranco" class="stat-value muted">—</span>
+                                    </div>
+                                    <div class="grade-stat highlight">
+                                        <span class="stat-label">Nota</span>
+                                        <span id="reviewNota" class="stat-value">—</span>
+                                    </div>
+                                </div>
+                                <div class="answers-table-wrapper">
+                                    <table class="answers-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Q</th>
+                                                <th>Detectado</th>
+                                                <th>Gabarito</th>
+                                                <th>✓</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="reviewAnswersBody"></tbody>
+                                    </table>
+                                </div>
+                                <div class="review-nav">
+                                    <button id="btnReviewBack" class="btn btn-secondary btn-sm" type="button">Anterior</button>
+                                    <button id="btnRecalibrar" class="btn btn-warning btn-sm" type="button" title="Marcar cantos manualmente">
+                                        <i data-lucide="crosshair"></i> Calibrar
+                                    </button>
+                                    <button id="btnConfirmarFoto" class="btn btn-success btn-sm" type="button">
+                                        Confirmar <i data-lucide="check"></i>
+                                    </button>
+                                    <button id="btnReviewNext" class="btn btn-primary btn-sm" type="button">Próxima</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Passo 4: Lançamento -->
+                    <div id="leitorStep4" class="step-content card hidden">
+                        <h2 class="panel-title"><i data-lucide="send"></i> Lançamento de Notas</h2>
+                        <div id="resultsTable" class="results-table-wrapper"></div>
+                        <div id="launchProgress" class="launch-progress hidden">
+                            <div class="progress-bar-outer">
+                                <div id="launchBar" class="progress-bar-inner"></div>
+                            </div>
+                            <span id="launchStatus">Enviando...</span>
+                        </div>
+                        <div class="step-nav">
+                            <button id="btnStep4Back" class="btn btn-secondary" type="button">
+                                <i data-lucide="arrow-left"></i> Voltar
+                            </button>
+                            <button id="btnLancar" class="btn btn-success" type="button">
+                                <i data-lucide="upload"></i> Lançar Notas no EscolaRS
+                            </button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ Modal de Calibração Manual de Cantos ══════════════════════════════ -->
+    <div id="calibModal" class="calib-modal hidden">
+        <div class="calib-backdrop"></div>
+        <div class="calib-container">
+            <div class="calib-header">
+                <h3><i data-lucide="crosshair"></i> Calibrar Cantos Manualmente</h3>
+                <button id="calibClose" class="btn btn-secondary btn-sm" type="button"><i data-lucide="x"></i></button>
+            </div>
+            <div class="calib-instructions">
+                <p>Clique nos <strong>4 quadrados pretos</strong> do bloco OMR, em ordem:</p>
+                <div class="calib-steps">
+                    <span id="calibStep1" class="calib-dot tl active">1 — Superior Esquerdo</span>
+                    <span id="calibStep2" class="calib-dot tr">2 — Superior Direito</span>
+                    <span id="calibStep3" class="calib-dot bl">3 — Inferior Esquerdo</span>
+                    <span id="calibStep4" class="calib-dot br">4 — Inferior Direito</span>
+                </div>
+            </div>
+            <div class="calib-canvas-wrapper">
+                <canvas id="calibCanvas"></canvas>
+            </div>
+            <div class="calib-footer">
+                <button id="calibReset" class="btn btn-secondary" type="button"><i data-lucide="rotate-ccw"></i> Recomeçar</button>
+                <button id="calibConfirm" class="btn btn-primary" type="button" disabled>
+                    <i data-lucide="check-circle"></i> Confirmar Cantos
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script src="../libs/lucide.min.js"></script>
     <script src="../../libs/xlsx.full.min.js"></script>
     <script src="../../api/escolaRS.js"></script>
     <script src="../../utils/dom.js"></script>
+    <script src="../../utils/notas.js"></script>
     <script src="../../services/avaliacoesService.js"></script>
+    <script src="../omr/gerador/gerador.js"></script>
+    <script src="../omr/leitor/leitor.js"></script>
+    <script src="../omr/omr.js"></script>
     <script src="avaliacoes.js"></script>
 </body>
 

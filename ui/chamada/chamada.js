@@ -53,11 +53,35 @@ function setupEventListeners() {
     }
   });
 
-  document.getElementById('btnAvaliacoes')?.addEventListener('click', () => {
+  // Floating Nav Drawer Toggle
+  const btnNavToggle = document.querySelector('#btnNavToggle');
+  const floatingNav = document.querySelector('#floatingNav');
+  if (btnNavToggle && floatingNav) {
+    btnNavToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      floatingNav.classList.toggle('hidden');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!floatingNav.contains(e.target) && !btnNavToggle.contains(e.target)) {
+        floatingNav.classList.add('hidden');
+      }
+    });
+  }
+
+  document.getElementById('nav-dashboard')?.addEventListener('click', () => {
+    window.location.href = '../dashboard/dashboard.html';
+  });
+
+  document.getElementById('nav-avaliacoes')?.addEventListener('click', () => {
     window.location.href = '../avaliacoes/avaliacoes.html';
   });
 
-  document.getElementById('btnVoltar').addEventListener('click', () => {
+  document.getElementById('nav-omr')?.addEventListener('click', () => {
+    window.location.href = '../avaliacoes/avaliacoes.html?open=omr';
+  });
+
+  document.getElementById('btnVoltar')?.addEventListener('click', () => {
     window.location.href = '../dashboard/dashboard.html';
   });
 
@@ -140,11 +164,13 @@ function setupEventListeners() {
     openViewScheduleModal();
   });
 
-  document.getElementById('btnNewSchedule').addEventListener('click', showNewScheduleForm);
-  document.getElementById('btnExport').addEventListener('click', exportSchedules);
+  document.getElementById('btnNewSchedule')?.addEventListener('click', showNewScheduleForm);
 
-  document.getElementById('btnImport').addEventListener('click', () => document.getElementById('btnImportFile').click());
-  document.getElementById('btnImportFile').addEventListener('change', importSchedules);
+  // Backup Handlers no Floating Nav
+  document.getElementById('nav-export-backup')?.addEventListener('click', exportSchedules);
+  const navImportFile = document.getElementById('nav-import-file');
+  document.getElementById('nav-import-backup')?.addEventListener('click', () => navImportFile?.click());
+  navImportFile?.addEventListener('change', importSchedules);
 
   // Dias Letivos
   document.getElementById('btnDiasLetivos').addEventListener('click', openDiasLetivos);
@@ -267,6 +293,21 @@ async function loadData() {
 
 // --- Fim: Inicialização ---
 
+function normalizeDateStr(dateStr) {
+  if (!dateStr) return '';
+  if (typeof dateStr !== 'string') dateStr = String(dateStr);
+  dateStr = dateStr.trim();
+  if (dateStr.includes('T')) dateStr = dateStr.split('T')[0];
+  if (dateStr.includes(' ')) dateStr = dateStr.split(' ')[0];
+  if (dateStr.includes('/')) {
+    const parts = dateStr.split('/');
+    if (parts.length === 3) {
+      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    }
+  }
+  return dateStr;
+}
+
 // --- Processamento de Dados ---
 function mapearAulasDaSemana() {
   // Limpa mapas
@@ -287,7 +328,7 @@ function mapearAulasDaSemana() {
           if (jsDay >= 0 && jsDay <= 6) {
             const arr = state.mapaAulasPorDiaDaSemana.get(jsDay);
 
-            const existe = arr.find(a => a.disciplina.id === disciplina.id && a.turma.id === turma.id);
+            const existe = arr.find(a => String(a.disciplina.id) === String(disciplina.id) && String(a.turma.id) === String(turma.id));
             if (existe) {
               existe.periodos.push(aulaConfig.periodoAula);
             } else {
@@ -305,14 +346,15 @@ function mapearAulasDaSemana() {
         // Aulas do Histórico (Chamadas reais)
         const chamadas = disciplina.chamadas || [];
         chamadas.forEach(chamada => {
-          const dataIso = chamada.data;
+          const dataIso = normalizeDateStr(chamada.data);
+          if (!dataIso) return;
 
           if (!state.mapaAulasPorDataEspecifica.has(dataIso)) {
             state.mapaAulasPorDataEspecifica.set(dataIso, []);
           }
 
           const arr = state.mapaAulasPorDataEspecifica.get(dataIso);
-          if (!arr.find(a => a.disciplina.id === disciplina.id && a.turma.id === turma.id)) {
+          if (!arr.find(a => String(a.disciplina.id) === String(disciplina.id) && String(a.turma.id) === String(turma.id))) {
             arr.push({
               escolaNome: escola.nome,
               idCalenEstab: chamada.idCalenEstab || null,
@@ -362,8 +404,11 @@ function isClassActiveOnDate(aulaConfig, dayDate) {
       }
     });
 
-    if (minDate !== new Date(8640000000000000) && dayDate < minDate) return false;
-    if (maxDate !== new Date(-8640000000000000) && dayDate > maxDate) return false;
+    const SENTINEL_MIN = 8640000000000000;
+    const SENTINEL_MAX = -8640000000000000;
+
+    if (minDate.getTime() !== SENTINEL_MIN && dayDate < minDate) return false;
+    if (maxDate.getTime() !== SENTINEL_MAX && dayDate > maxDate) return false;
   }
 
   return true;
@@ -505,7 +550,7 @@ function renderCalendar() {
         let registeredCount = 0;
         aulasFiltradas.forEach(aula => {
           const chamadas = aula.disciplina.chamadas || [];
-          if (chamadas.find(c => c.data === isoDate)) {
+          if (chamadas.find(c => normalizeDateStr(c.data) === isoDate)) {
             registeredCount++;
           }
         });
@@ -804,7 +849,7 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
   // Verifica se já existe chamada registrada
   let chamadaExistente = null;
   if (disciplina.chamadas && disciplina.chamadas.length > 0) {
-    chamadaExistente = disciplina.chamadas.find(c => c.data === isoDate);
+    chamadaExistente = disciplina.chamadas.find(c => normalizeDateStr(c.data) === isoDate);
   }
 
   if (chamadaExistente) {
@@ -1135,7 +1180,7 @@ window.submitAttendance = async (formIndex, idTurma, idDisciplina, qtPeriodos, d
     // Buscar chamadas existentes e dados para o payload
     // Na API, idCalenEstab e idSerie etc. Como construir?
     // Podemos tentar pegar da turma
-    let turmaDados = state.escolas.flatMap(e => e.turmas).find(t => t.id === idTurma);
+    let turmaDados = state.escolas.flatMap(e => e.turmas).find(t => String(t.id) === String(idTurma));
 
     // Pegar o iso date (YYYY-MM-DD)
     const [d, m, y] = dataStr.split('/');
@@ -1167,7 +1212,7 @@ window.submitAttendance = async (formIndex, idTurma, idDisciplina, qtPeriodos, d
 
     // Tenta arrumar o idCalenEstab
     try {
-      const disc = turmaDados.disciplinas.find(d => d.id === idDisciplina);
+      const disc = turmaDados.disciplinas.find(d => String(d.id) === String(idDisciplina));
       if (disc && disc.chamadas && disc.chamadas.length > 0) {
         payload.idCalenEstab = disc.chamadas[0].idCalenEstab;
       }
@@ -1185,11 +1230,11 @@ window.submitAttendance = async (formIndex, idTurma, idDisciplina, qtPeriodos, d
     );
 
     // Salvar localmente no state para persistir durante a mesma sessão sem F5
-    const discToUpdate = turmaDados.disciplinas.find(d => d.id === idDisciplina);
+    const discToUpdate = turmaDados.disciplinas.find(d => String(d.id) === String(idDisciplina));
     if (discToUpdate) {
       if (!discToUpdate.chamadas) discToUpdate.chamadas = [];
 
-      let existing = discToUpdate.chamadas.find(c => c.data === isoDate);
+      let existing = discToUpdate.chamadas.find(c => normalizeDateStr(c.data) === isoDate);
       if (existing) {
         existing.alunoFaltas = alunoFaltas;
         existing.registroConteudo = conteudo;

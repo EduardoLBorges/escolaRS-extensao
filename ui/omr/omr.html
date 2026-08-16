@@ -11,6 +11,38 @@
 <body>
   <header>
     <div class="header-main">
+      <div class="nav-drawer-container">
+        <button id="btnNavToggle" class="btn-nav-toggle" type="button" title="Menu de Navegação">
+          <i data-lucide="menu"></i>
+          <span>Menu</span>
+        </button>
+        <nav id="floatingNav" class="floating-nav hidden">
+          <div class="nav-section-title">Menu Principal</div>
+          <button id="nav-dashboard" class="nav-btn" type="button">
+            <i data-lucide="layout-dashboard"></i> Dashboard
+          </button>
+          <button id="nav-chamadas" class="nav-btn" type="button">
+            <i data-lucide="calendar-check"></i> Chamadas
+          </button>
+          <button id="nav-avaliacoes" class="nav-btn" type="button">
+            <i data-lucide="file-check-2"></i> Avaliações
+          </button>
+          <button id="nav-omr" class="nav-btn active" type="button">
+            <i data-lucide="grid-3x3"></i> Grade OMR
+          </button>
+
+          <div class="nav-divider"></div>
+          <div class="nav-section-title">Backup & Dados</div>
+          <button id="nav-export-backup" class="nav-btn" type="button" title="Exportar backup de configurações em JSON">
+            <i data-lucide="download"></i> Exportar Backup
+          </button>
+          <button id="nav-import-backup" class="nav-btn" type="button" title="Importar backup de configurações em JSON">
+            <i data-lucide="upload"></i> Importar Backup
+          </button>
+          <input type="file" id="nav-import-file" style="display: none;" accept=".json">
+        </nav>
+      </div>
+
       <div class="header-titles">
         <div class="header-user">
           <i data-lucide="grid-3x3" class="header-avatar"></i>
@@ -30,9 +62,6 @@
             <i data-lucide="scan"></i> Leitor
           </button>
         </div>
-        <button id="btnVoltar" class="btn btn-secondary">
-          <i data-lucide="arrow-left"></i> Voltar
-        </button>
       </div>
     </div>
   </header>

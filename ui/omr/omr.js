@@ -23,13 +23,5 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Botão Voltar para Avaliações
-  const btnVoltar = document.getElementById('btnVoltar');
-  if (btnVoltar) {
-    btnVoltar.addEventListener('click', () => {
-      window.location.href = '../avaliacoes/avaliacoes.html';
-    });
-  }
-
   if (window.lucide) window.lucide.createIcons();
 });
