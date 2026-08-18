@@ -16,6 +16,14 @@ let activeTokenRefreshPromise = null;
 // Cache do último token validado com sucesso nesta instância do Worker
 let lastWorkingToken = null;
 
+if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+  chrome.storage.onChanged.addListener((changes, namespace) => {
+    if (namespace === 'local' && changes.escolaRsToken) {
+      lastWorkingToken = changes.escolaRsToken.newValue || null;
+    }
+  });
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────
 
 /**
@@ -63,7 +71,7 @@ function buildFetchOptions(token, options, signal) {
  */
 async function fetchEscolaRS(endpoint, token, options = {}, timeout = API_TIMEOUT) {
   const url = `${API_BASE_URL}/${endpoint}`;
-  let currentToken = lastWorkingToken || token;
+  let currentToken = token || lastWorkingToken;
 
   for (let attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
     const controller = new AbortController();
@@ -86,12 +94,24 @@ async function fetchEscolaRS(endpoint, token, options = {}, timeout = API_TIMEOU
       return response.json();
     }
 
-    // Tenta renovar o token apenas na primeira tentativa (e se permitido)
-    if (isAuthError(response.status) && attempt === 1 && options.autoRefreshToken !== false) {
-      const refreshedToken = await tryRecoverToken(currentToken, endpoint);
-      if (refreshedToken) {
-        currentToken = refreshedToken;
-        continue;
+    if (isAuthError(response.status)) {
+      lastWorkingToken = null;
+
+      if (attempt === 1) {
+        if (options.autoRefreshToken !== false) {
+          const refreshedToken = await tryRecoverToken(currentToken, endpoint);
+          if (refreshedToken) {
+            currentToken = refreshedToken;
+            continue;
+          }
+        } else {
+          // Mesmo com autoRefreshToken false, verifica se existe token mais recente no storage
+          const storedToken = await getTokenFromStorage();
+          if (storedToken && storedToken !== currentToken) {
+            currentToken = storedToken;
+            continue;
+          }
+        }
       }
     }
 

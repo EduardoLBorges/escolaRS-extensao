@@ -73,8 +73,14 @@ function createAvatarCell(aluno) {
 function loadDashboard(forceRefresh = false) {
   const loadingDiv = document.querySelector(SELECTORS.loading);
   const progressContainer = document.querySelector(SELECTORS.progressContainer);
+  const refreshBtn = document.querySelector(SELECTORS.headerRefresh);
 
   let showProgressTimeout = null;
+
+  if (refreshBtn) {
+    refreshBtn.disabled = true;
+    refreshBtn.classList.add('loading');
+  }
 
   if (forceRefresh) {
     loadingDiv.style.display = 'none';
@@ -98,7 +104,15 @@ function loadDashboard(forceRefresh = false) {
     progressContainer.style.display = 'none';
     document.querySelector('#refresh-progress').style.display = 'none';
 
+    if (refreshBtn) {
+      refreshBtn.disabled = false;
+      refreshBtn.classList.remove('loading');
+    }
+
     if (!response || !response.success) {
+      const errorMsg = response?.error || 'Ocorreu um erro desconhecido.';
+      console.error('Falha ao atualizar dados:', errorMsg);
+
       if (dashboardData && forceRefresh) {
         const pCont = document.querySelector('#refresh-progress');
         const pBar = document.querySelector('#refresh-progress-bar');
@@ -113,11 +127,11 @@ function loadDashboard(forceRefresh = false) {
           pBar.style.width = '0%';
         }, 3000);
 
-        console.error('Falha ao atualizar dados:', response?.error);
+        alert(`Erro ao sincronizar dados com o Portal EscolaRS:\n\n${errorMsg}\n\nCertifique-se de que você está logado no portal EscolaRS em outra aba e tente novamente.`);
         return;
       }
 
-      displayError(response?.error || 'Ocorreu um erro desconhecido.');
+      displayError(errorMsg);
       return;
     }
 

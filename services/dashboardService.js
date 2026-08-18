@@ -166,8 +166,9 @@ async function getDashboardData(token, nrDoc, onProgress = null) {
     async (task) => {
       // autoRefreshToken: false — o token já foi validado na chamada inicial.
       // Se falhar aqui, não deve abrir popup; será reportado como erro da disciplina.
+      const taskToken = (await getTokenFromStorage()) || currentToken;
       const resultados = await listarResultadosTurma(
-        task.turmaId, task.discId, idRecHumano, currentToken,
+        task.turmaId, task.discId, idRecHumano, taskToken,
         { autoRefreshToken: false }
       );
       return {
