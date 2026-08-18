@@ -51,12 +51,32 @@ function goToStep(n) {
 }
 
 // ─── PASSO 1: Gabarito ────────────────────────────────────────────────────────
+// ─── PASSO 1: Gabarito ────────────────────────────────────────────────────────
 function initStep1() {
   loadEscolasFromCache();
+  loadGabaritosSalvosList();
+
   if (state.formas.length === 0) {
     state.formas.push({ id: Date.now(), label: 'A', answers: {} });
   }
   renderFormas();
+
+  // Escutadores para alterar o grid de formas se nº de questões ou alternativas mudar
+  document.getElementById('ltrQuestoes')?.addEventListener('change', () => renderFormas());
+  document.getElementById('ltrAlt')?.addEventListener('change', () => renderFormas());
+
+  // Botão e Select de Gabaritos Salvos
+  const btnSalvar = document.getElementById('btnSalvarGabarito');
+  if (btnSalvar) {
+    btnSalvar.addEventListener('click', () => salvarGabaritoAtual(false));
+  }
+
+  const selSalvos = document.getElementById('selGabaritosSalvos');
+  if (selSalvos) {
+    selSalvos.addEventListener('change', () => {
+      if (selSalvos.value) carregarGabarito(selSalvos.value);
+    });
+  }
 
   document.getElementById('btnAdicionarForma').addEventListener('click', () => {
     collectFormaAnswers();
@@ -65,7 +85,7 @@ function initStep1() {
     renderFormas();
   });
 
-  document.getElementById('btnStep1Next').addEventListener('click', () => {
+  document.getElementById('btnStep1Next').addEventListener('click', async () => {
     const nq = parseInt(document.getElementById('ltrQuestoes').value);
     const alt = document.getElementById('ltrAlt').value;
     const pts = parseFloat(document.getElementById('ltrPontos').value);
@@ -87,8 +107,163 @@ function initStep1() {
       showToast('Selecione o instrumento de avaliação antes de continuar.', 'warning'); return;
     }
 
+    // Auto-salva silenciosamente o gabarito para este instrumento
+    await salvarGabaritoAtual(true);
+
     goToStep(2);
   });
+}
+
+// ─── Gerenciamento de Gabaritos Salvos ───────────────────────────────────────
+async function loadGabaritosSalvosList(autoSelectId = null) {
+  const sel = document.getElementById('selGabaritosSalvos');
+  if (!sel) return;
+
+  sel.innerHTML = '<option value="">— Carregar Gabarito —</option>';
+
+  if (typeof chrome === 'undefined' || !chrome.storage?.local) return;
+
+  const data = await chrome.storage.local.get(['omrGabaritos']);
+  const gabaritos = data.omrGabaritos || [];
+
+  gabaritos.forEach(g => {
+    const opt = document.createElement('option');
+    opt.value = g.id;
+    opt.textContent = g.nome;
+    if (autoSelectId && g.id === autoSelectId) opt.selected = true;
+    sel.appendChild(opt);
+  });
+
+  if (gabaritos.length > 0) {
+    const optDel = document.createElement('option');
+    optDel.value = "__MANAGE_DEL__";
+    optDel.textContent = "🗑 Excluir um gabarito salvo...";
+    sel.appendChild(optDel);
+  }
+}
+
+async function salvarGabaritoAtual(silent = false) {
+  collectFormaAnswers();
+
+  if (!state.formas.length) {
+    if (!silent) showToast('Nenhuma forma de gabarito para salvar.', 'warning');
+    return null;
+  }
+
+  const nq = parseInt(document.getElementById('ltrQuestoes').value, 10) || 10;
+  const alt = document.getElementById('ltrAlt').value || 'ABCDE';
+  const pts = parseFloat(document.getElementById('ltrPontos').value) || 1;
+  const cols = parseInt(document.getElementById('ltrColunas')?.value || '1', 10);
+
+  // Nome padrão do gabarito
+  const instrSel = document.getElementById('ltrInstrumento');
+  let defaultNome = 'Gabarito';
+  if (instrSel && instrSel.selectedIndex > 0) {
+    defaultNome = instrSel.options[instrSel.selectedIndex].textContent.trim();
+  }
+  defaultNome += ` (${nq}Q - ${state.formas.length} forma${state.formas.length > 1 ? 's' : ''})`;
+
+  let nome = defaultNome;
+  if (!silent) {
+    const input = prompt('Digite um nome para este gabarito:', defaultNome);
+    if (input === null) return null; // Usuário cancelou
+    if (input.trim()) nome = input.trim();
+  }
+
+  const newGab = {
+    id: 'gab_' + (state.instrumento ? `instr_${state.instrumento}` : Date.now()),
+    nome,
+    instrumentoId: state.instrumento || null,
+    turmaId: state.turmaId || null,
+    discId: state.discId || null,
+    config: { numQuestoes: nq, alternativas: alt, pontosPorQuestao: pts, colunas: cols },
+    formas: JSON.parse(JSON.stringify(state.formas)),
+    dataCriacao: new Date().toISOString()
+  };
+
+  if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+    const data = await chrome.storage.local.get(['omrGabaritos']);
+    let gabaritos = data.omrGabaritos || [];
+
+    // Remove anterior se existir com mesmo ID ou mesmo instrumentoId
+    gabaritos = gabaritos.filter(g => g.id !== newGab.id && (!state.instrumento || g.instrumentoId !== state.instrumento));
+    gabaritos.unshift(newGab);
+
+    await chrome.storage.local.set({ omrGabaritos: gabaritos });
+    await loadGabaritosSalvosList(newGab.id);
+  }
+
+  if (!silent) {
+    showToast(`Gabarito "${nome}" salvo com sucesso!`, 'success');
+  }
+
+  return newGab;
+}
+
+async function carregarGabarito(id) {
+  if (!id) return;
+  if (typeof chrome === 'undefined' || !chrome.storage?.local) return;
+
+  const data = await chrome.storage.local.get(['omrGabaritos']);
+  const gabaritos = data.omrGabaritos || [];
+
+  if (id === "__MANAGE_DEL__") {
+    const sel = document.getElementById('selGabaritosSalvos');
+    sel.value = "";
+    if (gabaritos.length === 0) return;
+
+    const op = prompt(
+      "Digite o número do gabarito que deseja EXCLUIR:\n\n" +
+      gabaritos.map((g, i) => `${i + 1}. ${g.nome}`).join('\n')
+    );
+
+    const idx = parseInt(op, 10) - 1;
+    if (!isNaN(idx) && idx >= 0 && idx < gabaritos.length) {
+      const removed = gabaritos.splice(idx, 1)[0];
+      await chrome.storage.local.set({ omrGabaritos: gabaritos });
+      await loadGabaritosSalvosList();
+      showToast(`Gabarito "${removed.nome}" excluído.`, 'info');
+    }
+    return;
+  }
+
+  const gab = gabaritos.find(g => g.id === id);
+  if (!gab) return;
+
+  // Restaura configurações de input
+  if (gab.config) {
+    const nqEl = document.getElementById('ltrQuestoes');
+    if (nqEl) nqEl.value = gab.config.numQuestoes;
+
+    const altEl = document.getElementById('ltrAlt');
+    if (altEl) altEl.value = gab.config.alternativas;
+
+    const ptsEl = document.getElementById('ltrPontos');
+    if (ptsEl) ptsEl.value = gab.config.pontosPorQuestao;
+
+    const colsEl = document.getElementById('ltrColunas');
+    if (colsEl) colsEl.value = gab.config.colunas || 1;
+  }
+
+  // Restaura formas
+  if (gab.formas && Array.isArray(gab.formas)) {
+    state.formas = JSON.parse(JSON.stringify(gab.formas));
+    renderFormas();
+  }
+
+  showToast(`Gabarito "${gab.nome}" carregado!`, 'success');
+}
+
+async function autoLoadGabaritoForInstrumento(instrumentoId) {
+  if (!instrumentoId || typeof chrome === 'undefined' || !chrome.storage?.local) return;
+  const data = await chrome.storage.local.get(['omrGabaritos']);
+  const gabaritos = data.omrGabaritos || [];
+  const gab = gabaritos.find(g => g.instrumentoId === instrumentoId);
+  if (gab) {
+    await carregarGabarito(gab.id);
+    const sel = document.getElementById('selGabaritosSalvos');
+    if (sel) sel.value = gab.id;
+  }
 }
 
 function loadEscolasFromCache() {
@@ -216,8 +391,11 @@ async function loadInstrumentos(turmaId, discId) {
     const newInstrSel = instrSel.cloneNode(true);
     instrSel.parentNode.replaceChild(newInstrSel, instrSel);
 
-    newInstrSel.addEventListener('change', () => {
+    newInstrSel.addEventListener('change', async () => {
       state.instrumento = newInstrSel.value ? parseInt(newInstrSel.value) : null;
+      if (state.instrumento) {
+        await autoLoadGabaritoForInstrumento(state.instrumento);
+      }
     });
 
     newPeriodSel.addEventListener('change', () => {

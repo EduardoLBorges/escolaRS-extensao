@@ -276,9 +276,17 @@
         <!-- Formas de Gabarito -->
         <div class="forms-header">
           <h3>Gabaritos <span class="badge">Suporta múltiplas formas (A, B, C...)</span></h3>
-          <button id="btnAdicionarForma" class="btn btn-secondary btn-sm">
-            <i data-lucide="plus"></i> Adicionar Forma
-          </button>
+          <div class="forms-actions" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <select id="selGabaritosSalvos" class="form-control form-control-sm" style="max-width: 200px;">
+              <option value="">— Carregar Gabarito —</option>
+            </select>
+            <button id="btnSalvarGabarito" class="btn btn-secondary btn-sm" type="button" title="Salvar gabarito atual">
+              <i data-lucide="save"></i> Salvar Gabarito
+            </button>
+            <button id="btnAdicionarForma" class="btn btn-secondary btn-sm" type="button">
+              <i data-lucide="plus"></i> Adicionar Forma
+            </button>
+          </div>
         </div>
         <div id="formasContainer">
           <!-- Formas injetadas via JS -->
