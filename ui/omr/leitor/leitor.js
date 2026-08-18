@@ -338,11 +338,58 @@ function initStep2() {
   });
   fileInput.addEventListener('change', () => handleFiles([...fileInput.files]));
 
-  function handleFiles(files) {
-    const imgs = files.filter(f => f.type.startsWith('image/'));
-    if (!imgs.length) { showToast('Selecione apenas arquivos de imagem.', 'warning'); return; }
+  async function handleFiles(files) {
+    const expandedFiles = [];
 
-    imgs.forEach(file => {
+    for (const file of files) {
+      const isZip = file.name.toLowerCase().endsWith('.zip') ||
+                    file.type === 'application/zip' ||
+                    file.type === 'application/x-zip-compressed';
+
+      if (isZip) {
+        if (typeof JSZip === 'undefined') {
+          showToast('Biblioteca de descompactação (JSZip) não encontrada.', 'error');
+          continue;
+        }
+
+        try {
+          showToast(`Descompactando ${file.name}...`, 'info');
+          const zip = await JSZip.loadAsync(file);
+          const imagePromises = [];
+
+          zip.forEach((relativePath, entry) => {
+            if (!entry.dir && !relativePath.startsWith('__MACOSX/') && /\.(jpe?g|png|webp|bmp|heic)$/i.test(relativePath)) {
+              imagePromises.push(
+                entry.async('blob').then(blob => {
+                  const filename = relativePath.split('/').pop() || relativePath;
+                  return new File([blob], filename, { type: blob.type || 'image/jpeg' });
+                })
+              );
+            }
+          });
+
+          const extractedFiles = await Promise.all(imagePromises);
+          if (extractedFiles.length > 0) {
+            expandedFiles.push(...extractedFiles);
+            showToast(`${extractedFiles.length} foto(s) extraída(s) de ${file.name}.`, 'success');
+          } else {
+            showToast(`Nenhuma imagem suportada encontrada dentro de ${file.name}.`, 'warning');
+          }
+        } catch (err) {
+          console.error('[OMR ZIP]', err);
+          showToast(`Erro ao abrir o arquivo ZIP ${file.name}: ${err.message}`, 'error');
+        }
+      } else if (file.type.startsWith('image/') || /\.(jpe?g|png|webp|bmp|heic)$/i.test(file.name)) {
+        expandedFiles.push(file);
+      }
+    }
+
+    if (!expandedFiles.length) {
+      showToast('Selecione arquivos de imagem (.jpg, .png) ou um arquivo .zip contendo fotos.', 'warning');
+      return;
+    }
+
+    expandedFiles.forEach(file => {
       const reader = new FileReader();
       reader.onload = ev => {
         const img = new Image();
