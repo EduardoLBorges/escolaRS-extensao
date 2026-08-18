@@ -885,6 +885,97 @@ function renderAnswersTable(r) {
   });
 }
 
+async function rotateCurrentFoto(direction) {
+  const rIdx = state.reviewIdx;
+  const r = state.resultados[rIdx];
+  if (!r) return;
+  const foto = state.fotos[r.fotoIdx];
+  if (!foto) return;
+
+  const btnL = document.getElementById('btnRotateLeft');
+  const btnR = document.getElementById('btnRotateRight');
+  if (btnL) btnL.disabled = true;
+  if (btnR) btnR.disabled = true;
+
+  showToast('Rotacionando e lendo marcadores (QR pattern)...', 'info');
+
+  try {
+    // 1. Desenha a foto atual num canvas temporário
+    const srcCvs = document.createElement('canvas');
+    srcCvs.width = foto.width;
+    srcCvs.height = foto.height;
+    const srcCtx = srcCvs.getContext('2d');
+    const imgData = new ImageData(new Uint8ClampedArray(foto.imageData), foto.width, foto.height);
+    srcCtx.putImageData(imgData, 0, 0);
+
+    // 2. Cria canvas rotacionado (largura e altura invertem)
+    const dstCvs = document.createElement('canvas');
+    dstCvs.width = foto.height;
+    dstCvs.height = foto.width;
+    const dstCtx = dstCvs.getContext('2d');
+
+    if (direction === 'cw') {
+      dstCtx.translate(foto.height, 0);
+      dstCtx.rotate(Math.PI / 2);
+    } else {
+      dstCtx.translate(0, foto.width);
+      dstCtx.rotate(-Math.PI / 2);
+    }
+
+    dstCtx.drawImage(srcCvs, 0, 0);
+
+    const newImgData = dstCtx.getImageData(0, 0, dstCvs.width, dstCvs.height);
+
+    // Atualiza a estrutura foto
+    foto.imageData = newImgData.data;
+    foto.width = dstCvs.width;
+    foto.height = dstCvs.height;
+    foto.manualFiducials = null; // reseta calibração manual anterior para forçar detecção por QR pattern
+
+    // Atualiza foto.file para que URL.createObjectURL funcione ao desenhar a foto completa
+    const blob = await new Promise(res => dstCvs.toBlob(res, 'image/jpeg', 0.95));
+    foto.file = new File([blob], foto.file ? foto.file.name : 'foto_rotated.jpg', { type: 'image/jpeg' });
+
+    // Atualiza thumbnail no passo 2 se existir
+    const thumbsContainer = document.getElementById('step2Thumbs');
+    if (thumbsContainer && thumbsContainer.children[r.fotoIdx]) {
+      const thumbImg = thumbsContainer.children[r.fotoIdx].querySelector('img');
+      if (thumbImg) thumbImg.src = URL.createObjectURL(foto.file);
+    }
+
+    // 3. Re-executa o worker para detectar os 4 cantos pelo QR pattern na nova orientação
+    const res = await runWorker(foto);
+
+    state.resultados[rIdx] = {
+      ...r,
+      answers: res.answers,
+      densities: res.densities,
+      dewarpedImageData: res.dewarpedImageData,
+      dewarpedWidth: res.dewarpedWidth,
+      dewarpedHeight: res.dewarpedHeight,
+      fiducials: res.fiducials,
+      fidDistX: res.fidDistX,
+      sampleRadiusRatio: res.sampleRadiusRatio,
+      error: null
+    };
+
+    recalcularNota(state.resultados[rIdx]);
+    showToast('Imagem rotacionada e marcadores lidos!', 'success');
+  } catch (err) {
+    console.error('[OMR Rotate]', err);
+    state.resultados[rIdx] = {
+      ...r,
+      answers: null,
+      error: err.message
+    };
+    showToast(`Erro na leitura OMR: ${err.message}`, 'error');
+  } finally {
+    if (btnL) btnL.disabled = false;
+    if (btnR) btnR.disabled = false;
+    renderReview();
+  }
+}
+
 function initStep3() {
   const toggleBtn = document.getElementById('btnToggleReviewView');
   if (toggleBtn) {
@@ -892,6 +983,15 @@ function initStep3() {
       state.reviewViewMode = state.reviewViewMode === 'dewarped' ? 'full' : 'dewarped';
       renderReview();
     });
+  }
+
+  const btnRotL = document.getElementById('btnRotateLeft');
+  if (btnRotL) {
+    btnRotL.addEventListener('click', () => rotateCurrentFoto('ccw'));
+  }
+  const btnRotR = document.getElementById('btnRotateRight');
+  if (btnRotR) {
+    btnRotR.addEventListener('click', () => rotateCurrentFoto('cw'));
   }
 
   document.getElementById('btnReviewBack').addEventListener('click', () => {
