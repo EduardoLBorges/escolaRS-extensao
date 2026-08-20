@@ -355,8 +355,9 @@ function calculateFilteredStats(dashboardData, escolaFiltro, turmaFiltro, alunoF
  */
 async function fetchPreVisualizacao(dashboardData, periodoStr, callbacks = {}) {
   const { onProgress } = callbacks;
-  const authData = await chrome.storage.local.get('escolaRsToken');
-  const token = authData.escolaRsToken;
+
+  // Usa getValidToken() — garante token válido com tentativa de renovação silenciosa
+  // em vez de ler o storage uma vez e usar o valor stale em todo o loop.
   const idRecHumano = dashboardData.idRecHumano;
 
   const numMatch = periodoStr.match(/\d+/);
@@ -401,14 +402,13 @@ async function fetchPreVisualizacao(dashboardData, periodoStr, callbacks = {}) {
     const chunk = tasks.slice(i, i + chunkSize);
     await Promise.allSettled(chunk.map(async task => {
       try {
-        const url = `https://secweb.procergs.com.br/ise-escolars-professor/rest/professor/v2/calcularAproveitamentos/professor/${idRecHumano}/turma/${task.idTurma}/disciplina/${task.idDisciplina}/periodo/${task.idPeriodoAvaliacao}/area/false`;
-        const res = await fetch(url, { headers: { 'Authorization': token } });
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.calculosAproveitamentos) {
-            for (const calc of data.calculosAproveitamentos) {
-              resultados[`${calc.idAluno}_${task.idDisciplina}`] = { soma: calc.soma, media: calc.media };
-            }
+        // fetchEscolaRS garante: timeout 30s, retry em 401 com renovação automática de token.
+        // O endpoint v2/calcularAproveitamentos usa o prefixo da API_BASE_URL (REST professor).
+        const endpoint = `v2/calcularAproveitamentos/professor/${idRecHumano}/turma/${task.idTurma}/disciplina/${task.idDisciplina}/periodo/${task.idPeriodoAvaliacao}/area/false`;
+        const data = await fetchEscolaRS(endpoint, null);
+        if (data && data.calculosAproveitamentos) {
+          for (const calc of data.calculosAproveitamentos) {
+            resultados[`${calc.idAluno}_${task.idDisciplina}`] = { soma: calc.soma, media: calc.media };
           }
         }
       } catch (e) {
@@ -422,3 +422,4 @@ async function fetchPreVisualizacao(dashboardData, periodoStr, callbacks = {}) {
 
   return resultados;
 }
+

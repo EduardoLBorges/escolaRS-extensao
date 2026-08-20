@@ -36,6 +36,28 @@ async function getTokenFromStorage() {
 }
 
 /**
+ * Retorna um token garantidamente válido.
+ * Se o storage estiver vazio, tenta renovação silenciosa antes de lançar erro.
+ * Use este helper em vez de ler o storage manualmente nos consumidores.
+ * @returns {Promise<string>} Token Bearer válido
+ * @throws {Error} Se não for possível obter um token válido
+ */
+async function getValidToken() {
+  let token = await getTokenFromStorage();
+  if (!token) {
+    console.log('[EscolaRS API] Token ausente. Tentando renovação silenciosa...');
+    token = await trySilentTokenRefresh(null).catch(err => {
+      console.warn('[EscolaRS API] Renovação silenciosa falhou:', err.message);
+      return null;
+    });
+  }
+  if (!token) {
+    throw new Error('Sessão não encontrada. Abra o portal EscolaRS e faça login.');
+  }
+  return token;
+}
+
+/**
  * Monta o objeto de opções para o fetch.
  * @param {string} token - Token de autenticação.
  * @param {Object} options - Opções customizadas (method, body).

@@ -388,9 +388,8 @@ async function loadInstrumentos(turmaId, discId) {
   if (window.lucide) window.lucide.createIcons();
 
   try {
-    const authData = await chrome.storage.local.get(['escolaRsToken']);
-    const token = authData.escolaRsToken;
-    if (!token) throw new Error('Token ausente.');
+    // Usa getValidToken() para garantir token válido — tenta renovação silenciosa se ausente
+    const token = await getValidToken();
 
     const idRecHumano = state.dashData?.idRecHumano;
     if (!idRecHumano) throw new Error('idRecHumano ausente. Atualize o Dashboard.');
@@ -1329,9 +1328,12 @@ function initStep4() {
     btn.innerHTML = '<i data-lucide="loader"></i> Enviando...';
     if (window.lucide) window.lucide.createIcons();
 
-    const authData = await chrome.storage.local.get(['escolaRsToken']);
-    if (!authData.escolaRsToken) {
-      showToast('Token ausente. Reabra o portal EscolaRS.', 'error');
+    // Valida token antes de prosseguir — tenta renovação silenciosa se ausente
+    let token;
+    try {
+      token = await getValidToken();
+    } catch (e) {
+      showToast(e.message, 'error');
       btn.disabled = false; return;
     }
 
@@ -1378,7 +1380,10 @@ function initStep4() {
     bar.style.width = '10%';
     status.textContent = `Enviando ${payloads.length} nota(s)...`;
 
-    // Divide em lotes de 20 (mesmo padrão do avaliacoesService.js)
+    // Divide em lotes de 20.
+    // NOTA: não reutilizamos 'token' aqui — registrarResultadoInstrumentoLista
+    // passa pelo fetchEscolaRS que sempre lê o token mais recente do storage e
+    // renova automaticamente em caso de 401 durante o loop.
     const BATCH = 20;
     let sent = 0;
     let errors = 0;
@@ -1386,7 +1391,7 @@ function initStep4() {
     for (let i = 0; i < payloads.length; i += BATCH) {
       const batch = payloads.slice(i, i + BATCH);
       try {
-        await registrarResultadoInstrumentoLista(batch, authData.escolaRsToken);
+        await registrarResultadoInstrumentoLista(batch, null);
         sent += batch.length;
       } catch (err) {
         errors += batch.length;

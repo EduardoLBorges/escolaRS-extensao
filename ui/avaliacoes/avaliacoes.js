@@ -311,7 +311,7 @@ class TabController {
                     
                     const inp = document.createElement('input');
                     inp.type = 'number';
-                    inp.step = '0.1';
+                    inp.step = '0.5';
                     inp.min = '0';
                     inp.max = '10';
                     inp.className = 'grade-input';
