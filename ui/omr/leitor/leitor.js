@@ -24,6 +24,7 @@ const state = {
   turmaId: null,
   discId: null,
   instrumento: null,
+  instrumentoObj: null,
 };
 
 // ─── Helpers de UI ────────────────────────────────────────────────────────────
@@ -341,7 +342,11 @@ function loadEscolasFromCache() {
         const alunosAtivos = (d.alunos || []).filter(a => a.situacao?.ativo === true);
         alunosAtivos.forEach(a => {
           if (!state.turmaAlunos.find(x => x.matricula === a.matricula)) {
-            state.turmaAlunos.push({ matricula: a.matricula, nome: a.nome });
+            state.turmaAlunos.push({
+              matricula: a.matricula,
+              nome: a.nome,
+              dataMatricula: a.dataMatricula || a.dataMatriculaTurma || a.data || null
+            });
           }
         });
 
@@ -418,6 +423,15 @@ async function loadInstrumentos(turmaId, discId) {
 
     newInstrSel.addEventListener('change', async () => {
       state.instrumento = newInstrSel.value ? parseInt(newInstrSel.value) : null;
+      state.instrumentoObj = null;
+      if (newInstrSel.selectedIndex >= 0) {
+        const selectedOpt = newInstrSel.options[newInstrSel.selectedIndex];
+        if (selectedOpt?.dataset?.instrumento) {
+          try {
+            state.instrumentoObj = JSON.parse(selectedOpt.dataset.instrumento);
+          } catch (e) { console.error(e); }
+        }
+      }
       if (state.instrumento) {
         await autoLoadGabaritoForInstrumento(state.instrumento);
       }
@@ -427,6 +441,7 @@ async function loadInstrumentos(turmaId, discId) {
       newInstrSel.innerHTML = '<option value="">— Selecione o instrumento —</option>';
       newInstrSel.disabled = true;
       state.instrumento = null;
+      state.instrumentoObj = null;
 
       const selected = newPeriodSel.options[newPeriodSel.selectedIndex];
       if (!selected?.dataset?.instrumentos) return;
@@ -441,6 +456,7 @@ async function loadInstrumentos(turmaId, discId) {
           const opt = document.createElement('option');
           opt.value = ins.id;
           opt.textContent = `${ins.nome}${ins.peso ? ` — Peso ${ins.peso}` : ''}`;
+          opt.dataset.instrumento = JSON.stringify(ins);
           newInstrSel.appendChild(opt);
         });
         newInstrSel.disabled = false;
@@ -1331,12 +1347,32 @@ function initStep4() {
     }
 
     const todayStr = new Date().toISOString().split('T')[0];
-    const payloads = confirmed.map(r => ({
-      idInstrumento: state.instrumento,
-      idAluno: parseInt(r.alunoMatricula),
-      dsAproveitamento: r.nota,
-      dataRealizacao: todayStr,
-    }));
+    const payloads = confirmed.map(r => {
+      let dataParaEnvio = state.instrumentoObj?.dataAplicacao || state.instrumentoObj?.dataRealizacao || state.instrumentoObj?.data;
+      const alunoObj = state.turmaAlunos.find(a => String(a.matricula) === String(r.alunoMatricula));
+      const dataMat = alunoObj?.dataMatricula;
+
+      if (dataParaEnvio && dataMat) {
+        const dInst = new Date(dataParaEnvio);
+        const dMat = new Date(dataMat);
+        if (dMat > dInst) {
+          dataParaEnvio = todayStr;
+        }
+      } else if (!dataParaEnvio) {
+        dataParaEnvio = todayStr;
+      }
+
+      if (typeof dataParaEnvio === 'string' && dataParaEnvio.includes('T')) {
+        dataParaEnvio = dataParaEnvio.split('T')[0];
+      }
+
+      return {
+        idInstrumento: state.instrumento,
+        idAluno: parseInt(r.alunoMatricula),
+        dsAproveitamento: r.nota,
+        dataRealizacao: dataParaEnvio,
+      };
+    });
 
     progress.classList.remove('hidden');
     bar.style.width = '10%';
