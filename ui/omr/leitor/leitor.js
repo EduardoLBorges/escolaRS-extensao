@@ -171,7 +171,7 @@ async function salvarGabaritoAtual(silent = false) {
   }
 
   const newGab = {
-    id: 'gab_' + (state.instrumento ? `instr_${state.instrumento}` : Date.now()),
+    id: 'gab_' + (state.instrumento ? `instr_${state.instrumento}` : `manual_${Date.now()}`),
     nome,
     instrumentoId: state.instrumento || null,
     turmaId: state.turmaId || null,
@@ -185,8 +185,14 @@ async function salvarGabaritoAtual(silent = false) {
     const data = await chrome.storage.local.get(['omrGabaritos']);
     let gabaritos = data.omrGabaritos || [];
 
-    // Remove anterior se existir com mesmo ID ou mesmo instrumentoId
-    gabaritos = gabaritos.filter(g => g.id !== newGab.id && (!state.instrumento || g.instrumentoId !== state.instrumento));
+    // Remove anterior se existir com mesmo ID ou mesmo instrumentoId (upsert)
+    // Para salvas manuais (sem instrumento), só remove o mesmo ID exato.
+    // Para salvas com instrumento, remove qualquer gabarito anterior daquele instrumento.
+    if (state.instrumento) {
+      gabaritos = gabaritos.filter(g => g.id !== newGab.id && g.instrumentoId !== state.instrumento);
+    } else {
+      gabaritos = gabaritos.filter(g => g.id !== newGab.id);
+    }
     gabaritos.unshift(newGab);
 
     await chrome.storage.local.set({ omrGabaritos: gabaritos });
@@ -209,7 +215,7 @@ async function carregarGabarito(id) {
 
   if (id === "__MANAGE_DEL__") {
     const sel = document.getElementById('selGabaritosSalvos');
-    sel.value = "";
+    sel.value = ""; // Reseta visualmente antes do prompt bloqueante
     if (gabaritos.length === 0) return;
 
     const op = prompt(
@@ -217,12 +223,17 @@ async function carregarGabarito(id) {
       gabaritos.map((g, i) => `${i + 1}. ${g.nome}`).join('\n')
     );
 
+    // Se o usuário cancelou o prompt, mantém o select em branco e retorna
+    if (op === null) return;
+
     const idx = parseInt(op, 10) - 1;
     if (!isNaN(idx) && idx >= 0 && idx < gabaritos.length) {
       const removed = gabaritos.splice(idx, 1)[0];
       await chrome.storage.local.set({ omrGabaritos: gabaritos });
       await loadGabaritosSalvosList();
       showToast(`Gabarito "${removed.nome}" excluído.`, 'info');
+    } else if (op.trim() !== '') {
+      showToast('Número inválido. Nenhum gabarito excluído.', 'warning');
     }
     return;
   }
@@ -230,7 +241,7 @@ async function carregarGabarito(id) {
   const gab = gabaritos.find(g => g.id === id);
   if (!gab) return;
 
-  // Restaura configurações de input
+  // Restaura configurações de input e state.config
   if (gab.config) {
     const nqEl = document.getElementById('ltrQuestoes');
     if (nqEl) nqEl.value = gab.config.numQuestoes;
@@ -243,10 +254,24 @@ async function carregarGabarito(id) {
 
     const colsEl = document.getElementById('ltrColunas');
     if (colsEl) colsEl.value = gab.config.colunas || 1;
+
+    // BUG FIX: state.config deve ser atualizado para que recalcularNota use
+    // o número correto de questões (e não o anterior em memória).
+    state.config = {
+      numQuestoes: gab.config.numQuestoes,
+      alternativas: gab.config.alternativas,
+      pontosPorQuestao: gab.config.pontosPorQuestao,
+      colunas: gab.config.colunas || 1,
+    };
   }
 
   // Restaura formas
+  // BUG FIX: Limpa o container DOM antes de restaurar state.formas para
+  // evitar que collectFormaAnswers() (chamado internamente em renderFormas)
+  // escreva dados dos selects antigos nos índices do novo array.
   if (gab.formas && Array.isArray(gab.formas)) {
+    const container = document.getElementById('formasContainer');
+    if (container) container.innerHTML = ''; // Limpa DOM antigo antes
     state.formas = JSON.parse(JSON.stringify(gab.formas));
     renderFormas();
   }
