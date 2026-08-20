@@ -811,7 +811,7 @@ function updateFilteredStats() {
     createLegItem('semnota', 'Sem Nota', pSemNota, distData.semNota),
   ];
 
-  if (fstatSelectedPeriod && fstatSelectedPeriod.toLowerCase().includes('trim')) {
+  if (fstatSelectedPeriod && (fstatSelectedPeriod.toLowerCase().includes('trim') || fstatSelectedPeriod.toLowerCase().includes('sem'))) {
     const isPreVisLoaded = Object.keys(preVisuCalculos || {}).length > 0;
 
     const btnContainer = createEl('div', { style: 'margin-left: auto; display: flex; gap: 8px;' });
@@ -832,8 +832,11 @@ function updateFilteredStats() {
         btnPreVis.style.pointerEvents = 'none';
         btnPreVis.innerHTML = '<div id="previs-progress" style="position: absolute; top: 0; left: 0; height: 100%; width: 0%; background: #4caf50; z-index: 0; transition: width 0.2s;"></div><span style="position: relative; z-index: 1;">Calculando...</span>';
 
-        await carregarPreVisualizacaoPeriodo(fstatSelectedPeriod);
-        applyFilters();
+        try {
+          await carregarPreVisualizacaoPeriodo(fstatSelectedPeriod);
+        } finally {
+          applyFilters();
+        }
       });
 
       btnContainer.appendChild(btnPreVis);
@@ -906,20 +909,34 @@ async function carregarPreVisualizacaoPeriodo(periodoStr) {
     return;
   }
 
-  preVisuCalculos = await fetchPreVisualizacao(dashboardData, periodoStr, {
-    onProgress: (pct) => {
-      const progBar = document.getElementById('previs-progress');
-      if (progBar) progBar.style.width = pct + '%';
+  try {
+    preVisuCalculos = await fetchPreVisualizacao(dashboardData, periodoStr, {
+      onProgress: (pct) => {
+        const progBar = document.getElementById('previs-progress');
+        if (progBar) progBar.style.width = pct + '%';
+      }
+    });
+
+    const totalCalculos = Object.keys(preVisuCalculos || {}).length;
+    if (totalCalculos === 0) {
+      alert("Nenhum cálculo de aproveitamento encontrado para o período selecionado.");
     }
-  });
+  } catch (err) {
+    console.error("[Dashboard] Erro ao carregar pré-visualização:", err);
+    alert(`Erro ao calcular pré-visualização: ${err.message || err}`);
+    preVisuCalculos = {};
+  }
 }
 
 function aplicarPreVisualizacao(tipo) {
   preVisuStatus = tipo;
 
-  const numMatch = fstatSelectedPeriod.match(/\d+/);
+  const numMatch = fstatSelectedPeriod ? fstatSelectedPeriod.match(/\d+/) : null;
   const idPeriodo = numMatch ? numMatch[0] : null;
   if (!idPeriodo) return;
+
+  const isSemestre = fstatSelectedPeriod ? fstatSelectedPeriod.toLowerCase().includes('sem') : false;
+  const periodoLower = isSemestre ? 'sem' : 'trim';
 
   for (const escola of dashboardData.escolas) {
     for (const turma of escola.turmas) {
@@ -959,44 +976,57 @@ function aplicarPreVisualizacao(tipo) {
           let pData = preVisuCalculos[compositeKey];
           if (!pData) {
             const strKeys = Object.keys(preVisuCalculos);
-            const matchedKey = strKeys.find(k => k === `${aluno.matricula}_${disc.id}` || k === `${aluno.id}_${disc.id}`);
+            const matchedKey = strKeys.find(k =>
+              k === `${aluno.matricula}_${disc.id}` ||
+              k === `${aluno.id}_${disc.id}` ||
+              k === `${aluno.idAluno}_${disc.id}`
+            );
             if (matchedKey) pData = preVisuCalculos[matchedKey];
           }
 
           if (pData) {
             const valorCalculado = pData[tipo];
-            const notaStr = valorCalculado.toString().replace('.', ',');
+            if (valorCalculado !== undefined && valorCalculado !== null) {
+              const notaStr = valorCalculado.toString().replace('.', ',');
 
-            if (aluno.notas) {
-              const periodoLower = 'trim';
-              let found = false;
-              for (const n of aluno.notas) {
-                const nomeTrim = (n.trimestre || n.nomePeriodo || '').toLowerCase();
-                if (nomeTrim.includes(periodoLower) && nomeTrim.includes(idPeriodo) && !nomeTrim.includes('er')) {
-                  if (n.originalNota === undefined) n.originalNota = n.nota;
-                  n.nota = notaStr;
-                  found = true;
-                  break;
+              if (aluno.notas) {
+                let found = false;
+                for (const n of aluno.notas) {
+                  const nomeTrim = (n.trimestre || n.nomePeriodo || '').toLowerCase();
+                  if (nomeTrim.includes(periodoLower) && nomeTrim.includes(idPeriodo) && !nomeTrim.includes('er')) {
+                    if (n.originalNota === undefined) n.originalNota = n.nota;
+                    n.nota = notaStr;
+                    found = true;
+                    break;
+                  }
                 }
-              }
-              if (!found) {
-                aluno.notas.push({
-                  trimestre: `${idPeriodo}° Trim`,
-                  nomePeriodo: `${idPeriodo}º TRIMESTRE`,
-                  nota: notaStr,
-                  originalNota: '--',
-                  isPreVisAdded: true
-                });
-              }
+                if (!found) {
+                  aluno.notas.push({
+                    trimestre: fstatSelectedPeriod,
+                    nomePeriodo: `${idPeriodo}º ${isSemestre ? 'SEMESTRE' : 'TRIMESTRE'}`,
+                    nota: notaStr,
+                    originalNota: '--',
+                    isPreVisAdded: true
+                  });
+                }
 
-              // Recalcula media final simples para Trimestral
-              if (aluno.originalMediaFinal === undefined) aluno.originalMediaFinal = aluno.mediaFinal;
+                // Recalcula media final simples para Trimestral / Semestral
+                if (aluno.originalMediaFinal === undefined) aluno.originalMediaFinal = aluno.mediaFinal;
 
-              const p1 = parseFloat(String(getNotaTexto(aluno.notas, '1° Trim')).replace(',', '.'));
-              const p2 = parseFloat(String(getNotaTexto(aluno.notas, '2° Trim')).replace(',', '.'));
-              const p3 = parseFloat(String(getNotaTexto(aluno.notas, '3° Trim')).replace(',', '.'));
-              if (!isNaN(p1) && !isNaN(p2) && !isNaN(p3)) {
-                aluno.mediaFinal = (p1 * 3 + p2 * 3 + p3 * 4) / 10;
+                if (isSemestre) {
+                  const s1 = parseFloat(String(getNotaTexto(aluno.notas, '1° Sem')).replace(',', '.'));
+                  const s2 = parseFloat(String(getNotaTexto(aluno.notas, '2° Sem')).replace(',', '.'));
+                  if (!isNaN(s1) && !isNaN(s2)) {
+                    aluno.mediaFinal = parseFloat(((s1 + s2) / 2).toFixed(1));
+                  }
+                } else {
+                  const p1 = parseFloat(String(getNotaTexto(aluno.notas, '1° Trim')).replace(',', '.'));
+                  const p2 = parseFloat(String(getNotaTexto(aluno.notas, '2° Trim')).replace(',', '.'));
+                  const p3 = parseFloat(String(getNotaTexto(aluno.notas, '3° Trim')).replace(',', '.'));
+                  if (!isNaN(p1) && !isNaN(p2) && !isNaN(p3)) {
+                    aluno.mediaFinal = parseFloat(((p1 * 3 + p2 * 3 + p3 * 4) / 10).toFixed(1));
+                  }
+                }
               }
             }
           }

@@ -352,17 +352,44 @@ function calculateFilteredStats(dashboardData, escolaFiltro, turmaFiltro, alunoF
 
 /**
  * Busca cálculos de aproveitamento (soma/média) para o período selecionado.
+ * Funciona tanto no Service Worker quanto no contexto de página (dashboard.html).
  */
 async function fetchPreVisualizacao(dashboardData, periodoStr, callbacks = {}) {
   const { onProgress } = callbacks;
 
-  // Usa getValidToken() — garante token válido com tentativa de renovação silenciosa
-  // em vez de ler o storage uma vez e usar o valor stale em todo o loop.
+  if (!dashboardData || !dashboardData.idRecHumano || !dashboardData.escolas) return {};
+
+  // Lê o token diretamente do storage — funciona em qualquer contexto da extensão
+  const storageData = await chrome.storage.local.get('escolaRsToken');
+  const token = storageData.escolaRsToken;
+  if (!token) throw new Error('Token de autenticação não encontrado. Faça login no portal EscolaRS.');
+
+  const API_BASE = 'https://secweb.procergs.com.br/ise-escolars-professor/rest/professor';
   const idRecHumano = dashboardData.idRecHumano;
 
   const numMatch = periodoStr.match(/\d+/);
   if (!numMatch) return {};
   const idPeriodo = numMatch[0];
+  const isSemestre = periodoStr.toLowerCase().includes('sem');
+  const targetType = isSemestre ? 'sem' : 'trim';
+
+  /**
+   * Realiza uma chamada GET autenticada à API.
+   */
+  async function apiFetch(endpoint) {
+    // Se fetchEscolaRS estiver disponível no escopo (Service Worker), usa ele.
+    // Caso contrário (contexto de página), usa fetch nativo.
+    if (typeof fetchEscolaRS === 'function') {
+      return fetchEscolaRS(endpoint, token);
+    }
+    const url = `${API_BASE}/${endpoint}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 'Authorization': token, 'Content-Type': 'application/json' }
+    });
+    if (!response.ok) throw new Error(`Erro na API (${response.status})`);
+    return response.json();
+  }
 
   const tasks = [];
   for (const escola of dashboardData.escolas) {
@@ -375,15 +402,34 @@ async function fetchPreVisualizacao(dashboardData, periodoStr, callbacks = {}) {
               if (aluno.listaResultados) {
                 const res = aluno.listaResultados.find(r => {
                   const nomeP = (r.nomePeriodo || '').toLowerCase();
-                  return nomeP.includes('trim') && nomeP.includes(idPeriodo) && !nomeP.includes('er');
+                  return nomeP.includes(targetType) && nomeP.includes(idPeriodo) && !nomeP.includes('er');
                 });
                 if (res) {
-                  idPeriodoCalculo = res.idPeriodoAvaliacao || res.idPeriodo || res.periodoId || res.id;
-                  break;
+                  idPeriodoCalculo = res.idPeriodoAvaliacao || res.idPeriodo || res.periodoId || res.idPeriodoAvaliacaoData || res.id;
+                  if (idPeriodoCalculo) break;
                 }
               }
             }
           }
+
+          // Fallback: busca via listarAvaliacoesTurma
+          if (!idPeriodoCalculo) {
+            try {
+              const arrayAvals = await apiFetch(`listarAvaliacoesTurma/${turma.id}/${disc.id}/${idRecHumano}`);
+              if (Array.isArray(arrayAvals)) {
+                const avEncontrada = arrayAvals.find(a => {
+                  const desc = (a.descricao || '').toLowerCase();
+                  return desc.includes(targetType) && desc.includes(idPeriodo) && !desc.includes('er');
+                });
+                if (avEncontrada) {
+                  idPeriodoCalculo = avEncontrada.id;
+                }
+              }
+            } catch (err) {
+              console.warn(`[Dashboard Service] Falha ao buscar período via listarAvaliacoesTurma para turma ${turma.id}:`, err.message);
+            }
+          }
+
           if (idPeriodoCalculo) {
             tasks.push({ idTurma: turma.id, idDisciplina: disc.id, idPeriodoAvaliacao: idPeriodoCalculo });
           }
@@ -402,13 +448,20 @@ async function fetchPreVisualizacao(dashboardData, periodoStr, callbacks = {}) {
     const chunk = tasks.slice(i, i + chunkSize);
     await Promise.allSettled(chunk.map(async task => {
       try {
-        // fetchEscolaRS garante: timeout 30s, retry em 401 com renovação automática de token.
-        // O endpoint v2/calcularAproveitamentos usa o prefixo da API_BASE_URL (REST professor).
         const endpoint = `v2/calcularAproveitamentos/professor/${idRecHumano}/turma/${task.idTurma}/disciplina/${task.idDisciplina}/periodo/${task.idPeriodoAvaliacao}/area/false`;
-        const data = await fetchEscolaRS(endpoint, null);
+        const data = await apiFetch(endpoint);
         if (data && data.calculosAproveitamentos) {
           for (const calc of data.calculosAproveitamentos) {
-            resultados[`${calc.idAluno}_${task.idDisciplina}`] = { soma: calc.soma, media: calc.media };
+            const valObj = { soma: calc.soma, media: calc.media };
+            if (calc.idAluno !== undefined && calc.idAluno !== null) {
+              resultados[`${calc.idAluno}_${task.idDisciplina}`] = valObj;
+            }
+            if (calc.matricula !== undefined && calc.matricula !== null) {
+              resultados[`${calc.matricula}_${task.idDisciplina}`] = valObj;
+            }
+            if (calc.id !== undefined && calc.id !== null) {
+              resultados[`${calc.id}_${task.idDisciplina}`] = valObj;
+            }
           }
         }
       } catch (e) {
