@@ -1,8 +1,16 @@
 // --- IMPORTAÇÃO DE MÓDULOS ---
-importScripts('api/escolaRS.js', 'utils/aluno.js', 'utils/string.js', 'utils/notas.js', 'services/dashboardService.js');
+// authManager.js deve ser importado ANTES de escolaRS.js para que AuthManager
+// esteja disponível quando trySilentTokenRefresh for definida.
+importScripts(
+  'auth/authManager.js',
+  'api/escolaRS.js',
+  'utils/aluno.js',
+  'utils/string.js',
+  'utils/notas.js',
+  'services/dashboardService.js'
+);
 
-
-// ─── Constantes & Estado ────────────────────────────────────────────
+// ─── Constantes & Estado ─────────────────────────────────────────────────────
 
 const DASHBOARD_CACHE_KEY = 'dashboardCache';
 const NOTIFICATION_ICON = 'images/icons/icon128.png';
@@ -16,7 +24,7 @@ const API_URL_PATTERNS = [
 let ultimoToken = null;
 let ultimoNrDoc = null;
 
-// ─── Cache Helpers ──────────────────────────────────────────────────
+// ─── Cache do Dashboard ───────────────────────────────────────────────────────
 
 async function getCachedDashboardData() {
   const result = await chrome.storage.local.get([DASHBOARD_CACHE_KEY]);
@@ -36,20 +44,8 @@ function clearCachedDashboardData() {
   chrome.storage.local.remove([DASHBOARD_CACHE_KEY]);
 }
 
-// ─── Auth Helpers ───────────────────────────────────────────────────
+// ─── Helpers de UI ────────────────────────────────────────────────────────────
 
-/**
- * Lê token e nrDoc do chrome.storage.
- * @returns {Promise<{escolaRsToken: string|null, nrDoc: string|null}>}
- */
-async function getAuthData() {
-  return chrome.storage.local.get(['escolaRsToken', 'nrDoc']);
-}
-
-/**
- * Exibe uma notificação ao usuário.
- * @param {string} message - Mensagem da notificação.
- */
 function notifyUser(message) {
   chrome.notifications.create({
     type: 'basic',
@@ -59,15 +55,9 @@ function notifyUser(message) {
   });
 }
 
-// ─── Dashboard Tab Management ───────────────────────────────────────
-
-/**
- * Abre ou foca a aba do dashboard.
- */
 async function openOrFocusDashboard() {
   const dashboardUrl = chrome.runtime.getURL('ui/dashboard/dashboard.html');
   const existingTabs = await chrome.tabs.query({ url: dashboardUrl });
-
   if (existingTabs.length > 0) {
     chrome.tabs.update(existingTabs[0].id, { active: true });
     chrome.windows.update(existingTabs[0].windowId, { focused: true });
@@ -76,26 +66,22 @@ async function openOrFocusDashboard() {
   }
 }
 
-/**
- * Lida com o caso em que não há autenticação disponível.
- * Foca a aba do portal existente ou abre uma nova e notifica o usuário.
- */
 async function handleMissingAuth() {
   const portalTabs = await chrome.tabs.query({ url: PORTAL_MATCH_URL });
-
   if (portalTabs.length > 0) {
     chrome.tabs.update(portalTabs[0].id, { active: true });
     chrome.windows.update(portalTabs[0].windowId, { focused: true });
-    notifyUser('Autenticação não realizada. Por favor, atualize a página e clique no ícone da extensão novamente.');
+    notifyUser('Autenticação não realizada. Atualize a página e clique no ícone da extensão novamente.');
   } else {
     chrome.tabs.create({ url: 'https://professor.escola.rs.gov.br/' });
-    notifyUser('Por favor, faça o login no portal EscolaRS. Depois de logado, clique no ícone da extensão novamente.');
+    notifyUser('Faça login no portal EscolaRS. Depois, clique no ícone da extensão.');
   }
 }
 
-// ─── INTERCEPTAÇÃO DE AUTENTICAÇÃO VIA webRequest ───────────────────
-// Captura o token Bearer e o nrDoc de requisições feitas pelo navegador
-// às URLs do EscolaRS — funciona independente de contexto ou framework do SPA
+// ─── Interceptação de Token via webRequest ────────────────────────────────────
+//
+// Captura o token Bearer e o nrDoc diretamente dos headers das requisições do portal.
+// Esta é a fonte primária de tokens — não requer interação do usuário.
 
 chrome.webRequest.onBeforeSendHeaders.addListener(
   (details) => {
@@ -106,10 +92,6 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
   ['requestHeaders']
 );
 
-/**
- * Extrai e persiste o token Bearer dos headers da requisição.
- * @param {Array} headers - Lista de headers da requisição.
- */
 function captureTokenFromHeaders(headers) {
   const authHeader = headers.find((h) => h.name.toLowerCase() === 'authorization');
   if (!authHeader?.value) return;
@@ -121,15 +103,15 @@ function captureTokenFromHeaders(headers) {
   if (tokenCapturado === ultimoToken) return;
 
   ultimoToken = tokenCapturado;
+
+  // Persiste no storage E atualiza o cache em memória do AuthManager.
+  // Isso garante que todos os contextos (SW e páginas) recebam o token novo imediatamente.
   chrome.storage.local.set({ escolaRsToken: tokenCapturado }, () => {
-    console.log('[Background] Token atualizado via webRequest.');
+    AuthManager.update(tokenCapturado);
+    console.log('[Background] Token capturado e AuthManager atualizado via webRequest.');
   });
 }
 
-/**
- * Extrai e persiste o nrDoc da URL da requisição.
- * @param {string} url - URL da requisição interceptada.
- */
 function captureNrDocFromUrl(url) {
   const urlMatch = url.match(/listarEscolasDoProfessorEChamadas\/(\d+)/);
   if (!urlMatch?.[1]) return;
@@ -139,60 +121,75 @@ function captureNrDocFromUrl(url) {
 
   ultimoNrDoc = nrDocCapturado;
   chrome.storage.local.set({ nrDoc: nrDocCapturado }, () => {
-    console.log('[Background] nrDoc atualizado via webRequest.');
+    console.log('[Background] nrDoc atualizado:', nrDocCapturado);
   });
 }
 
-// Limpa cache em memória do background caso algum dado seja apagado manualmente no DevTools
+// Limpa estado local se dados forem apagados manualmente (ex: DevTools).
 chrome.storage.onChanged.addListener((changes, namespace) => {
   if (namespace !== 'local') return;
-  if (changes.escolaRsToken && !changes.escolaRsToken.newValue) ultimoToken = null;
+  if (changes.escolaRsToken && !changes.escolaRsToken.newValue) {
+    ultimoToken = null;
+    AuthManager.invalidate();
+  }
   if (changes.nrDoc && !changes.nrDoc.newValue) ultimoNrDoc = null;
 });
 
+// ─── Ouvintes de Eventos da Extensão ─────────────────────────────────────────
 
-// ─── OUVINTES DE EVENTOS DA EXTENSÃO ────────────────────────────────
+// Clique no ícone da extensão: valida autenticação e abre o dashboard.
+chrome.action.onClicked.addListener(async () => {
+  const { nrDoc } = await chrome.storage.local.get('nrDoc');
 
-chrome.action.onClicked.addListener(async (tab) => {
-  let authData = await getAuthData();
+  try {
+    // Tenta obter um token válido. Se falhar, AuthManager tentará renovar.
+    const token = await AuthManager.getValidToken();
 
-  // Se já temos token e nrDoc, valida se ainda é funcional
-  if (authData.escolaRsToken && authData.nrDoc) {
-    console.log('[Background] Validando token existente...');
-    try {
-      // Uma chamada simples para testar o token. Se falhar com 401, o fetchEscolaRS
-      // disparará o trySilentTokenRefresh automaticamente.
-      await listarEscolasProfessor(authData.nrDoc, authData.escolaRsToken);
-      console.log('[Background] Token validado com sucesso.');
-      authData = await getAuthData(); // Pega o token possivelmente renovado
-    } catch (e) {
-      console.warn('[Background] Token inválido ou erro na validação. Renovação disparada:', e);
-      authData = await getAuthData();
+    if (!nrDoc) {
+      // Token existe mas nrDoc não — usuário ainda não fez a primeira requisição ao portal.
+      await handleMissingAuth();
+      return;
     }
-  } else if (!authData.escolaRsToken) {
-    console.log('[Background] Token ausente no clique inicial. Tentando renovar silenciosamente...');
-    try {
-      await trySilentTokenRefresh(null);
-      authData = await getAuthData();
-    } catch (e) {
-      console.log('[Background] Renovação no clique falhou:', e);
-    }
-  }
 
-  if (authData.escolaRsToken && authData.nrDoc) {
+    // Valida o token fazendo uma chamada real (fetchEscolaRS usa AuthManager internamente).
+    await listarEscolasProfessor(nrDoc);
     await openOrFocusDashboard();
-    return;
+  } catch (e) {
+    console.warn('[Background] Falha de autenticação no clique:', e.message);
+    if (nrDoc) {
+      // Tenta abrir dashboard mesmo assim — o dashboard fará nova tentativa de auth.
+      await openOrFocusDashboard();
+    } else {
+      await handleMissingAuth();
+    }
   }
-
-  await handleMissingAuth();
 });
 
+// ─── Handlers de Mensagens ────────────────────────────────────────────────────
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+
+  // Solicitação de refresh de token de um contexto de página.
+  // Páginas não podem criar janelas popup diretamente; delegam ao SW.
+  if (request.action === 'requestTokenRefresh') {
+    (async () => {
+      try {
+        console.log('[Background] Página solicitou renovação de token.');
+        const newToken = await trySilentTokenRefresh(request.staleToken || null);
+        sendResponse({ success: true, token: newToken });
+      } catch (error) {
+        console.error('[Background] Falha ao renovar token para página:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
+  // Busca foto do aluno (chamada de página via message passing).
   if (request.action === 'getStudentPhoto') {
     (async () => {
       try {
-        const { escolaRsToken } = await chrome.storage.local.get('escolaRsToken');
-        const result = await buscarFotoDoAluno(request.matricula, request.idTurma, escolaRsToken);
+        const result = await buscarFotoDoAluno(request.matricula, request.idTurma);
         sendResponse({ success: true, data: result });
       } catch (error) {
         console.error('[Background] Erro ao buscar foto do aluno:', error);
@@ -202,29 +199,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request.action !== 'getDashboardData' && request.action !== 'refreshDashboardData') {
-    return;
-  }
+  // Dados do dashboard (com ou sem força de refresh).
+  if (request.action === 'getDashboardData' || request.action === 'refreshDashboardData') {
+    (async () => {
+      try {
+        const isRefresh = request.action === 'refreshDashboardData' || request.forceRefresh;
 
-  (async () => {
-    try {
-      const isRefresh = request.action === 'refreshDashboardData' || request.forceRefresh;
-
-      if (!isRefresh) {
-        const cached = await getCachedDashboardData();
-        if (cached) {
-          sendResponse({ success: true, data: cached.data, cached: true, cachedAt: cached.fetchedAt });
-          return;
+        if (!isRefresh) {
+          const cached = await getCachedDashboardData();
+          if (cached) {
+            sendResponse({ success: true, data: cached.data, cached: true, cachedAt: cached.fetchedAt });
+            return;
+          }
         }
-      }
 
-      const data = await buildDashboardFromStorage();
-      setCachedDashboardData(data);
-      sendResponse({ success: true, data, cached: false, cachedAt: new Date().toISOString() });
-    } catch (error) {
-      console.error('[Background] Erro ao construir dados do dashboard:', error);
-      sendResponse({ success: false, error: error.message });
-    }
-  })();
-  return true;
+        const data = await buildDashboardFromStorage();
+        setCachedDashboardData(data);
+        sendResponse({ success: true, data, cached: false, cachedAt: new Date().toISOString() });
+      } catch (error) {
+        console.error('[Background] Erro ao construir dados do dashboard:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
 });

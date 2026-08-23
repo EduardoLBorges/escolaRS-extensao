@@ -8,15 +8,14 @@ let state = {
   dadosBrutos: null,
   escolas: [],
   idRecHumano: null,
-  token: null,
   nrDoc: null,
   mapaAulasPorDiaDaSemana: new Map(),
   mapaAulasPorDataEspecifica: new Map(),
   ignorados: {},
   horariosCustomizados: [],
   infrequentes: [],
-  planosDeAula: [], // { id, disciplinaId, serie, aulas: [{ idAula, ordem, habilidade, estrategia, objetoConhecimento }] }
-  diasLetivos: [], // { data: 'YYYY-MM-DD', tipo: 'adicionar'|'remover', diaSemanaRef: 1-5, observacao: '...' }
+  planosDeAula: [],
+  diasLetivos: [],
   currentDateDL: new Date(),
   selectedDateDL: null,
   viewFilters: { escola: '', turma: '' },
@@ -25,13 +24,6 @@ let state = {
 
 // --- Início: Inicialização ---
 document.addEventListener('DOMContentLoaded', async () => {
-  // Mantém o token sincronizado caso seja atualizado em background ou por outra aba
-  chrome.storage.onChanged.addListener((changes, namespace) => {
-    if (namespace === 'local' && changes.escolaRsToken?.newValue) {
-      state.token = changes.escolaRsToken.newValue;
-    }
-  });
-
   setupEventListeners();
   await loadData();
   renderCalendar();
@@ -246,23 +238,12 @@ async function loadData() {
   setLoading(true, 'Carregando autenticação...');
 
   try {
-    let authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc", "escolaRsIgnorados", "escolaRsHorariosCustomizados", "escolaRsInfrequentes", "escolaRsPlanosDeAula", "escolaRsDiasLetivos"]);
+    const authData = await chrome.storage.local.get(["nrDoc", "escolaRsIgnorados", "escolaRsHorariosCustomizados", "escolaRsInfrequentes", "escolaRsPlanosDeAula", "escolaRsDiasLetivos"]);
 
-    if (!authData.escolaRsToken) {
-      console.log('[Chamada] Token ausente. Tentando renovação silenciosa inicial...');
-      try {
-        await trySilentTokenRefresh();
-        authData = await chrome.storage.local.get(["escolaRsToken", "nrDoc", "escolaRsIgnorados", "escolaRsHorariosCustomizados", "escolaRsInfrequentes", "escolaRsPlanosDeAula", "escolaRsDiasLetivos"]);
-      } catch (e) {
-        console.warn('[Chamada] Renovação inicial falhou:', e);
-      }
-    }
-
-    if (!authData.escolaRsToken || !authData.nrDoc) {
+    if (!authData.nrDoc) {
       throw new Error('Usuário não autenticado. Por favor, acesse o portal EscolaRS primeiro.');
     }
 
-    state.token = authData.escolaRsToken;
     state.nrDoc = authData.nrDoc;
     state.ignorados = authData.escolaRsIgnorados || {};
     state.horariosCustomizados = authData.escolaRsHorariosCustomizados || [];
@@ -271,8 +252,8 @@ async function loadData() {
     state.diasLetivos = authData.escolaRsDiasLetivos || [];
 
     setLoading(true, 'Buscando turmas e alunos...');
-    // Busca dados com a API (do arquivo api/escolaRS.js incluído no HTML)
-    const dados = await listarEscolasProfessor(state.nrDoc, state.token);
+    // listarEscolasProfessor obtém o token via AuthManager — sem parâmetro de token.
+    const dados = await listarEscolasProfessor(state.nrDoc);
     state.dadosBrutos = dados;
     state.idRecHumano = dados.idRecHumano;
     state.escolas = dados.escolas || [];
@@ -281,8 +262,6 @@ async function loadData() {
     initViewFilters();
 
     setLoading(false);
-
-    // Mostra barra de filtros se tudo der ok
     document.getElementById('filterContainer').classList.remove('hidden');
   } catch (err) {
     console.error(err);
@@ -1225,8 +1204,7 @@ window.submitAttendance = async (formIndex, idTurma, idDisciplina, qtPeriodos, d
       idDisciplina,
       isoDate,
       state.idRecHumano,
-      payload,
-      state.token
+      payload
     );
 
     // Salvar localmente no state para persistir durante a mesma sessão sem F5

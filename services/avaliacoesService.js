@@ -3,20 +3,20 @@
  */
 class AvaliacoesService {
     constructor() {
-        this.cacheInfo = null; // { token, idRecHumano, dashboardData }
+        // Token nunca é armazenado aqui — gerenciado pelo AuthManager via fetchEscolaRS.
+        this.cacheInfo = null; // { nrDoc, idRecHumano, escolas }
     }
 
     async init() {
-        const authData = await chrome.storage.local.get(['escolaRsToken', 'nrDoc']);
-        if (!authData.escolaRsToken || !authData.nrDoc) throw new Error('Credenciais ausentes. Abra o portal EscolaRS.');
+        const { nrDoc } = await chrome.storage.local.get('nrDoc');
+        if (!nrDoc) throw new Error('Credenciais ausentes. Abra o portal EscolaRS.');
 
-        // Precisamos dos dados base de escolas e turmas
-        const infoInicial = await listarEscolasProfessor(authData.nrDoc, authData.escolaRsToken);
+        // listarEscolasProfessor obtém o token via AuthManager internamente.
+        const infoInicial = await listarEscolasProfessor(nrDoc);
         const { idRecHumano } = infoInicial;
 
         this.cacheInfo = {
-            token: authData.escolaRsToken,
-            nrDoc: authData.nrDoc,
+            nrDoc,
             idRecHumano,
             escolas: infoInicial.escolas
         };
@@ -59,7 +59,7 @@ class AvaliacoesService {
         if (!firstClass) return [];
 
         try {
-            const avaliacoes = await fetchEscolaRS(`listarAvaliacoesTurma/${firstClass.idTurma}/${firstClass.idDisc}/${this.cacheInfo.idRecHumano}`, this.cacheInfo.token);
+            const avaliacoes = await fetchEscolaRS(`listarAvaliacoesTurma/${firstClass.idTurma}/${firstClass.idDisc}/${this.cacheInfo.idRecHumano}`);
             const periodosMap = new Map();
 
             for (const item of avaliacoes) {
@@ -73,19 +73,11 @@ class AvaliacoesService {
             console.error('Erro ao carregar periodos', err);
             return [];
         }
-
-        for (const item of avaliacoes) {
-            if (item.id && item.descricao) {
-                periodosMap.set(item.id, item.descricao);
-            }
-        }
-
-        return Array.from(periodosMap.entries()).map(([id, descricao]) => ({ id, descricao }));
     }
 
     async exportarMassa(periodoId, onProgress) {
         if (!this.cacheInfo) await this.init();
-        const { escolas, idRecHumano, token } = this.cacheInfo;
+        const { escolas, idRecHumano } = this.cacheInfo;
 
         const allTasks = [];
         for (const esc of escolas) {
@@ -116,7 +108,7 @@ class AvaliacoesService {
             await Promise.all(batchTasks.map(async (task) => {
                 try {
                     // 1. Encontrar o idInstrumento via listarAvaliacoesTurma
-                    const arrayAvals = await fetchEscolaRS(`listarAvaliacoesTurma/${task.turmaId}/${task.discId}/${idRecHumano}`, token);
+                    const arrayAvals = await fetchEscolaRS(`listarAvaliacoesTurma/${task.turmaId}/${task.discId}/${idRecHumano}`);
 
                     // Identificar os instrumentos filtrados pelo período
                     let instrumentos = [];
@@ -151,7 +143,7 @@ class AvaliacoesService {
 
                     // Se não encontrou no cache, faz fetch
                     if (!alunosInfo || alunosInfo.length === 0) {
-                        const dataAlunos = await fetchEscolaRS(`listarAulasDaTurmaComResultado/${task.turmaId}/${task.discId}/${idRecHumano}/false`, token);
+                        const dataAlunos = await fetchEscolaRS(`listarAulasDaTurmaComResultado/${task.turmaId}/${task.discId}/${idRecHumano}/false`);
                         alunosInfo = dataAlunos.alunos || [];
                     }
 
@@ -166,7 +158,7 @@ class AvaliacoesService {
                     }
 
                     // 3. Pegar o XLS original gerado para ter a base e layout correto
-                    const jsonCsv = await fetchEscolaRS(`gerarXls/${task.turmaId}/${task.discId}/${idRecHumano}/${periodoId}`, token);
+                    const jsonCsv = await fetchEscolaRS(`gerarXls/${task.turmaId}/${task.discId}/${idRecHumano}/${periodoId}`);
 
                     if (!jsonCsv || !jsonCsv.xls) return;
 
@@ -420,7 +412,6 @@ class AvaliacoesService {
 
     async enviarNotas(listaPayloads, onProgress, onLog) {
         if (!this.cacheInfo) await this.init();
-        const { token } = this.cacheInfo;
 
         onLog(`Iniciando análise de alterações (DIFF automático)...`, 'info');
 
@@ -457,7 +448,7 @@ class AvaliacoesService {
             const batch = finalQueue.slice(i, i + PAYLOAD_BATCH);
             try {
                 onLog(`Enviando lote de ${batch.length} notas...`, 'info');
-                await registrarResultadoInstrumentoLista(batch, token);
+                await registrarResultadoInstrumentoLista(batch);
                 sent += batch.length;
                 successCount += batch.length;
             } catch (err) {
@@ -475,10 +466,9 @@ class AvaliacoesService {
     
     async carregarDadosTabelaDireta(turmaId, discId, isSemestre, periodoId, idRecHumano) {
         if (!this.cacheInfo) await this.init();
-        const { token } = this.cacheInfo;
 
         // 1. Encontrar o idInstrumento via listarAvaliacoesTurma
-        const arrayAvals = await fetchEscolaRS(`listarAvaliacoesTurma/${turmaId}/${discId}/${idRecHumano}`, token);
+        const arrayAvals = await fetchEscolaRS(`listarAvaliacoesTurma/${turmaId}/${discId}/${idRecHumano}`);
 
         let intrumentosPermitidos = new Set();
         const nomePeriodoProc = `° ${isSemestre ? 'Sem' : 'Trim'}`;
@@ -526,7 +516,7 @@ class AvaliacoesService {
 
         // Se não encontrou no cache, faz fetch
         if (!alunosInfo || alunosInfo.length === 0) {
-            const dataAlunos = await fetchEscolaRS(`listarAulasDaTurmaComResultado/${turmaId}/${discId}/${idRecHumano}/false`, token);
+            const dataAlunos = await fetchEscolaRS(`listarAulasDaTurmaComResultado/${turmaId}/${discId}/${idRecHumano}/false`);
             alunosInfo = dataAlunos.alunos || [];
         }
 
@@ -572,7 +562,7 @@ class AvaliacoesService {
         }
 
         // 3. Pegar o XLS original para obter as notas atuais formatadas corretamente pela SEDUC
-        const jsonCsv = await fetchEscolaRS(`gerarXls/${turmaId}/${discId}/${idRecHumano}/${periodoId}`, token);
+        const jsonCsv = await fetchEscolaRS(`gerarXls/${turmaId}/${discId}/${idRecHumano}/${periodoId}`);
 
         if (!jsonCsv || !jsonCsv.xls) {
             throw new Error("Falha ao obter os dados oficiais da turma.");

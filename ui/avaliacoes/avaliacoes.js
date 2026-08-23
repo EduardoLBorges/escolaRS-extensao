@@ -155,7 +155,7 @@ class TabController {
             await Promise.all(batch.map(async (data) => {
                 try {
                     // Usando o client oficial da API que faz silent refresh e tratamentos de 401
-                    const arrayAvals = await fetchEscolaRS(`listarAvaliacoesTurma/${data.turmaId}/${data.discId}/${data.idRecHumano}`, service.cacheInfo.token);
+                    const arrayAvals = await fetchEscolaRS(`listarAvaliacoesTurma/${data.turmaId}/${data.discId}/${data.idRecHumano}`);
                     
                     // Group instruments by period
                     const periodosGrouped = {};
