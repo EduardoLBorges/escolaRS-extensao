@@ -1306,3 +1306,155 @@ tr:hover td {
     min-height: 280px;
   }
 }
+
+/* ========================================
+   FLOATING TOOLTIP POPOVER DA NOTA
+   ======================================== */
+.nota-periodo-cell {
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  position: relative;
+  user-select: none;
+}
+
+.nota-periodo-cell:hover {
+  background-color: #e2e8f0 !important;
+  color: var(--primary) !important;
+  font-weight: 700;
+  border-radius: 4px;
+}
+
+.nota-tooltip-popover {
+  position: absolute;
+  z-index: 2000;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.18), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  padding: 12px 14px;
+  width: 190px;
+  transform: translateX(-50%);
+  animation: tooltipFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  font-family: 'Inter', -apple-system, sans-serif;
+  color: var(--text-main);
+  pointer-events: auto;
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.nota-tooltip-popover.pos-above .tooltip-arrow {
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 10px;
+  height: 10px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.nota-tooltip-popover.pos-below .tooltip-arrow {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 10px;
+  height: 10px;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+}
+
+.tooltip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--primary);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+}
+
+.tooltip-sub {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.tooltip-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+}
+
+.tooltip-lbl {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.tooltip-val {
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.tooltip-val.val-aprov {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.tooltip-val.val-recup {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.tooltip-val.val-reprov {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.tooltip-val.val-muted {
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+.tooltip-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 3px 0;
+}
+
+.tooltip-row.highlight .tooltip-lbl {
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.tooltip-footer {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-align: center;
+  font-style: italic;
+}

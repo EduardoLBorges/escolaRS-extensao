@@ -510,7 +510,20 @@ function createStudentsTable(alunos, disciplina) {
       cells.push(...periodos.map(() => createEl('td', { style: 'text-align:center;' }, [''])));
       cells.push(createEl('td', {}), createEl('td', {}));
     } else {
-      cells.push(...notasPeriodos.map(nota => createEl('td', { innerHTML: nota, style: 'text-align:center;' })));
+      cells.push(...notasPeriodos.map((nota, idx) => {
+        const p = periodos[idx];
+        const td = createEl('td', {
+          innerHTML: nota,
+          className: 'nota-periodo-cell',
+          style: 'text-align:center;',
+          title: `Clique para ver detalhes de ${p}`
+        });
+        td.addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggleNotaTooltip(e, td, aluno, p, disciplina);
+        });
+        return td;
+      }));
       cells.push(
         createEl('td', { style: 'text-align:center;' }, [createEl('span', { className: `nota-badge ${getClasseBadge(aluno.mediaFinal)}` }, [aluno.mediaFinal.toFixed(1).replace('.', ',')])]),
         createEl('td', { style: 'text-align:center;' }, [createEl('span', { className: statusClass }, [statusTexto])])
@@ -546,6 +559,123 @@ function createStudentsTable(alunos, disciplina) {
     createEl('thead', {}, [headerRow]),
     createEl('tbody', {}, studentRows)
   ]);
+}
+
+let activeNotaTooltip = null;
+
+/**
+ * Exibe ou oculta tooltip popover ancorado à célula com o detalhamento das notas do trimestre e ER.
+ */
+function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
+  if (activeNotaTooltip && activeNotaTooltip.dataset.tdId === tdElement.dataset.tooltipId) {
+    closeActiveNotaTooltip();
+    return;
+  }
+
+  closeActiveNotaTooltip();
+
+  const isSemestre = periodo.toLowerCase().includes('sem');
+  const tipoLabel = isSemestre ? 'Semestre' : 'Trimestre';
+
+  const notaRegular = getNotaValorBruto(aluno.notas, periodo, false);
+  const notaER = getNotaValorBruto(aluno.notas, periodo, true);
+  const notaFinal = getNotaTexto(aluno.notas, periodo);
+
+  if (!tdElement.dataset.tooltipId) {
+    tdElement.dataset.tooltipId = 'tp_' + Math.random().toString(36).substring(2, 9);
+  }
+
+  const tooltip = createEl('div', {
+    className: 'nota-tooltip-popover',
+    dataset: { tdId: tdElement.dataset.tooltipId }
+  });
+
+  let statusMsg = '';
+  if (notaER !== '--' && notaFinal.includes('*')) {
+    statusMsg = `Considerada nota do ER`;
+  } else if (notaER !== '--' && !notaFinal.includes('*')) {
+    statusMsg = `Mantida nota do ${tipoLabel.toLowerCase()}`;
+  } else if (notaRegular !== '--') {
+    statusMsg = `Sem nota de ER`;
+  } else {
+    statusMsg = `Sem nota lançada`;
+  }
+
+  const getValBadgeClass = (valStr) => {
+    if (valStr === '--') return 'val-muted';
+    const n = parseNota(valStr.replace('*', ''));
+    if (n >= 6) return 'val-aprov';
+    if (n >= 5) return 'val-recup';
+    return 'val-reprov';
+  };
+
+  tooltip.innerHTML = `
+    <div class="tooltip-header">
+      <strong>${aluno.nome.split(' ')[0]}</strong>
+      <span class="tooltip-sub">${periodo}</span>
+    </div>
+    <div class="tooltip-body">
+      <div class="tooltip-row">
+        <span class="tooltip-lbl">Nota ${tipoLabel}:</span>
+        <span class="tooltip-val ${getValBadgeClass(notaRegular)}">${notaRegular}</span>
+      </div>
+      <div class="tooltip-row">
+        <span class="tooltip-lbl">Nota ER:</span>
+        <span class="tooltip-val ${getValBadgeClass(notaER)}">${notaER}</span>
+      </div>
+      <div class="tooltip-divider"></div>
+      <div class="tooltip-row highlight">
+        <span class="tooltip-lbl">Final Exibida:</span>
+        <span class="tooltip-val ${getValBadgeClass(notaFinal)}">${notaFinal}</span>
+      </div>
+    </div>
+    <div class="tooltip-footer">${statusMsg}</div>
+    <div class="tooltip-arrow"></div>
+  `;
+
+  document.body.appendChild(tooltip);
+  activeNotaTooltip = tooltip;
+
+  const rect = tdElement.getBoundingClientRect();
+  const tooltipRect = tooltip.getBoundingClientRect();
+
+  let top = rect.top + window.scrollY - tooltipRect.height - 10;
+  let isAbove = true;
+
+  if (rect.top - tooltipRect.height - 10 < 10) {
+    top = rect.bottom + window.scrollY + 10;
+    isAbove = false;
+  }
+
+  let left = rect.left + window.scrollX + rect.width / 2;
+
+  const minLeft = 10 + tooltipRect.width / 2;
+  const maxLeft = window.innerWidth - 10 - tooltipRect.width / 2;
+  if (left < minLeft) left = minLeft;
+  if (left > maxLeft) left = maxLeft;
+
+  tooltip.style.top = `${top}px`;
+  tooltip.style.left = `${left}px`;
+  tooltip.classList.add(isAbove ? 'pos-above' : 'pos-below');
+
+  setTimeout(() => {
+    document.addEventListener('click', closeActiveNotaTooltipOnOutsideClick);
+    window.addEventListener('scroll', closeActiveNotaTooltip, { passive: true, once: true });
+  }, 10);
+}
+
+function closeActiveNotaTooltip() {
+  if (activeNotaTooltip) {
+    activeNotaTooltip.remove();
+    activeNotaTooltip = null;
+    document.removeEventListener('click', closeActiveNotaTooltipOnOutsideClick);
+  }
+}
+
+function closeActiveNotaTooltipOnOutsideClick(e) {
+  if (activeNotaTooltip && !activeNotaTooltip.contains(e.target)) {
+    closeActiveNotaTooltip();
+  }
 }
 
 function renderFooter() {
