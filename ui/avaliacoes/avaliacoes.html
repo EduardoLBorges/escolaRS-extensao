@@ -53,8 +53,8 @@
             </div>
             <div class="header-actions">
                 <div class="secondary-actions">
-                    <button id="btnOMR" class="btn btn-secondary btn-sm" type="button" title="Módulo OMR — Grade de Respostas e Leitor Óptico">
-                        <i data-lucide="grid-3x3"></i> Grade OMR
+                    <button id="btnOMR" class="btn btn-secondary btn-sm" type="button" title="Correção de Provas por Cartão Resposta">
+                        <i data-lucide="grid-3x3"></i> Leitor de Gabaritos
                     </button>
                 </div>
             </div>
@@ -143,7 +143,7 @@
         <div class="modal-content omr-modal-container" style="max-width: 1100px; width: 95vw; max-height: 92vh; display: flex; flex-direction: column; overflow: hidden; padding: 0;">
             <div class="modal-header" style="padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
                 <h2 style="display:inline-flex;align-items:center;gap:8px;margin:0;font-size:1.15rem;">
-                    <i data-lucide="grid-3x3"></i> Módulo OMR — Grade de Respostas
+                    <i data-lucide="grid-3x3"></i> Correção de Provas — Folha de Respostas
                 </h2>
                 <div style="display:flex; align-items:center; gap: 12px;">
                     <div class="tab-nav">
@@ -399,8 +399,8 @@
                             <!-- Imagem processada com overlay -->
                             <div class="review-image-panel">
                                 <div class="image-panel-controls">
-                                    <button id="btnToggleReviewView" class="btn btn-secondary btn-sm" type="button" title="Alternar entre Foto Completa e Bloco OMR">
-                                        <i data-lucide="scan"></i> <span id="lblReviewViewMode">Ver Bloco OMR</span>
+                                    <button id="btnToggleReviewView" class="btn btn-secondary btn-sm" type="button" title="Alternar entre Foto Completa e Cartão Resposta">
+                                        <i data-lucide="scan"></i> <span id="lblReviewViewMode">Ver Cartão Resposta</span>
                                     </button>
                                 </div>
                                 <!-- Calibrar dentro do painel da imagem (bottom-left) -->
@@ -430,8 +430,8 @@
                                         </select>
                                     </div>
                                     <div class="form-group">
-                                        <label for="reviewForma">Forma do Gabarito</label>
-                                        <select id="reviewForma" class="form-control"></select>
+                                        <label>Forma do Gabarito</label>
+                                        <div id="reviewForma" class="forma-radio-group"></div>
                                     </div>
                                     <!-- Confirmar e Anular logo abaixo do aluno/forma -->
                                     <div class="review-inline-actions">
@@ -512,7 +512,7 @@
                 <button id="calibClose" class="btn btn-secondary btn-sm" type="button"><i data-lucide="x"></i></button>
             </div>
             <div class="calib-instructions">
-                <p>Clique nos <strong>4 quadrados pretos</strong> do bloco OMR, em ordem:</p>
+                <p>Clique nos <strong>4 quadrados pretos</strong> do cartão de respostas, em ordem:</p>
                 <div class="calib-steps">
                     <span id="calibStep1" class="calib-dot tl active">1 — Superior Esquerdo</span>
                     <span id="calibStep2" class="calib-dot tr">2 — Superior Direito</span>

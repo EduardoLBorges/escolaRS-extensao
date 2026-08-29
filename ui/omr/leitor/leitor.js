@@ -888,8 +888,8 @@ function renderReview() {
       lblMode.textContent = 'Ver Foto Completa';
       btnMode.innerHTML = '<i data-lucide="image"></i> <span>Ver Foto Completa</span>';
     } else {
-      lblMode.textContent = 'Ver Bloco OMR';
-      btnMode.innerHTML = '<i data-lucide="scan"></i> <span>Ver Bloco OMR</span>';
+      lblMode.textContent = 'Ver Cartão Resposta';
+      btnMode.innerHTML = '<i data-lucide="scan"></i> <span>Ver Cartão Resposta</span>';
     }
     if (window.lucide) window.lucide.createIcons();
   }
@@ -1023,19 +1023,7 @@ function renderReview() {
     const opt = document.createElement('option');
     opt.value = a.matricula;
     opt.textContent = `${a.nome} (${a.matricula})`;
-    if (r.alunoMatricula === a.matricula) opt.selected = true;
     alunoSel.appendChild(opt);
-  });
-
-  // Dropdown de formas
-  const formaSel = document.getElementById('reviewForma');
-  formaSel.innerHTML = '';
-  state.formas.forEach(f => {
-    const opt = document.createElement('option');
-    opt.value = f.id;
-    opt.textContent = `Forma ${f.label}`;
-    if (String(r.formaId) === String(f.id)) opt.selected = true;
-    formaSel.appendChild(opt);
   });
 
   alunoSel.onchange = () => {
@@ -1044,11 +1032,36 @@ function renderReview() {
     r.alunoNome = aluno?.nome || null;
   };
 
-  formaSel.onchange = () => {
-    r.formaId = formaSel.value ? (isNaN(formaSel.value) ? formaSel.value : Number(formaSel.value)) : null;
-    recalcularNota(r);
-    renderBubbleTable(r);
-  };
+  // Botões de Rádio (Flexbox) para Formas do Gabarito
+  const formaContainer = document.getElementById('reviewForma');
+  if (formaContainer) {
+    formaContainer.innerHTML = '';
+    state.formas.forEach(f => {
+      const isChecked = String(r.formaId) === String(f.id);
+      const label = document.createElement('label');
+      label.className = `forma-radio-btn ${isChecked ? 'active' : ''}`;
+
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = `reviewFormaGroup_${state.reviewIdx}`;
+      radio.value = f.id;
+      radio.checked = isChecked;
+
+      radio.onchange = () => {
+        formaContainer.querySelectorAll('.forma-radio-btn').forEach(btn => btn.classList.remove('active'));
+        label.classList.add('active');
+
+        r.formaId = f.id ? (isNaN(f.id) ? f.id : Number(f.id)) : null;
+        recalcularNota(r);
+        renderBubbleTable(r);
+        renderGradeSummary(r);
+      };
+
+      label.appendChild(radio);
+      label.appendChild(document.createTextNode(`Forma ${f.label}`));
+      formaContainer.appendChild(label);
+    });
+  }
 
   // Botão Anular — atualiza visual e estado
   const btnAnularFoto = document.getElementById('btnAnularFoto');

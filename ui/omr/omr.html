@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>OMR — Grade de Respostas</title>
+  <title>Correção de Provas — Folha de Respostas</title>
   <link rel="stylesheet" href="omr.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -28,7 +28,7 @@
             <i data-lucide="file-check-2"></i> Avaliações
           </button>
           <button id="nav-omr" class="nav-btn active" type="button">
-            <i data-lucide="grid-3x3"></i> Grade OMR
+            <i data-lucide="grid-3x3"></i> Leitor de Gabaritos
           </button>
 
           <div class="nav-divider"></div>
@@ -335,8 +335,8 @@
           <div class="review-image-panel">
             <div class="image-panel-controls">
               <button id="btnToggleReviewView" class="btn btn-secondary btn-sm"
-                title="Alternar entre Foto Completa e Bloco OMR">
-                <i data-lucide="scan"></i> <span id="lblReviewViewMode">Ver Bloco OMR</span>
+                title="Alternar entre Foto Completa e Cartão Resposta">
+                <i data-lucide="scan"></i> <span id="lblReviewViewMode">Ver Cartão Resposta</span>
               </button>
             </div>
             <!-- Calibrar dentro do painel da imagem (bottom-left) -->
@@ -367,8 +367,8 @@
                 </select>
               </div>
               <div class="form-group">
-                <label for="reviewForma">Forma do Gabarito</label>
-                <select id="reviewForma" class="form-control"></select>
+                <label>Forma do Gabarito</label>
+                <div id="reviewForma" class="forma-radio-group"></div>
               </div>
               <!-- Confirmar e Anular logo abaixo do aluno/forma -->
               <div class="review-inline-actions">
@@ -458,7 +458,7 @@
         <button id="calibClose" class="btn btn-secondary btn-sm"><i data-lucide="x"></i></button>
       </div>
       <div class="calib-instructions">
-        <p>Clique nos <strong>4 quadrados pretos</strong> do bloco OMR, em ordem:</p>
+        <p>Clique nos <strong>4 quadrados pretos</strong> do cartão de respostas, em ordem:</p>
         <div class="calib-steps">
           <span id="calibStep1" class="calib-dot tl active">1 — Superior Esquerdo</span>
           <span id="calibStep2" class="calib-dot tr">2 — Superior Direito</span>

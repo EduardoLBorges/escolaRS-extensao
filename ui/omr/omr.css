@@ -783,3 +783,47 @@ header h1 {
   border-top: 1px solid var(--border);
   margin-top: 4px;
 }
+
+/* ══════════════════════════════════
+   LEITOR — Formas do Gabarito (Radio Flexbox)
+   ══════════════════════════════════ */
+.forma-radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+  margin-bottom: 8px;
+}
+
+.forma-radio-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 14px;
+  background: var(--surface-hover, #f1f5f9);
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: var(--radius-sm, 6px);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted, #475569);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.forma-radio-btn:hover {
+  background: #e2e8f0;
+  color: var(--text, #0f172a);
+}
+
+.forma-radio-btn input[type="radio"] {
+  display: none;
+}
+
+.forma-radio-btn.active {
+  background: var(--primary, #2563eb);
+  color: #ffffff;
+  border-color: var(--primary, #2563eb);
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.3);
+}
+
