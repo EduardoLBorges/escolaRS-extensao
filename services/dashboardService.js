@@ -183,9 +183,6 @@ async function buildDashboardFromStorage() {
       const { nrDoc } = await chrome.storage.local.get('nrDoc');
 
       if (!nrDoc) {
-        // Sem nrDoc, verifica se consegue token (o que dispararia refresh se necessário).
-        // Se token existe mas nrDoc não, o usuário não fez ainda a primeira requisição ao portal.
-        await AuthManager.getValidToken(); // Lança erro se não houver token.
         throw new Error(AUTH_MISSING_ERROR);
       }
 

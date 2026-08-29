@@ -388,13 +388,11 @@ async function loadInstrumentos(turmaId, discId) {
   if (window.lucide) window.lucide.createIcons();
 
   try {
-    // Usa getValidToken() para garantir token válido — tenta renovação silenciosa se ausente
-    const token = await getValidToken();
-
     const idRecHumano = state.dashData?.idRecHumano;
     if (!idRecHumano) throw new Error('idRecHumano ausente. Atualize o Dashboard.');
 
-    const avaliacoes = await listarAvaliacoesTurma(turmaId, discId, idRecHumano, token);
+    // Autenticação é gerenciada de forma transparente por fetchEscolaRS e AuthManager.
+    const avaliacoes = await listarAvaliacoesTurma(turmaId, discId, idRecHumano);
 
     periodSel.innerHTML = '<option value="">— Selecione o período —</option>';
     avaliacoes.forEach(av => {
@@ -1327,15 +1325,6 @@ function initStep4() {
     btn.disabled = true;
     btn.innerHTML = '<i data-lucide="loader"></i> Enviando...';
     if (window.lucide) window.lucide.createIcons();
-
-    // Valida token antes de prosseguir — tenta renovação silenciosa se ausente
-    let token;
-    try {
-      token = await getValidToken();
-    } catch (e) {
-      showToast(e.message, 'error');
-      btn.disabled = false; return;
-    }
 
     if (!state.instrumento) {
       showToast('Nenhum instrumento selecionado. Volte ao Passo 1.', 'error');
