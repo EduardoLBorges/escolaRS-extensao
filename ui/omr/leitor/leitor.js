@@ -665,14 +665,14 @@ function initStep2() {
           dewarpedWidth: res.dewarpedWidth,
           dewarpedHeight: res.dewarpedHeight,
           formaId: state.formas[0]?.id || null,
-          alunoMatricula: null, alunoNome: null, nota: null, confirmed: false
+          alunoMatricula: null, alunoNome: null, nota: null, confirmed: false, annulled: false
         });
         thumbEl.classList.add('processed');
         thumbEl.querySelector('.thumb-badge').textContent = '✓ OK';
       } catch (err) {
         state.resultados.push({
           fotoIdx: i, answers: null, formaId: null,
-          alunoMatricula: null, alunoNome: null, nota: null, confirmed: false,
+          alunoMatricula: null, alunoNome: null, nota: null, confirmed: false, annulled: false,
           error: err.message
         });
         thumbEl.classList.add('error');
@@ -1047,12 +1047,23 @@ function renderReview() {
   formaSel.onchange = () => {
     r.formaId = formaSel.value ? (isNaN(formaSel.value) ? formaSel.value : Number(formaSel.value)) : null;
     recalcularNota(r);
-    renderAnswersTable(r);
+    renderBubbleTable(r);
   };
 
+  // Botão Anular — atualiza visual e estado
+  const btnAnularFoto = document.getElementById('btnAnularFoto');
+  if (btnAnularFoto) {
+    btnAnularFoto.classList.toggle('is-annulled', !!r.annulled);
+    btnAnularFoto.innerHTML = r.annulled
+      ? '<i data-lucide="undo-2"></i> Desfazer'
+      : '<i data-lucide="ban"></i> Anular';
+    if (window.lucide) window.lucide.createIcons({ nodes: [btnAnularFoto] });
+  }
+
   recalcularNota(r);
-  renderAnswersTable(r);
+  renderBubbleTable(r);
   renderGradeSummary(r);
+  renderDotNav();
 }
 
 function recalcularNota(r) {
@@ -1080,24 +1091,106 @@ function renderGradeSummary(r) {
   document.getElementById('reviewNota').textContent = r.nota != null ? r.nota.toFixed(1) : '—';
 }
 
-function renderAnswersTable(r) {
-  const tbody = document.getElementById('reviewAnswersBody');
-  tbody.innerHTML = '';
+function renderBubbleTable(r) {
+  const wrapper = document.getElementById('reviewBubbleTable');
+  if (!wrapper) return;
+  wrapper.innerHTML = '';
   const forma = state.formas.find(f => String(f.id) === String(r.formaId)) || state.formas[0];
   if (!r.answers) return;
 
+  const alt = (state.config.alternativas || 'ABCDE').split('');
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'bubble-grid-header';
+  let hHtml = '<div class="bubble-q-num">Q</div><div class="bubble-alts">';
+  alt.forEach(a => { hHtml += `<div class="bubble-alt-lbl">${a}</div>`; });
+  hHtml += '</div><div class="bubble-result-icon"></div>';
+  header.innerHTML = hHtml;
+  wrapper.appendChild(header);
+
   r.answers.forEach(({ questao, resposta, status }) => {
-    const gab = forma?.answers ? (forma.answers[questao] || '—') : '—';
-    const isOk = resposta === gab && status === 'ok';
-    const tr = document.createElement('tr');
-    tr.className = status === 'ok' ? (isOk ? 'correct' : 'wrong') : 'blank';
-    tr.innerHTML = `
-      <td>${String(questao).padStart(2, '0')}</td>
-      <td><strong>${resposta || (status === 'anulada' ? 'ANULADA' : '—')}</strong></td>
-      <td>${gab}</td>
-      <td>${isOk ? '✓' : (status === 'ok' ? '✗' : '○')}</td>
-    `;
-    tbody.appendChild(tr);
+    const gab = forma?.answers ? (forma.answers[questao] || null) : null;
+    const isRowAnnulled = status === 'anulada' || r.annulled;
+    const isCorrect = !isRowAnnulled && resposta === gab && status === 'ok';
+    const isWrong = !isRowAnnulled && resposta && resposta !== gab && status === 'ok';
+
+    let rowClass = 'bubble-row';
+    if (isRowAnnulled) rowClass += ' row-annulled';
+    else if (isCorrect) rowClass += ' row-correct';
+    else if (isWrong) rowClass += ' row-wrong';
+    else rowClass += ' row-blank';
+
+    const row = document.createElement('div');
+    row.className = rowClass;
+
+    const qNum = document.createElement('div');
+    qNum.className = 'bubble-q-num';
+    qNum.textContent = String(questao).padStart(2, '0');
+    row.appendChild(qNum);
+
+    const altsDiv = document.createElement('div');
+    altsDiv.className = 'bubble-alts';
+
+    alt.forEach(opcao => {
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.textContent = opcao;
+      bubble.title = `Q${questao}: selecionar ${opcao}`;
+
+      if (isRowAnnulled) {
+        bubble.classList.add('is-annulled');
+      } else {
+        if (opcao === gab) bubble.classList.add('is-correct');
+        if (opcao === resposta && status === 'ok') bubble.classList.add('is-selected');
+
+        bubble.addEventListener('click', () => {
+          const ans = r.answers.find(a => a.questao === questao);
+          if (!ans) return;
+          if (ans.resposta === opcao && ans.status === 'ok') {
+            ans.resposta = null;
+            ans.status = 'blank';
+          } else {
+            ans.resposta = opcao;
+            ans.status = 'ok';
+          }
+          recalcularNota(r);
+          renderBubbleTable(r);
+        });
+      }
+      altsDiv.appendChild(bubble);
+    });
+    row.appendChild(altsDiv);
+
+    const icon = document.createElement('div');
+    icon.className = 'bubble-result-icon';
+    if (isRowAnnulled) icon.innerHTML = '<span style="color:#9ca3af">○</span>';
+    else if (isCorrect) icon.innerHTML = '<span style="color:#10b981">✓</span>';
+    else if (isWrong) icon.innerHTML = '<span style="color:#ef4444">✗</span>';
+    else icon.innerHTML = '<span style="color:#d97706">—</span>';
+    row.appendChild(icon);
+
+    wrapper.appendChild(row);
+  });
+}
+
+function renderDotNav() {
+  const nav = document.getElementById('reviewDotNav');
+  if (!nav) return;
+  nav.innerHTML = '';
+  state.resultados.forEach((res, i) => {
+    const dot = document.createElement('div');
+    let cls = 'dot-nav-item status-pending';
+    if (res.annulled) cls = 'dot-nav-item status-annulled';
+    else if (res.confirmed) cls = 'dot-nav-item status-confirmed';
+    if (i === state.reviewIdx) cls += ' is-active';
+    dot.className = cls;
+    dot.textContent = i + 1;
+    dot.title = `Foto ${i + 1}${res.alunoNome ? ' — ' + res.alunoNome : ''}${
+      res.confirmed ? ' ✓ confirmada' : res.annulled ? ' ✗ anulada' : ''
+    }`;
+    dot.addEventListener('click', () => { state.reviewIdx = i; renderReview(); });
+    nav.appendChild(dot);
   });
 }
 
@@ -1223,6 +1316,8 @@ function initStep3() {
     if (!r.alunoMatricula) { showToast('Selecione o aluno antes de confirmar.', 'warning'); return; }
     recalcularNota(r);
     r.confirmed = true;
+    r.annulled = false;
+    renderDotNav();
     showToast(`Foto ${state.reviewIdx + 1} confirmada!`, 'success');
 
     // Avança automaticamente
@@ -1230,13 +1325,34 @@ function initStep3() {
       state.reviewIdx++;
       renderReview();
     } else {
-      const allDone = state.resultados.every(r => r.confirmed);
+      const allDone = state.resultados.every(r => r.confirmed || r.annulled);
       if (allDone) { renderStep4(); goToStep(4); }
-      else showToast('Confirme todas as fotos para prosseguir.', 'warning');
+      else showToast('Confirme ou anule todas as fotos para prosseguir.', 'warning');
     }
   });
 
-  // Botão Calibrar: abre modal e re-processa a foto atual com os cantos manuais
+  // Botão Anular Foto
+  document.getElementById('btnAnularFoto')?.addEventListener('click', () => {
+    const r = state.resultados[state.reviewIdx];
+    r.annulled = !r.annulled;
+    if (r.annulled) {
+      r.confirmed = false;
+      r.nota = 0;
+      // Marca todas as respostas como anulada
+      if (r.answers) r.answers.forEach(a => { a.status = 'anulada'; });
+      showToast(`Foto ${state.reviewIdx + 1} anulada.`, 'warning');
+    } else {
+      // Restaura status das respostas para 'ok'/'blank'
+      if (r.answers) r.answers.forEach(a => {
+        if (a.status === 'anulada') a.status = a.resposta ? 'ok' : 'blank';
+      });
+      recalcularNota(r);
+      showToast(`Anulação da foto ${state.reviewIdx + 1} desfeita.`, 'info');
+    }
+    renderReview();
+  });
+
+  // Botão Calibrar: abre modal e re-processa com cantos manuais
   document.getElementById('btnRecalibrar').addEventListener('click', async () => {
     const idx = state.reviewIdx;
     const r = state.resultados[idx];
@@ -1256,8 +1372,10 @@ function initStep3() {
           dewarpedImageData: res.dewarpedImageData,
           dewarpedWidth: res.dewarpedWidth,
           dewarpedHeight: res.dewarpedHeight,
-          nota: null, confirmed: false,
+          nota: null, confirmed: false, annulled: false,
         };
+        // Após calibração manual, exibe automaticamente o bloco OMR (dewarped)
+        state.reviewViewMode = 'dewarped';
         recalcularNota(state.resultados[idx]);
         renderReview();
         showToast('Re-processado com sucesso!', 'success');

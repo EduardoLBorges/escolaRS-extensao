@@ -396,10 +396,17 @@
                             <span id="reviewProgress" class="review-progress">Foto 1 de N</span>
                         </div>
                         <div class="review-layout">
+                            <!-- Imagem processada com overlay -->
                             <div class="review-image-panel">
                                 <div class="image-panel-controls">
                                     <button id="btnToggleReviewView" class="btn btn-secondary btn-sm" type="button" title="Alternar entre Foto Completa e Bloco OMR">
                                         <i data-lucide="scan"></i> <span id="lblReviewViewMode">Ver Bloco OMR</span>
+                                    </button>
+                                </div>
+                                <!-- Calibrar dentro do painel da imagem (bottom-left) -->
+                                <div class="image-panel-calib-controls">
+                                    <button id="btnRecalibrar" class="btn btn-warning btn-sm" type="button" title="Marcar cantos manualmente">
+                                        <i data-lucide="crosshair"></i> Calibrar
                                     </button>
                                 </div>
                                 <div class="image-panel-rotate-controls">
@@ -412,17 +419,31 @@
                                 </div>
                                 <canvas id="reviewCanvas"></canvas>
                             </div>
+                            <!-- Painel de dados -->
                             <div class="review-data-panel">
-                                <div class="form-group">
-                                    <label for="reviewAluno">Aluno</label>
-                                    <select id="reviewAluno" class="form-control">
-                                        <option value="">— Selecione o aluno —</option>
-                                    </select>
+                                <!-- Aluno + Forma + Confirmar/Anular -->
+                                <div class="review-aluno-section">
+                                    <div class="form-group">
+                                        <label for="reviewAluno">Aluno</label>
+                                        <select id="reviewAluno" class="form-control">
+                                            <option value="">— Selecione o aluno —</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="reviewForma">Forma do Gabarito</label>
+                                        <select id="reviewForma" class="form-control"></select>
+                                    </div>
+                                    <!-- Confirmar e Anular logo abaixo do aluno/forma -->
+                                    <div class="review-inline-actions">
+                                        <button id="btnConfirmarFoto" class="btn btn-success btn-sm" type="button">
+                                            <i data-lucide="check"></i> Confirmar
+                                        </button>
+                                        <button id="btnAnularFoto" class="btn btn-annul btn-sm" type="button">
+                                            <i data-lucide="ban"></i> Anular
+                                        </button>
+                                    </div>
                                 </div>
-                                <div class="form-group">
-                                    <label for="reviewForma">Forma do Gabarito</label>
-                                    <select id="reviewForma" class="form-control"></select>
-                                </div>
+                                <!-- Resumo da nota -->
                                 <div class="grade-summary">
                                     <div class="grade-stat">
                                         <span class="stat-label">Acertos</span>
@@ -441,28 +462,18 @@
                                         <span id="reviewNota" class="stat-value">—</span>
                                     </div>
                                 </div>
-                                <div class="answers-table-wrapper">
-                                    <table class="answers-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Q</th>
-                                                <th>Detectado</th>
-                                                <th>Gabarito</th>
-                                                <th>✓</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="reviewAnswersBody"></tbody>
-                                    </table>
-                                </div>
-                                <div class="review-nav">
-                                    <button id="btnReviewBack" class="btn btn-secondary btn-sm" type="button">Anterior</button>
-                                    <button id="btnRecalibrar" class="btn btn-warning btn-sm" type="button" title="Marcar cantos manualmente">
-                                        <i data-lucide="crosshair"></i> Calibrar
+                                <!-- Dot-nav com status colorido por foto -->
+                                <div id="reviewDotNav" class="dot-nav"></div>
+                                <!-- Tabela visual de bolhas (editável) -->
+                                <div id="reviewBubbleTable" class="bubble-grid-wrapper"></div>
+                                <!-- Anterior / Próxima na base do painel -->
+                                <div class="review-nav-arrows">
+                                    <button id="btnReviewBack" class="btn btn-secondary btn-sm" type="button">
+                                        <i data-lucide="arrow-left"></i> Anterior
                                     </button>
-                                    <button id="btnConfirmarFoto" class="btn btn-success btn-sm" type="button">
-                                        Confirmar <i data-lucide="check"></i>
+                                    <button id="btnReviewNext" class="btn btn-primary btn-sm" type="button">
+                                        Próxima <i data-lucide="arrow-right"></i>
                                     </button>
-                                    <button id="btnReviewNext" class="btn btn-primary btn-sm" type="button">Próxima</button>
                                 </div>
                             </div>
                         </div>
