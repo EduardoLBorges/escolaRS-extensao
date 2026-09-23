@@ -152,6 +152,153 @@ function temNotasCompletas(alunoOuNotas, isSemestre = false) {
 }
 
 /**
+ * Calcula a nota mínima necessária no período de fechamento (3° Trimestre ou 2° Semestre)
+ * para que o aluno alcance a média final mínima para aprovação (>= 6,0).
+ *
+ * Para o sistema trimestral (pesos 3, 3, 4 com soma 10):
+ *   (T1 * 3 + T2 * 3 + T3 * 4) / 10 >= 6.0
+ *   T3 >= (60 - 3 * (T1 + T2)) / 4
+ *
+ * Para o sistema semestral (EJA, média simples):
+ *   (S1 + S2) / 2 >= 6.0
+ *   S2 >= 12 - S1
+ *
+ * @param {Object|Array} alunoOuNotas - Objeto aluno ou array de notas
+ * @param {string} periodo - Nome do período clicado (ex: "3° Trim", "2° Sem")
+ * @returns {{
+ *   aplicavel: boolean,
+ *   pendente: boolean,
+ *   valorExato: number|null,
+ *   formatada: string,
+ *   status: 'garantido'|'exame'|'normal'|'pendente',
+ *   atingiu: boolean|null
+ * }|null}
+ */
+function calcularNotaMinimaPeriodo(alunoOuNotas, periodo) {
+  const notas = Array.isArray(alunoOuNotas) ? alunoOuNotas : (alunoOuNotas?.notas || []);
+  if (!notas || !periodo) return null;
+
+  const periodoLower = periodo.toLowerCase();
+  const isSemestre = periodoLower.includes('sem');
+  const isTrimestre = periodoLower.includes('trim');
+  const numMatch = periodoLower.match(/\d+/);
+  if (!numMatch) return null;
+  const num = parseInt(numMatch[0], 10);
+
+  // Apenas aplicável ao período final (3° Trimestre ou 2° Semestre)
+  if (isTrimestre && num === 3) {
+    const t1Str = getNotaTexto(notas, '1° Trim');
+    const t2Str = getNotaTexto(notas, '2° Trim');
+
+    if (t1Str === '--' || t2Str === '--') {
+      return {
+        aplicavel: true,
+        pendente: true,
+        valorExato: null,
+        formatada: '--',
+        status: 'pendente',
+        atingiu: null,
+      };
+    }
+
+    const t1 = parseFloat(t1Str.replace('*', '').replace(',', '.'));
+    const t2 = parseFloat(t2Str.replace('*', '').replace(',', '.'));
+    if (isNaN(t1) || isNaN(t2)) {
+      return {
+        aplicavel: true,
+        pendente: true,
+        valorExato: null,
+        formatada: '--',
+        status: 'pendente',
+        atingiu: null,
+      };
+    }
+
+    // Fórmula dos pesos [3, 3, 4] com soma 10 e média 6,0:
+    // (t1 * 3 + t2 * 3 + t3 * 4) / 10 >= 6.0 => t3 >= (60 - 3 * (t1 + t2)) / 4
+    const minNecessario = (60 - 3 * (t1 + t2)) / 4;
+    return montarResultadoNotaMinima(minNecessario, notas, periodo);
+  }
+
+  if (isSemestre && num === 2) {
+    const s1Str = getNotaTexto(notas, '1° Sem');
+    if (s1Str === '--') {
+      return {
+        aplicavel: true,
+        pendente: true,
+        valorExato: null,
+        formatada: '--',
+        status: 'pendente',
+        atingiu: null,
+      };
+    }
+
+    const s1 = parseFloat(s1Str.replace('*', '').replace(',', '.'));
+    if (isNaN(s1)) {
+      return {
+        aplicavel: true,
+        pendente: true,
+        valorExato: null,
+        formatada: '--',
+        status: 'pendente',
+        atingiu: null,
+      };
+    }
+
+    // Fórmula semestral (média simples / 2 >= 6.0 => s2 >= 12 - s1)
+    const minNecessario = 12 - s1;
+    return montarResultadoNotaMinima(minNecessario, notas, periodo);
+  }
+
+  return null;
+}
+
+function montarResultadoNotaMinima(minNecessario, notas, periodo) {
+  let status = 'normal';
+  let formatada = '';
+
+  if (minNecessario <= 0) {
+    status = 'garantido';
+    formatada = '0,0';
+  } else if (minNecessario > 10) {
+    status = 'exame';
+    formatada = '> 10,0';
+  } else {
+    // Se for inteiro ou tiver até 1 casa decimal (ex: 4.5, 6.0)
+    if (minNecessario % 1 === 0 || (minNecessario * 10) % 1 === 0) {
+      formatada = minNecessario.toFixed(1).replace('.', ',');
+    } else {
+      // Se tiver 2 casas decimais (ex: 3.75, 1.25)
+      formatada = minNecessario.toFixed(2).replace('.', ',');
+    }
+  }
+
+  // Verifica se a nota do período já foi lançada e se atingiu a nota mínima
+  const notaPeriodoStr = getNotaTexto(notas, periodo);
+  let atingiu = null;
+  if (notaPeriodoStr !== '--') {
+    const notaAtual = parseFloat(notaPeriodoStr.replace('*', '').replace(',', '.'));
+    if (!isNaN(notaAtual)) {
+      if (minNecessario <= 0) {
+        atingiu = true;
+      } else {
+        // Tolerância de aproximação de 1 casa decimal para o fechamento
+        atingiu = (notaAtual >= minNecessario || parseFloat(notaAtual.toFixed(1)) >= parseFloat(minNecessario.toFixed(1)));
+      }
+    }
+  }
+
+  return {
+    aplicavel: true,
+    pendente: false,
+    valorExato: minNecessario,
+    formatada,
+    status,
+    atingiu,
+  };
+}
+
+/**
  * Retorna a classe CSS para o badge da nota.
  * @param {number|null} media 
  * @returns {string}

@@ -609,7 +609,7 @@ function createStudentsTable(alunos, disciplina) {
 let activeNotaTooltip = null;
 
 /**
- * Exibe ou oculta tooltip popover ancorado à célula com o detalhamento das notas do trimestre e ER.
+ * Exibe ou oculta tooltip popover ancorado à célula com visual clean e detalhamento das notas do trimestre, ER e nota mínima.
  */
 function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
   if (activeNotaTooltip && activeNotaTooltip.dataset.tdId === tdElement.dataset.tooltipId) {
@@ -626,9 +626,21 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
   const notaER = getNotaValorBruto(aluno.notas, periodo, true);
   const notaFinal = getNotaTexto(aluno.notas, periodo);
   const isErSemTrimestre = (notaER !== '--' && notaRegular === '--');
+  const temER = notaER !== '--';
+  const temRegular = notaRegular !== '--';
+
+  const infoMinima = (typeof calcularNotaMinimaPeriodo === 'function')
+    ? calcularNotaMinimaPeriodo(aluno, periodo)
+    : null;
 
   if (!tdElement.dataset.tooltipId) {
     tdElement.dataset.tooltipId = 'tp_' + Math.random().toString(36).substring(2, 9);
+  }
+
+  // Previne que o tooltip nativo do navegador apareça sobre o popover
+  if (tdElement.title) {
+    tdElement.dataset.origTitle = tdElement.title;
+    tdElement.title = '';
   }
 
   const tooltip = createEl('div', {
@@ -636,35 +648,26 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
     dataset: { tdId: tdElement.dataset.tooltipId }
   });
 
-  let statusMsg = '';
-  let statusIsAlert = false;
-  if (isErSemTrimestre) {
-    statusMsg = `<i data-lucide="alert-triangle"></i> Atenção: ER registrado sem nota do ${tipoLabel.toLowerCase()}`;
-    statusIsAlert = true;
-  } else if (notaER !== '--' && notaFinal.includes('*')) {
-    statusMsg = `Considerada nota do ER`;
-  } else if (notaER !== '--' && !notaFinal.includes('*')) {
-    statusMsg = `Mantida nota do ${tipoLabel.toLowerCase()}`;
-  } else if (notaRegular !== '--') {
-    statusMsg = `Sem nota de ER`;
-  } else {
-    statusMsg = `Sem nota lançada`;
-  }
-
   const getValBadgeClass = (valStr) => {
-    if (valStr === '--') return 'val-muted';
+    if (!valStr || valStr === '--') return 'val-muted';
     const n = parseNota(valStr.replace('*', ''));
+    if (isNaN(n)) return 'val-muted';
     if (n >= 6) return 'val-aprov';
     if (n >= 5) return 'val-recup';
     return 'val-reprov';
   };
 
-  tooltip.innerHTML = `
-    <div class="tooltip-header">
-      <strong>${aluno.nome.split(' ')[0]}</strong>
-      <span class="tooltip-sub">${periodo}</span>
-    </div>
-    <div class="tooltip-body">
+  // Nome limpo para exibição (Primeiro nome + inicial do sobrenome)
+  const partesNome = (aluno.nome || '').trim().split(/\s+/);
+  const primeiroNome = partesNome[0] || 'Aluno';
+  const sobrenomeInicial = partesNome.length > 1 ? ` ${partesNome[1][0]}.` : '';
+  const nomeExibicao = `${primeiroNome}${sobrenomeInicial}`;
+
+  // Montagem minimalista das linhas de notas
+  let rowsHtml = '';
+
+  if (temER) {
+    rowsHtml += `
       <div class="tooltip-row">
         <span class="tooltip-lbl">Nota ${tipoLabel}:</span>
         <span class="tooltip-val ${isErSemTrimestre ? 'val-muted val-ausente' : getValBadgeClass(notaRegular)}">${isErSemTrimestre ? 'Não lançada (--)' : notaRegular}</span>
@@ -678,8 +681,66 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
         <span class="tooltip-lbl">Final Exibida:</span>
         <span class="tooltip-val ${getValBadgeClass(notaFinal)}">${notaFinal}</span>
       </div>
+    `;
+  } else {
+    // Quando não há ER, exibe apenas a linha da nota do trimestre de forma direta e limpa
+    rowsHtml += `
+      <div class="tooltip-row highlight">
+        <span class="tooltip-lbl">Nota ${tipoLabel}:</span>
+        <span class="tooltip-val ${temRegular ? getValBadgeClass(notaRegular) : 'val-muted'}">${temRegular ? notaRegular : 'Não lançada (--)'}</span>
+      </div>
+    `;
+  }
+
+  // Se aplicável (3° Trimestre ou 2° Semestre), inclui a linha de Nota Mínima
+  if (infoMinima && infoMinima.aplicavel) {
+    let minBadgeClass = 'val-min-alvo';
+    if (infoMinima.status === 'garantido') minBadgeClass = 'val-min-garantido';
+    else if (infoMinima.status === 'exame') minBadgeClass = 'val-min-exame';
+    else if (infoMinima.status === 'pendente') minBadgeClass = 'val-muted';
+
+    rowsHtml += `
+      <div class="tooltip-divider"></div>
+      <div class="tooltip-row highlight tooltip-row-minima">
+        <span class="tooltip-lbl">Nota mínima:</span>
+        <span class="tooltip-val ${minBadgeClass}" title="Nota necessária no período para aprovação (média ≥ 6,0)">${infoMinima.formatada}</span>
+      </div>
+    `;
+  }
+
+  // Rodapé contextual sutil
+  let footerHtml = '';
+
+  if (isErSemTrimestre) {
+    footerHtml = `<div class="tooltip-footer tooltip-footer-alerta"><i data-lucide="alert-triangle"></i> ER sem nota regular</div>`;
+  } else if (temER) {
+    const erMsg = notaFinal.includes('*') ? 'Considerada nota do ER' : `Mantida nota do ${tipoLabel.toLowerCase()}`;
+    footerHtml = `<div class="tooltip-footer">${erMsg}</div>`;
+  } else if (infoMinima && infoMinima.aplicavel) {
+    if (infoMinima.status === 'pendente') {
+      footerHtml = `<div class="tooltip-footer tooltip-footer-muted">Aguardando trimestres anteriores</div>`;
+    } else if (infoMinima.status === 'garantido') {
+      footerHtml = `<div class="tooltip-footer tooltip-footer-sucesso"><i data-lucide="check"></i> Aprovação garantida (média ≥ 6,0)</div>`;
+    } else if (infoMinima.status === 'exame') {
+      footerHtml = `<div class="tooltip-footer tooltip-footer-aviso"><i data-lucide="alert-triangle"></i> Necessita exame final</div>`;
+    } else if (infoMinima.atingiu === true) {
+      footerHtml = `<div class="tooltip-footer tooltip-footer-sucesso"><i data-lucide="check"></i> Atingiu a nota mínima</div>`;
+    } else if (infoMinima.atingiu === false) {
+      footerHtml = `<div class="tooltip-footer tooltip-footer-aviso"><i data-lucide="alert-triangle"></i> Abaixo da nota mínima</div>`;
+    } else {
+      footerHtml = `<div class="tooltip-footer">Necessária p/ média 6,0</div>`;
+    }
+  }
+
+  tooltip.innerHTML = `
+    <div class="tooltip-header">
+      <strong class="tooltip-aluno-nome" title="${aluno.nome}">${nomeExibicao}</strong>
+      <span class="tooltip-sub">${periodo}</span>
     </div>
-    <div class="tooltip-footer ${statusIsAlert ? 'tooltip-footer-alerta' : ''}">${statusMsg}</div>
+    <div class="tooltip-body">
+      ${rowsHtml}
+    </div>
+    ${footerHtml}
     <div class="tooltip-arrow"></div>
   `;
 
@@ -720,6 +781,14 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
 
 function closeActiveNotaTooltip() {
   if (activeNotaTooltip) {
+    const tdId = activeNotaTooltip.dataset.tdId;
+    if (tdId) {
+      const tdEl = document.querySelector(`td[data-tooltip-id="${tdId}"]`);
+      if (tdEl && tdEl.dataset.origTitle) {
+        tdEl.title = tdEl.dataset.origTitle;
+        delete tdEl.dataset.origTitle;
+      }
+    }
     activeNotaTooltip.remove();
     activeNotaTooltip = null;
     document.removeEventListener('click', closeActiveNotaTooltipOnOutsideClick);
