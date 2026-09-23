@@ -59,12 +59,13 @@ function exportarXLSX(dashboardData, escolaSelecionada, turmaSelecionada, alunoF
             }
           }
 
-          const { texto } = getAlunoStatus(aluno.mediaFinal, aluno.mediaFinal > 0);
-          const status = texto || 'Sem Notas';
+          const temMedia = temNotasCompletas(aluno, isSemestre) && aluno.mediaFinal !== null && aluno.mediaFinal !== undefined;
+          const { texto } = getAlunoStatus(aluno.mediaFinal, temMedia);
+          const status = texto || '--';
 
           linha.push(
             disc.disciplina || '',
-            aluno.mediaFinal > 0 ? aluno.mediaFinal.toFixed(1).replace('.', ',') : '--',
+            temMedia ? aluno.mediaFinal.toFixed(1).replace('.', ',') : '--',
             status
           );
           dados.push(linha);

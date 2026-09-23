@@ -1,4 +1,5 @@
 let dashboardData = null;
+let ocultarInativosState = localStorage.getItem('escolaRs_ocultarInativos') === 'true';
 
 const SELECTORS = {
   // Containers
@@ -22,6 +23,7 @@ const SELECTORS = {
   filterEscola: '#filter-escola',
   filterTurma: '#filter-turma',
   filterAluno: '#filter-aluno',
+  filterOcultarInativos: '#filter-ocultar-inativos',
   clearFilters: '#clear-filters',
   exportXlsx: '#export-xlsx',
 
@@ -227,6 +229,11 @@ function renderApp() {
     }
   }
 
+  const novoOcultarInativosInput = document.querySelector(SELECTORS.filterOcultarInativos);
+  if (novoOcultarInativosInput) {
+    novoOcultarInativosInput.checked = ocultarInativosState;
+  }
+
   // Aplica filtros (mesmo que vazios) para inicializar as estatísticas filtradas e visibilidade
   applyFilters();
 
@@ -397,7 +404,15 @@ function renderControls(data) {
   const filtersGroup = createEl('div', { className: 'controls-filters' }, [
     createEl('select', { id: SELECTORS.filterEscola.slice(1), className: 'filter-select' }, escolaOptions),
     createEl('select', { id: SELECTORS.filterTurma.slice(1), className: 'filter-select' }, turmaOptions),
-    createEl('input', { type: 'text', id: SELECTORS.filterAluno.slice(1), className: 'filter-input', placeholder: '\uD83D\uDD0D Buscar aluno...' }),
+    createEl('input', { type: 'text', id: SELECTORS.filterAluno.slice(1), className: 'filter-input', placeholder: '🔍 Buscar aluno...' }),
+    createEl('label', { className: 'filter-toggle-label', title: 'Ocultar alunos não ativos no dashboard' }, [
+      createEl('input', {
+        type: 'checkbox',
+        id: SELECTORS.filterOcultarInativos.slice(1),
+        checked: ocultarInativosState
+      }),
+      createEl('span', {}, ['Ocultar inativos'])
+    ])
   ]);
 
   const actionsGroup = createEl('div', { className: 'controls-actions' }, [
@@ -439,15 +454,19 @@ function renderDisciplina(disc, turmaNome) {
   const alunosAtivos = getAlunosAtivos(alunos);
   if (alunosAtivos.length === 0) return createEl('div');
 
-  const mediaTurma = (alunosAtivos.reduce((acc, a) => acc + (a.mediaFinal || 0), 0) / alunosAtivos.length).toFixed(1);
-  const aprovados = alunosAtivos.filter(a => a.mediaFinal >= 6).length;
-  const percentual = ((aprovados / alunosAtivos.length) * 100).toFixed(0);
+  const { isSemestre: isSemestreTurma } = detectarTipoEPeriodos(alunos);
+  const alunosComMedia = alunosAtivos.filter(a => temNotasCompletas(a, isSemestreTurma) && a.mediaFinal !== null && a.mediaFinal !== undefined);
+  const mediaTurma = alunosComMedia.length > 0
+    ? (alunosComMedia.reduce((acc, a) => acc + (a.mediaFinal || 0), 0) / alunosComMedia.length).toFixed(1).replace('.', ',')
+    : '--';
+  const aprovados = alunosComMedia.filter(a => a.mediaFinal >= 6).length;
+  const percentual = alunosComMedia.length > 0 ? ((aprovados / alunosComMedia.length) * 100).toFixed(0) : '0';
   const alunosInativos = alunos.length - alunosAtivos.length;
 
   const headerInfoDiv = createEl('div', { style: 'flex: 1;' }, [
     createEl('div', {}, [`${turmaNome} - ${disciplina}`]),
     createEl('div', { className: 'turma-info' }, [
-      `${alunosAtivos.length} alunos${alunosInativos > 0 ? ` (+${alunosInativos} inativos)` : ''} | Média: ${mediaTurma} | ${aprovados} aprovados (${percentual}%)`
+      `${alunosAtivos.length} alunos${alunosInativos > 0 ? ` (+${alunosInativos} inativos)` : ''} | Média: ${mediaTurma}${alunosComMedia.length > 0 ? ` | ${aprovados} aprovados (${percentual}%)` : ''}`
     ])
   ]);
 
@@ -471,7 +490,7 @@ function renderDisciplina(disc, turmaNome) {
 
 
 function createStudentsTable(alunos, disciplina) {
-  const periodos = detectarTipoEPeriodos(alunos).periodos;
+  const { periodos, isSemestre } = detectarTipoEPeriodos(alunos);
 
   // Colgroup: Nº fixo | Foto fixo | Nome flex | períodos fixos | Média fixo | Status fixo
   const cols = [
@@ -494,8 +513,9 @@ function createStudentsTable(alunos, disciplina) {
 
   const studentRows = alunos.map(aluno => {
     const notasPeriodos = periodos.map(p => getNotaTexto(aluno.notas, p));
-    const todasAsNotasPreenchidas = notasPeriodos.every(nota => nota !== '--');
-    const { texto: statusTexto, classe: statusClass } = getAlunoStatus(aluno.mediaFinal, todasAsNotasPreenchidas);
+    const possuiNotasCompletas = temNotasCompletas(aluno, isSemestre);
+    const temMedia = possuiNotasCompletas && aluno.mediaFinal !== null && aluno.mediaFinal !== undefined;
+    const { texto: statusTexto, classe: statusClass } = getAlunoStatus(aluno.mediaFinal, temMedia);
 
     const isAtivo = aluno.situacao?.ativo === true;
     const isInativo = !isAtivo;
@@ -512,11 +532,27 @@ function createStudentsTable(alunos, disciplina) {
     } else {
       cells.push(...notasPeriodos.map((nota, idx) => {
         const p = periodos[idx];
+        const notaRegular = getNotaValorBruto(aluno.notas, p, false);
+        const notaER = getNotaValorBruto(aluno.notas, p, true);
+        const isErSemTrimestre = (notaER !== '--' && notaRegular === '--');
+
+        let cellContent;
+        let cellTitle = `Clique para ver detalhes de ${p}`;
+        let cellClass = 'nota-periodo-cell';
+
+        if (isErSemTrimestre) {
+          cellClass += ' tem-alerta-er';
+          cellTitle = `⚠️ Atenção: Nota de ER (${notaER}) registrada sem nota do ${p.toLowerCase()}! Clique para detalhes.`;
+          cellContent = `<span class="alerta-er-wrap"><span>${nota}</span><span class="alerta-er-icon" title="Atenção: Nota de ER (${notaER}) registrada sem nota regular do trimestre"><i data-lucide="alert-triangle"></i></span></span>`;
+        } else {
+          cellContent = nota;
+        }
+
         const td = createEl('td', {
-          innerHTML: nota,
-          className: 'nota-periodo-cell',
+          innerHTML: cellContent,
+          className: cellClass,
           style: 'text-align:center;',
-          title: `Clique para ver detalhes de ${p}`
+          title: cellTitle
         });
         td.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -524,9 +560,18 @@ function createStudentsTable(alunos, disciplina) {
         });
         return td;
       }));
+
+      const mediaCellContent = temMedia
+        ? [createEl('span', { className: `nota-badge ${getClasseBadge(aluno.mediaFinal)}` }, [aluno.mediaFinal.toFixed(1).replace('.', ',')])]
+        : ['--'];
+
+      const statusCellContent = temMedia && statusTexto
+        ? [createEl('span', { className: statusClass }, [statusTexto])]
+        : ['--'];
+
       cells.push(
-        createEl('td', { style: 'text-align:center;' }, [createEl('span', { className: `nota-badge ${getClasseBadge(aluno.mediaFinal)}` }, [aluno.mediaFinal.toFixed(1).replace('.', ',')])]),
-        createEl('td', { style: 'text-align:center;' }, [createEl('span', { className: statusClass }, [statusTexto])])
+        createEl('td', { style: 'text-align:center;' }, mediaCellContent),
+        createEl('td', { style: 'text-align:center;' }, statusCellContent)
       );
     }
 
@@ -534,7 +579,7 @@ function createStudentsTable(alunos, disciplina) {
       alunoNome: aluno.nome.toLowerCase(),
       disciplinaNome: disciplina,
       alunoAtivo: isAtivo ? 'true' : 'false',
-      statusMedia: (todasAsNotasPreenchidas || aluno.mediaFinal > 0)
+      statusMedia: temMedia
         ? getStatusCategory(aluno.mediaFinal)
         : 'semnota',
     };
@@ -580,6 +625,7 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
   const notaRegular = getNotaValorBruto(aluno.notas, periodo, false);
   const notaER = getNotaValorBruto(aluno.notas, periodo, true);
   const notaFinal = getNotaTexto(aluno.notas, periodo);
+  const isErSemTrimestre = (notaER !== '--' && notaRegular === '--');
 
   if (!tdElement.dataset.tooltipId) {
     tdElement.dataset.tooltipId = 'tp_' + Math.random().toString(36).substring(2, 9);
@@ -591,7 +637,11 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
   });
 
   let statusMsg = '';
-  if (notaER !== '--' && notaFinal.includes('*')) {
+  let statusIsAlert = false;
+  if (isErSemTrimestre) {
+    statusMsg = `<i data-lucide="alert-triangle"></i> Atenção: ER registrado sem nota do ${tipoLabel.toLowerCase()}`;
+    statusIsAlert = true;
+  } else if (notaER !== '--' && notaFinal.includes('*')) {
     statusMsg = `Considerada nota do ER`;
   } else if (notaER !== '--' && !notaFinal.includes('*')) {
     statusMsg = `Mantida nota do ${tipoLabel.toLowerCase()}`;
@@ -617,7 +667,7 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
     <div class="tooltip-body">
       <div class="tooltip-row">
         <span class="tooltip-lbl">Nota ${tipoLabel}:</span>
-        <span class="tooltip-val ${getValBadgeClass(notaRegular)}">${notaRegular}</span>
+        <span class="tooltip-val ${isErSemTrimestre ? 'val-muted val-ausente' : getValBadgeClass(notaRegular)}">${isErSemTrimestre ? 'Não lançada (--)' : notaRegular}</span>
       </div>
       <div class="tooltip-row">
         <span class="tooltip-lbl">Nota ER:</span>
@@ -629,12 +679,16 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
         <span class="tooltip-val ${getValBadgeClass(notaFinal)}">${notaFinal}</span>
       </div>
     </div>
-    <div class="tooltip-footer">${statusMsg}</div>
+    <div class="tooltip-footer ${statusIsAlert ? 'tooltip-footer-alerta' : ''}">${statusMsg}</div>
     <div class="tooltip-arrow"></div>
   `;
 
   document.body.appendChild(tooltip);
   activeNotaTooltip = tooltip;
+
+  if (window.lucide) {
+    lucide.createIcons({ nodes: [tooltip] });
+  }
 
   const rect = tdElement.getBoundingClientRect();
   const tooltipRect = tooltip.getBoundingClientRect();
@@ -694,6 +748,11 @@ function attachControlEvents() {
 
   document.querySelector(SELECTORS.filterTurma)?.addEventListener('change', applyFilters);
   document.querySelector(SELECTORS.filterAluno)?.addEventListener('input', applyFilters);
+  document.querySelector(SELECTORS.filterOcultarInativos)?.addEventListener('change', (e) => {
+    ocultarInativosState = e.target.checked;
+    localStorage.setItem('escolaRs_ocultarInativos', ocultarInativosState ? 'true' : 'false');
+    applyFilters();
+  });
 
   document.querySelector(SELECTORS.clearFilters)?.addEventListener('click', () => {
     document.querySelector(SELECTORS.filterEscola).value = '';
@@ -758,6 +817,7 @@ function applyFilters() {
   const escolaFiltro = document.querySelector(SELECTORS.filterEscola).value;
   const turmaFiltro = document.querySelector(SELECTORS.filterTurma).value;
   const alunoFiltro = document.querySelector(SELECTORS.filterAluno).value.toLowerCase();
+  const ocultarInativos = document.querySelector(SELECTORS.filterOcultarInativos)?.checked ?? ocultarInativosState;
 
   document.querySelectorAll(SELECTORS.escolaCard).forEach(escolaCard => {
     const escolaNome = escolaCard.dataset.escolaNome;
@@ -780,7 +840,11 @@ function applyFilters() {
           const isAtivo = alunoRow.dataset.alunoAtivo === 'true';
 
           let filterMatch = true;
-          if (fstatCategoryFilter) {
+          if (ocultarInativos && !isAtivo) {
+            filterMatch = false;
+          }
+
+          if (filterMatch && fstatCategoryFilter) {
             if (!isAtivo) {
               filterMatch = false;
             } else {
@@ -1148,6 +1212,8 @@ function aplicarPreVisualizacao(tipo) {
                   const s2 = parseFloat(String(getNotaTexto(aluno.notas, '2° Sem')).replace(',', '.'));
                   if (!isNaN(s1) && !isNaN(s2)) {
                     aluno.mediaFinal = parseFloat(((s1 + s2) / 2).toFixed(1));
+                  } else {
+                    aluno.mediaFinal = null;
                   }
                 } else {
                   const p1 = parseFloat(String(getNotaTexto(aluno.notas, '1° Trim')).replace(',', '.'));
@@ -1155,6 +1221,8 @@ function aplicarPreVisualizacao(tipo) {
                   const p3 = parseFloat(String(getNotaTexto(aluno.notas, '3° Trim')).replace(',', '.'));
                   if (!isNaN(p1) && !isNaN(p2) && !isNaN(p3)) {
                     aluno.mediaFinal = parseFloat(((p1 * 3 + p2 * 3 + p3 * 4) / 10).toFixed(1));
+                  } else {
+                    aluno.mediaFinal = null;
                   }
                 }
               }

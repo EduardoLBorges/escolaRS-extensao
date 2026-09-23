@@ -461,6 +461,39 @@ main {
   background: var(--surface);
 }
 
+.filter-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-color);
+  height: 38px;
+  box-sizing: border-box;
+  transition: border-color 0.2s, background-color 0.2s, color 0.2s;
+  white-space: nowrap;
+}
+
+.filter-toggle-label:hover {
+  border-color: var(--primary);
+  color: var(--text-main);
+  background: var(--surface);
+}
+
+.filter-toggle-label input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: var(--primary);
+  width: 15px;
+  height: 15px;
+  margin: 0;
+}
+
 /* ========================================
    BUTTONS
    ======================================== */
@@ -1457,4 +1490,74 @@ tr:hover td {
   color: var(--text-muted);
   text-align: center;
   font-style: italic;
+}
+
+/* ========================================
+   ALERTA ER SEM NOTA REGULAR DO TRIMESTRE
+   ======================================== */
+.nota-periodo-cell.tem-alerta-er {
+  background-color: #fffbeb !important;
+  color: #92400e !important;
+  font-weight: 600;
+}
+
+.nota-periodo-cell.tem-alerta-er:hover {
+  background-color: #fef3c7 !important;
+  color: #78350f !important;
+}
+
+.alerta-er-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.alerta-er-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #d97706;
+  vertical-align: middle;
+  transition: transform 0.15s ease;
+}
+
+.alerta-er-icon:hover {
+  transform: scale(1.2);
+}
+
+.alerta-er-icon svg,
+.alerta-er-icon i {
+  width: 13px;
+  height: 13px;
+  stroke: #d97706;
+  stroke-width: 2.2px;
+}
+
+.tooltip-val.val-ausente {
+  font-style: italic;
+  color: #b45309;
+  background: #fef3c7;
+}
+
+.tooltip-footer.tooltip-footer-alerta {
+  background: #fef3c7;
+  color: #92400e;
+  border-top: 1px solid #fde68a;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-weight: 600;
+  font-style: normal;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.tooltip-footer.tooltip-footer-alerta svg,
+.tooltip-footer.tooltip-footer-alerta i {
+  width: 13px;
+  height: 13px;
+  color: #d97706;
+  flex-shrink: 0;
 }

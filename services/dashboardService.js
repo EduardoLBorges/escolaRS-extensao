@@ -225,7 +225,7 @@ function calculateStats(data) {
     }
   }
 
-  const mediaGeral = alunosComMedia > 0 ? (totalNotas / alunosComMedia).toFixed(1) : 0;
+  const mediaGeral = alunosComMedia > 0 ? (totalNotas / alunosComMedia).toFixed(1) : '--';
   const percentualAprovados = totalAlunos > 0 ? ((aprovados / totalAlunos) * 100).toFixed(1) : 0;
   return { totalAlunos, totalTurmas, mediaGeral, aprovados, percentualAprovados };
 }

@@ -40,19 +40,29 @@ function parseNota(valor) {
 function extrairNotasPorPeriodo(periodos, tipo, indices) {
   return indices.map((num) => {
     const numStr = String(num);
-    let melhorNota = -1;
+    let notaRegular = -1;
+    let notaER = -1;
 
     for (const [chave, valor] of Object.entries(periodos)) {
       const matchTipo = chave.includes(tipo);
       const matchNum = chave.includes(numStr);
       const isER = chave.includes('er');
 
-      if (matchTipo && matchNum && !isER) {
-        melhorNota = Math.max(melhorNota, valor);
+      if (matchNum) {
+        if (isER) {
+          notaER = Math.max(notaER, valor);
+        } else if (matchTipo) {
+          notaRegular = Math.max(notaRegular, valor);
+        }
       }
     }
 
-    return melhorNota;
+    // Se houver ER e nota regular, prevalece a maior
+    if (notaRegular >= 0 && notaER >= 0) {
+      return Math.max(notaRegular, notaER);
+    }
+    if (notaER >= 0) return notaER;
+    return notaRegular;
   });
 }
 
@@ -63,7 +73,7 @@ function extrairNotasPorPeriodo(periodos, tipo, indices) {
  * Suporta tanto sistema trimestral (3 trimestres) quanto semestral (EJA - 2 semestres)
  * 
  * @param {Array} listaResultados - Lista de resultados do aluno
- * @returns {number} Média final (1 casa decimal) ou 0 se incompleto
+ * @returns {number|null} Média final (1 casa decimal) ou null se incompleto
  */
 function calcularMediaFinal(listaResultados) {
   // Cria um mapa dos períodos encontrados para fácil acesso
@@ -86,13 +96,13 @@ function calcularMediaFinal(listaResultados) {
   // Se for SEMESTRE (EJA): média simples de 2 semestres
   if (temSemestre && !temTrimestre) {
     const [sem1, sem2] = extrairNotasPorPeriodo(periodos, 'sem', [1, 2]);
-    if (sem1 < 0 || sem2 < 0) return 0;
+    if (sem1 < 0 || sem2 < 0) return null;
     return parseFloat(((sem1 + sem2) / 2).toFixed(1));
   }
   
   // Se for TRIMESTRE (regular): média ponderada com pesos [3, 3, 4]
   const [trim1, trim2, trim3] = extrairNotasPorPeriodo(periodos, 'tri', [1, 2, 3]);
-  if (trim1 < 0 || trim2 < 0 || trim3 < 0) return 0;
+  if (trim1 < 0 || trim2 < 0 || trim3 < 0) return null;
 
   const media = (trim1 * PESOS_TRIMESTRE[0] + trim2 * PESOS_TRIMESTRE[1] + trim3 * PESOS_TRIMESTRE[2]) / SOMA_PESOS_TRIMESTRE;
   return parseFloat(media.toFixed(1));
@@ -120,11 +130,34 @@ function processarAluno(aluno) {
 }
 
 /**
+ * Verifica se o aluno possui notas registradas em todos os períodos necessários (3 trimestres ou 2 semestres).
+ * @param {Object|Array} alunoOuNotas - Objeto aluno ou array de notas
+ * @param {boolean} [isSemestre=false]
+ * @returns {boolean}
+ */
+function temNotasCompletas(alunoOuNotas, isSemestre = false) {
+  const notas = Array.isArray(alunoOuNotas) ? alunoOuNotas : (alunoOuNotas?.notas || []);
+  if (!notas || notas.length === 0) return false;
+
+  if (isSemestre) {
+    const s1 = getNotaTexto(notas, '1° Sem');
+    const s2 = getNotaTexto(notas, '2° Sem');
+    return s1 !== '--' && s2 !== '--';
+  }
+
+  const t1 = getNotaTexto(notas, '1° Trim');
+  const t2 = getNotaTexto(notas, '2° Trim');
+  const t3 = getNotaTexto(notas, '3° Trim');
+  return t1 !== '--' && t2 !== '--' && t3 !== '--';
+}
+
+/**
  * Retorna a classe CSS para o badge da nota.
- * @param {number} media 
+ * @param {number|null} media 
  * @returns {string}
  */
 function getClasseBadge(media) {
+  if (media === null || media === undefined || isNaN(media)) return '';
   if (media >= 6) return 'badge-excelente';
   if (media >= 5) return 'badge-bom';
   return 'badge-ruim';
@@ -132,12 +165,13 @@ function getClasseBadge(media) {
 
 /**
  * Classifica um valor de nota em uma categoria para filtragem.
- * @param {number|string} value 
+ * @param {number|string|null} value 
  * @returns {'aprov'|'recup'|'reprov'|'semnota'}
  */
 function getStatusCategory(value) {
   if (value === undefined || value === null || isNaN(value) || value === '--') return 'semnota';
   const val = typeof value === 'string' ? parseFloat(value.replace(',', '.')) : value;
+  if (isNaN(val)) return 'semnota';
   if (val >= 6) return 'aprov';
   if (val >= 5) return 'recup';
   return 'reprov';
@@ -145,12 +179,14 @@ function getStatusCategory(value) {
 
 /**
  * Retorna o texto e classe CSS de status de um aluno.
- * @param {number} mediaFinal 
+ * @param {number|null} mediaFinal 
  * @param {boolean} hasGrades 
  * @returns {{ texto: string, classe: string }}
  */
 function getAlunoStatus(mediaFinal, hasGrades) {
-  if (!hasGrades) return { texto: '', classe: '' };
+  if (!hasGrades || mediaFinal === null || mediaFinal === undefined || isNaN(mediaFinal)) {
+    return { texto: '', classe: '' };
+  }
   if (mediaFinal >= 6) return { texto: 'Aprovado', classe: 'status-excellente' };
   if (mediaFinal >= 5) return { texto: 'Recuperação', classe: 'status-recuperacao' };
   return { texto: 'Reprovado', classe: 'status-reprovado' };
