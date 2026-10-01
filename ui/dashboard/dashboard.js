@@ -645,14 +645,21 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
   const temRegular = notaRegular !== '--';
   const periodoMatch = periodo.toLowerCase().match(/(\d+)/);
   const tipoPeriodo = periodo.toLowerCase().includes('sem') ? 'sem' : 'trim';
-  const resultadoPeriodo = (aluno.listaResultados || []).find(r => {
+  const encontrarResultadoPeriodo = (isER) => (aluno.listaResultados || []).find(r => {
     const nome = (r.nomePeriodo || '').toLowerCase();
-    return nome.includes(tipoPeriodo) && nome.includes(periodoMatch?.[1] || '') && !nome.includes('er');
+    return nome.includes(tipoPeriodo) && nome.includes(periodoMatch?.[1] || '') && nome.includes('er') === isER;
   });
-  const editKey = resultadoPeriodo
-    ? `${aluno.matricula}_${disciplina.id}_${resultadoPeriodo.idPeriodo}_${resultadoPeriodo.idAproveitAval}`
-    : null;
-  const notaEditavel = editKey ? (resultadosPeriodoAlterados.get(editKey)?.aproveitamento ?? resultadoPeriodo.resultado) : '';
+  const resultadoRegular = encontrarResultadoPeriodo(false);
+  const resultadoER = encontrarResultadoPeriodo(true);
+  const valorEditavel = (resultado, valor, badgeClass, id) => {
+    if (!resultado) return `<span class="tooltip-val ${badgeClass}">${valor}</span>`;
+    const index = aluno.listaResultados.indexOf(resultado);
+    const key = `${aluno.matricula}_${disciplina.id}_${index}`;
+    const editado = resultadosPeriodoAlterados.get(key)?.aproveitamento;
+    const exibido = editado ?? valor;
+    const editClass = periodoEdicaoAtivo ? ' tooltip-editable-value' : '';
+    return `<span class="tooltip-val ${getValBadgeClass(exibido)}${editClass}" data-period-edit-key="${key}" data-period-result-index="${index}" id="${id}">${exibido}</span>`;
+  };
 
   const infoMinima = (typeof calcularNotaMinimaPeriodo === 'function')
     ? calcularNotaMinimaPeriodo(aluno, periodo)
@@ -695,11 +702,11 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
     rowsHtml += `
       <div class="tooltip-row">
         <span class="tooltip-lbl">Nota ${tipoLabel}:</span>
-        <span class="tooltip-val ${isErSemTrimestre ? 'val-muted val-ausente' : getValBadgeClass(notaRegular)}">${isErSemTrimestre ? 'Não lançada (--)' : notaRegular}</span>
+        ${valorEditavel(resultadoRegular, isErSemTrimestre ? 'Não lançada (--)' : notaRegular, isErSemTrimestre ? 'val-muted val-ausente' : getValBadgeClass(notaRegular), 'tooltip-period-regular')}
       </div>
       <div class="tooltip-row">
         <span class="tooltip-lbl">Nota ER:</span>
-        <span class="tooltip-val ${getValBadgeClass(notaER)}">${notaER}</span>
+        ${valorEditavel(resultadoER, notaER, getValBadgeClass(notaER), 'tooltip-period-er')}
       </div>
       <div class="tooltip-divider"></div>
       <div class="tooltip-row highlight">
@@ -712,7 +719,7 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
     rowsHtml += `
       <div class="tooltip-row highlight">
         <span class="tooltip-lbl">Nota ${tipoLabel}:</span>
-        <span class="tooltip-val ${temRegular ? getValBadgeClass(notaRegular) : 'val-muted'}">${temRegular ? notaRegular : 'Não lançada (--)'}</span>
+        ${valorEditavel(resultadoRegular, temRegular ? notaRegular : 'Não lançada (--)', temRegular ? getValBadgeClass(notaRegular) : 'val-muted', 'tooltip-period-regular')}
       </div>
     `;
   }
@@ -764,11 +771,6 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
     </div>
     <div class="tooltip-body">
       ${rowsHtml}
-      ${periodoEdicaoAtivo ? (resultadoPeriodo ? `
-        <div class="tooltip-divider"></div>
-        <label class="tooltip-edit-label" for="period-result-input">Editar nota</label>
-        <input id="period-result-input" class="tooltip-edit-input" type="text" inputmode="decimal" maxlength="5" value="${String(notaEditavel).replace(/"/g, '&quot;')}" aria-label="Nova nota do período">
-      ` : '<div class="tooltip-footer tooltip-footer-muted">Sem registro do período para editar</div>') : ''}
     </div>
     ${footerHtml}
     <div class="tooltip-arrow"></div>
@@ -777,36 +779,55 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
   document.body.appendChild(tooltip);
   activeNotaTooltip = tooltip;
 
-  const editInput = tooltip.querySelector('#period-result-input');
-  if (editInput && resultadoPeriodo && editKey) {
-    editInput.addEventListener('input', () => {
-      const raw = editInput.value.trim().replace(',', '.');
-      const value = raw === '' ? '' : Number(raw);
-      const original = Number(String(resultadoPeriodo.resultado).replace(',', '.'));
-      if (raw !== '' && (!Number.isFinite(value) || value < 0 || value > 10)) {
-        editInput.setCustomValidity('Informe uma nota entre 0 e 10.');
-        resultadosPeriodoAlterados.delete(editKey);
+  tooltip.querySelectorAll('.tooltip-editable-value').forEach(valueElement => {
+    valueElement.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const index = Number(valueElement.dataset.periodResultIndex);
+      const result = aluno.listaResultados[index];
+      const key = valueElement.dataset.periodEditKey;
+      const input = createEl('input', {
+        className: 'tooltip-edit-input tooltip-edit-input-inline',
+        type: 'text',
+        inputMode: 'decimal',
+        maxLength: 5,
+        value: resultadosPeriodoAlterados.get(key)?.aproveitamento ?? result.resultado,
+        ariaLabel: 'Editar nota do período'
+      });
+      valueElement.replaceWith(input);
+      input.focus();
+      input.select();
+      let draftSaved = false;
+      input.addEventListener('input', () => { draftSaved = false; });
+      const saveDraft = () => {
+        if (draftSaved) return;
+        const raw = input.value.trim().replace(',', '.');
+        const value = Number(raw);
+        if (!raw || !Number.isFinite(value) || value < 0 || value > 10) {
+          input.setCustomValidity('Informe uma nota entre 0 e 10.');
+          input.reportValidity();
+          return;
+        }
+        input.setCustomValidity('');
+        const original = Number(String(result.resultado).replace(',', '.'));
+        if (value === original) {
+          resultadosPeriodoAlterados.delete(key);
+        } else {
+          resultadosPeriodoAlterados.set(key, {
+            key, aluno, disciplina, periodo, resultado: result,
+            aproveitamento: value.toFixed(1), tdElement
+          });
+        }
         atualizarToastSalvarResultados();
-        editInput.reportValidity();
-        return;
-      }
-      editInput.setCustomValidity('');
-      if (raw === '' || value === original) {
-        resultadosPeriodoAlterados.delete(editKey);
-      } else {
-        resultadosPeriodoAlterados.set(editKey, {
-          key: editKey,
-          aluno,
-          disciplina,
-          periodo,
-          resultado: resultadoPeriodo,
-          aproveitamento: value.toFixed(1),
-          tdElement
-        });
-      }
-      atualizarToastSalvarResultados();
+        input.value = value.toFixed(1);
+        draftSaved = true;
+      };
+      input.addEventListener('keydown', (keyEvent) => {
+        if (keyEvent.key === 'Enter') { keyEvent.preventDefault(); saveDraft(); }
+        if (keyEvent.key === 'Escape') closeActiveNotaTooltip();
+      });
+      input.addEventListener('blur', saveDraft, { once: true });
     });
-  }
+  });
 
   if (window.lucide) {
     lucide.createIcons({ nodes: [tooltip] });
@@ -896,14 +917,13 @@ async function salvarResultadosPeriodoAlterados(e) {
     idDisciplina: disciplina.id,
     idProfessor: dashboardData.idRecHumano,
     idPeriodo: resultado.idPeriodo,
-    idAproveitAval: resultado.idAproveitAval,
     idArea: resultado.idArea,
     aproveitamento,
     tpExpRes: 'N',
     area: resultado.area ?? false
   }));
 
-  if (payload.some(item => !item.idAluno || !item.idTurma || !item.idDisciplina || !item.idProfessor || !item.idPeriodo || !item.idAproveitAval || item.idArea == null)) {
+  if (payload.some(item => !item.idAluno || !item.idTurma || !item.idDisciplina || !item.idProfessor || !item.idPeriodo || item.idArea == null)) {
     showToast('Não foi possível salvar: faltam identificadores em um ou mais resultados.', 'error');
     return;
   }
@@ -916,11 +936,11 @@ async function salvarResultadosPeriodoAlterados(e) {
     for (const item of alteracoes) {
       item.resultado.resultado = item.aproveitamento;
       const nota = (item.aluno.notas || []).find(n => {
-        const nome = (n.trimestre || n.nomePeriodo || '').toLowerCase();
-        return nome.includes(item.periodo.toLowerCase().includes('sem') ? 'sem' : 'trim') && nome.includes(item.periodo.match(/\d+/)?.[0] || '') && !nome.includes('er');
+        return (n.trimestre || n.nomePeriodo || '') === item.resultado.nomePeriodo;
       });
       if (nota) nota.nota = item.aproveitamento.replace('.', ',');
-      item.tdElement.textContent = item.aproveitamento.replace('.', ',');
+      item.aluno.mediaFinal = calcularMediaFinal(item.aluno.listaResultados || []);
+      item.tdElement.textContent = getNotaTexto(item.aluno.notas, item.periodo);
       resultadosPeriodoAlterados.delete(item.key);
     }
     atualizarToastSalvarResultados();

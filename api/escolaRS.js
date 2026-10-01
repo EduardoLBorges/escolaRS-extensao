@@ -289,7 +289,6 @@ async function registrarResultadoInstrumentoLista(payload) {
  *   idDisciplina: number,
  *   idProfessor: number,
  *   idPeriodo: number,
- *   idAproveitAval: number,
  *   idArea: number,
  *   aproveitamento: string, // ex: "6.0"
  *   tpExpRes: string,       // ex: "N"
