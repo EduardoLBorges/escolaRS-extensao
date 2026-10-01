@@ -66,16 +66,51 @@ async function openOrFocusDashboard() {
   }
 }
 
-async function handleMissingAuth() {
-  const portalTabs = await chrome.tabs.query({ url: PORTAL_MATCH_URL });
-  if (portalTabs.length > 0) {
-    chrome.tabs.update(portalTabs[0].id, { active: true });
-    chrome.windows.update(portalTabs[0].windowId, { focused: true });
-    notifyUser('Autenticação não realizada. Atualize a página e clique no ícone da extensão novamente.');
-  } else {
-    chrome.tabs.create({ url: 'https://professor.escola.rs.gov.br/' });
-    notifyUser('Faça login no portal EscolaRS. Depois, clique no ícone da extensão.');
+/**
+ * Garante que temos autenticação completa (token válido e nrDoc).
+ * Se faltar qualquer credencial ou a sessão estiver expirada, tenta renovação silenciosa
+ * e recorre ao popup de login se necessário.
+ * @returns {Promise<{token: string, nrDoc: string}>}
+ */
+async function ensureAuthentication() {
+  let { nrDoc } = await chrome.storage.local.get('nrDoc');
+  let token = null;
+
+  try {
+    token = await AuthManager.getValidToken();
+  } catch (e) {
+    console.log('[Background] getValidToken falhou ou expirado:', e.message);
   }
+
+  // Se faltar token ou nrDoc, dispara renovação (tenta POST e depois popup de login)
+  if (!token || !nrDoc) {
+    console.log('[Background] Credenciais incompletas. Iniciando trySilentTokenRefresh...');
+    token = await trySilentTokenRefresh(token);
+    const updated = await chrome.storage.local.get('nrDoc');
+    nrDoc = updated.nrDoc;
+  }
+
+  // Valida com uma chamada real de API
+  if (token && nrDoc) {
+    try {
+      await listarEscolasProfessor(nrDoc);
+      return { token, nrDoc };
+    } catch (apiErr) {
+      console.warn('[Background] Validação com API falhou, forçando popup:', apiErr.message);
+      token = await trySilentTokenRefresh(token);
+      const updated = await chrome.storage.local.get('nrDoc');
+      nrDoc = updated.nrDoc;
+      if (token && nrDoc) {
+        return { token, nrDoc };
+      }
+    }
+  }
+
+  if (token && nrDoc) {
+    return { token, nrDoc };
+  }
+
+  throw new Error('Autenticação não concluída. Por favor, tente novamente.');
 }
 
 // ─── Interceptação de Token via webRequest ────────────────────────────────────
@@ -137,31 +172,14 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
 
 // ─── Ouvintes de Eventos da Extensão ─────────────────────────────────────────
 
-// Clique no ícone da extensão: valida autenticação e abre o dashboard.
+// Clique no ícone da extensão: valida autenticação (abrindo popup se necessário) e abre o dashboard.
 chrome.action.onClicked.addListener(async () => {
-  const { nrDoc } = await chrome.storage.local.get('nrDoc');
-
   try {
-    // Tenta obter um token válido. Se falhar, AuthManager tentará renovar.
-    const token = await AuthManager.getValidToken();
-
-    if (!nrDoc) {
-      // Token existe mas nrDoc não — usuário ainda não fez a primeira requisição ao portal.
-      await handleMissingAuth();
-      return;
-    }
-
-    // Valida o token fazendo uma chamada real (fetchEscolaRS usa AuthManager internamente).
-    await listarEscolasProfessor(nrDoc);
+    await ensureAuthentication();
     await openOrFocusDashboard();
   } catch (e) {
     console.warn('[Background] Falha de autenticação no clique:', e.message);
-    if (nrDoc) {
-      // Tenta abrir dashboard mesmo assim — o dashboard fará nova tentativa de auth.
-      await openOrFocusDashboard();
-    } else {
-      await handleMissingAuth();
-    }
+    notifyUser('Falha de autenticação com o Portal EscolaRS. Tente novamente.');
   }
 });
 

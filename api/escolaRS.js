@@ -12,7 +12,7 @@
 const API_BASE_URL = 'https://secweb.procergs.com.br/ise-escolars-professor/rest/professor';
 const API_TIMEOUT = 30000; // 30 segundos
 const MAX_RETRY_ATTEMPTS = 2;
-const TOKEN_REFRESH_TIMEOUT = 15000; // Timeout do popup de renovação
+const TOKEN_REFRESH_TIMEOUT = 60000; // Timeout de 60s do popup de login
 const PORTAL_URL = 'https://professor.escola.rs.gov.br/';
 const LOG_PREFIX = '[EscolaRS API]';
 
@@ -121,6 +121,9 @@ async function executeBackgroundTokenRefresh(refreshToken) {
       const updateData = { escolaRsToken: novoToken };
       if (data.refresh_token) updateData.escolaRsRefreshToken = data.refresh_token;
       await chrome.storage.local.set(updateData);
+      if (typeof AuthManager !== 'undefined' && AuthManager.update) {
+        AuthManager.update(novoToken);
+      }
       return novoToken;
     }
     return null;
@@ -141,12 +144,18 @@ async function executeBackgroundTokenRefresh(refreshToken) {
 async function trySilentTokenRefresh(staleToken = null) {
   let windowId = null;
   let storageListener = null;
+  let windowRemovedListener = null;
   let timeoutId = null;
 
   const cleanup = () => {
     if (storageListener) chrome.storage.onChanged.removeListener(storageListener);
+    if (windowRemovedListener) chrome.windows.onRemoved.removeListener(windowRemovedListener);
     if (timeoutId) clearTimeout(timeoutId);
-    if (windowId) chrome.windows.remove(windowId).catch(() => {});
+    if (windowId) {
+      const idToClose = windowId;
+      windowId = null;
+      chrome.windows.remove(idToClose).catch(() => {});
+    }
   };
 
   try {
@@ -165,25 +174,66 @@ async function trySilentTokenRefresh(staleToken = null) {
       }
     }
 
-    // 3. Fallback: abre popup de login e aguarda o token aparecer no storage.
+    // 3. Fallback: abre popup de login e aguarda o token (e nrDoc) aparecerem no storage.
     console.log(`${LOG_PREFIX} Fallback para popup de login...`);
     return await new Promise((resolve, reject) => {
-      storageListener = (changes, namespace) => {
-        if (namespace === 'local' && changes.escolaRsToken?.newValue) {
-          cleanup();
-          resolve(changes.escolaRsToken.newValue);
+      let resolved = false;
+
+      const finishSuccess = (token) => {
+        if (resolved) return;
+        resolved = true;
+        if (typeof AuthManager !== 'undefined' && AuthManager.update) {
+          AuthManager.update(token);
+        }
+        cleanup();
+        resolve(token);
+      };
+
+      storageListener = async (changes, namespace) => {
+        if (namespace !== 'local') return;
+
+        if (changes.escolaRsToken?.newValue || changes.nrDoc?.newValue) {
+          const { escolaRsToken: curToken, nrDoc: curDoc } = await chrome.storage.local.get(['escolaRsToken', 'nrDoc']);
+          if (curToken && curToken !== staleToken) {
+            // Se já temos ambos token e nrDoc, conclui imediatamente
+            if (curDoc) {
+              finishSuccess(curToken);
+              return;
+            }
+
+            // Se temos apenas o token, aguarda até 2s para o nrDoc ser persistido pelo content.js/webRequest
+            setTimeout(async () => {
+              const { escolaRsToken: t } = await chrome.storage.local.get('escolaRsToken');
+              if (t && t !== staleToken) {
+                finishSuccess(t);
+              }
+            }, 2000);
+          }
         }
       };
 
       chrome.storage.onChanged.addListener(storageListener);
 
+      windowRemovedListener = (removedWinId) => {
+        if (removedWinId === windowId) {
+          windowId = null;
+          cleanup();
+          if (!resolved) {
+            reject(new Error('Janela de login fechada pelo usuário.'));
+          }
+        }
+      };
+      chrome.windows.onRemoved.addListener(windowRemovedListener);
+
       timeoutId = setTimeout(() => {
         cleanup();
-        reject(new Error('Timeout na renovação do token via popup.'));
+        if (!resolved) {
+          reject(new Error('Timeout na renovação do token via popup.'));
+        }
       }, TOKEN_REFRESH_TIMEOUT);
 
       chrome.windows.create(
-        { url: PORTAL_URL, state: 'normal', width: 400, height: 600, focused: true, type: 'popup' },
+        { url: PORTAL_URL, state: 'normal', width: 450, height: 650, focused: true, type: 'popup' },
         (win) => {
           if (chrome.runtime.lastError) {
             cleanup();

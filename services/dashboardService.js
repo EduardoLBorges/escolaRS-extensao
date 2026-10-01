@@ -180,7 +180,17 @@ async function buildDashboardFromStorage() {
 
   activeDashboardBuildPromise = (async () => {
     try {
-      const { nrDoc } = await chrome.storage.local.get('nrDoc');
+      let { nrDoc } = await chrome.storage.local.get('nrDoc');
+
+      if (!nrDoc) {
+        // No contexto do Service Worker, tenta obter autenticação se faltar nrDoc
+        if (typeof trySilentTokenRefresh === 'function') {
+          console.log('[Dashboard Service] nrDoc ausente. Tentando obter autenticação...');
+          await trySilentTokenRefresh();
+          const updated = await chrome.storage.local.get('nrDoc');
+          nrDoc = updated.nrDoc;
+        }
+      }
 
       if (!nrDoc) {
         throw new Error(AUTH_MISSING_ERROR);

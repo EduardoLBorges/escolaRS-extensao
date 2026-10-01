@@ -40,6 +40,24 @@ const AuthManager = (() => {
 
   // ── Helpers Privados ──────────────────────────────────────────────────────
 
+  function isJwtExpired(token) {
+    if (!token) return true;
+    try {
+      const raw = token.replace(/^Bearer\s+/i, '');
+      const parts = raw.split('.');
+      if (parts.length < 2) return false;
+      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(base64));
+      // Margem de segurança de 30 segundos
+      if (payload.exp) {
+        return (payload.exp * 1000) < (Date.now() + 30000);
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
   async function _readStorage() {
     const { escolaRsToken } = await chrome.storage.local.get('escolaRsToken');
     _token = escolaRsToken || null;
@@ -61,32 +79,39 @@ const AuthManager = (() => {
 
     _refreshPromise = (async () => {
       try {
+        let refreshedToken = null;
+
         if (_isSW) {
           // No Service Worker, trySilentTokenRefresh está no escopo global (de escolaRS.js).
           // A referência é resolvida em tempo de execução — não em tempo de definição — por isso funciona
           // mesmo que authManager.js seja importado antes de escolaRS.js via importScripts.
           if (typeof trySilentTokenRefresh === 'function') {
             console.log(`${LOG} SW: iniciando trySilentTokenRefresh...`);
-            return await trySilentTokenRefresh(staleToken);
+            refreshedToken = await trySilentTokenRefresh(staleToken);
+          } else {
+            console.error(`${LOG} trySilentTokenRefresh não encontrada no escopo do SW.`);
           }
-          console.error(`${LOG} trySilentTokenRefresh não encontrada no escopo do SW.`);
-          return null;
+        } else {
+          // Contexto de página: delega ao Service Worker via sendMessage.
+          console.log(`${LOG} Página: solicitando refresh ao background...`);
+          refreshedToken = await new Promise((resolve) => {
+            chrome.runtime.sendMessage(
+              { action: 'requestTokenRefresh', staleToken },
+              (response) => {
+                if (chrome.runtime.lastError) {
+                  console.error(`${LOG} Erro ao contatar background:`, chrome.runtime.lastError.message);
+                  return resolve(null);
+                }
+                resolve(response?.token || null);
+              }
+            );
+          });
         }
 
-        // Contexto de página: delega ao Service Worker via sendMessage.
-        console.log(`${LOG} Página: solicitando refresh ao background...`);
-        return await new Promise((resolve) => {
-          chrome.runtime.sendMessage(
-            { action: 'requestTokenRefresh', staleToken },
-            (response) => {
-              if (chrome.runtime.lastError) {
-                console.error(`${LOG} Erro ao contatar background:`, chrome.runtime.lastError.message);
-                return resolve(null);
-              }
-              resolve(response?.token || null);
-            }
-          );
-        });
+        if (refreshedToken) {
+          _token = refreshedToken;
+        }
+        return refreshedToken;
       } finally {
         _refreshPromise = null;
       }
@@ -105,13 +130,16 @@ const AuthManager = (() => {
      * @throws {Error} Se não for possível obter um token válido
      */
     async getValidToken() {
-      if (_token) return _token;
+      if (_token && !isJwtExpired(_token)) return _token;
 
       const stored = await _readStorage();
-      if (stored) return stored;
+      if (stored && !isJwtExpired(stored)) {
+        _token = stored;
+        return stored;
+      }
 
-      console.log(`${LOG} Token ausente. Tentando renovação...`);
-      const refreshed = await _doRefresh(null);
+      console.log(`${LOG} Token ausente ou expirado. Tentando renovação...`);
+      const refreshed = await _doRefresh(stored || _token || null);
       if (refreshed) {
         _token = refreshed;
         return refreshed;
@@ -133,14 +161,20 @@ const AuthManager = (() => {
       // Invalida o cache se ainda é o token que falhou.
       if (_token === staleToken) _token = null;
 
-      // Outra requisição paralela pode já ter renovado antes de nós.
-      const stored = await _readStorage();
-      if (stored && stored !== staleToken) {
+      // Outra requisição paralela pode já ter renovado antes de nós no storage.
+      // Lê o storage sem sobrescrever _token com o token velho que falhou.
+      const { escolaRsToken } = await chrome.storage.local.get('escolaRsToken');
+      if (escolaRsToken && escolaRsToken !== staleToken && !isJwtExpired(escolaRsToken)) {
         console.log(`${LOG} Token mais recente já disponível no storage.`);
-        return stored;
+        _token = escolaRsToken;
+        return escolaRsToken;
       }
 
-      return _doRefresh(staleToken);
+      const refreshed = await _doRefresh(staleToken);
+      if (refreshed) {
+        _token = refreshed;
+      }
+      return refreshed;
     },
 
     /**
