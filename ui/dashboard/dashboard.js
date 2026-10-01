@@ -233,7 +233,11 @@ function renderApp() {
 
   const novoOcultarInativosInput = document.querySelector(SELECTORS.filterOcultarInativos);
   if (novoOcultarInativosInput) {
-    novoOcultarInativosInput.checked = ocultarInativosState;
+    novoOcultarInativosInput.setAttribute('aria-pressed', String(ocultarInativosState));
+    novoOcultarInativosInput.classList.toggle('active', ocultarInativosState);
+    novoOcultarInativosInput.title = ocultarInativosState
+      ? 'Exibir alunos inativos'
+      : 'Ocultar alunos inativos';
   }
 
   // Aplica filtros (mesmo que vazios) para inicializar as estatísticas filtradas e visibilidade
@@ -416,14 +420,15 @@ function renderControls(data) {
     createEl('select', { id: SELECTORS.filterEscola.slice(1), className: 'filter-select' }, escolaOptions),
     createEl('select', { id: SELECTORS.filterTurma.slice(1), className: 'filter-select' }, turmaOptions),
     createEl('input', { type: 'text', id: SELECTORS.filterAluno.slice(1), className: 'filter-input', placeholder: '🔍 Buscar aluno...' }),
-    createEl('label', { className: 'filter-toggle-label', title: 'Ocultar alunos não ativos no dashboard' }, [
-      createEl('input', {
-        type: 'checkbox',
-        id: SELECTORS.filterOcultarInativos.slice(1),
-        checked: ocultarInativosState
-      }),
-      createEl('span', {}, ['Ocultar inativos'])
-    ])
+    createEl('button', {
+      type: 'button',
+      id: SELECTORS.filterOcultarInativos.slice(1),
+      className: `filter-icon-toggle${ocultarInativosState ? ' active' : ''}`,
+      title: ocultarInativosState ? 'Exibir alunos inativos' : 'Ocultar alunos inativos',
+      'aria-label': 'Ocultar alunos inativos',
+      'aria-pressed': String(ocultarInativosState),
+      innerHTML: '<i data-lucide="user-round-x"></i>'
+    })
   ]);
 
   const actionsGroup = createEl('div', { className: 'controls-actions' }, [
@@ -995,9 +1000,14 @@ function attachControlEvents() {
 
   document.querySelector(SELECTORS.filterTurma)?.addEventListener('change', applyFilters);
   document.querySelector(SELECTORS.filterAluno)?.addEventListener('input', applyFilters);
-  document.querySelector(SELECTORS.filterOcultarInativos)?.addEventListener('change', (e) => {
-    ocultarInativosState = e.target.checked;
+  document.querySelector(SELECTORS.filterOcultarInativos)?.addEventListener('click', (e) => {
+    ocultarInativosState = !ocultarInativosState;
     localStorage.setItem('escolaRs_ocultarInativos', ocultarInativosState ? 'true' : 'false');
+    e.currentTarget.setAttribute('aria-pressed', String(ocultarInativosState));
+    e.currentTarget.classList.toggle('active', ocultarInativosState);
+    e.currentTarget.title = ocultarInativosState
+      ? 'Exibir alunos inativos'
+      : 'Ocultar alunos inativos';
     applyFilters();
   });
 
@@ -1064,7 +1074,7 @@ function applyFilters() {
   const escolaFiltro = document.querySelector(SELECTORS.filterEscola).value;
   const turmaFiltro = document.querySelector(SELECTORS.filterTurma).value;
   const alunoFiltro = document.querySelector(SELECTORS.filterAluno).value.trim();
-  const ocultarInativos = document.querySelector(SELECTORS.filterOcultarInativos)?.checked ?? ocultarInativosState;
+  const ocultarInativos = ocultarInativosState;
 
   const compiledFilter = (typeof compileAlunoFilter === 'function' && alunoFiltro) ? compileAlunoFilter(alunoFiltro) : null;
 

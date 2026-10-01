@@ -4,6 +4,8 @@ Extensão para Google Chrome que permite **visualizar, filtrar, analisar e expor
 
 A ferramenta foi criada para **facilitar o trabalho de professores**, permitindo analisar rapidamente o desempenho das turmas e exportar dados organizados em planilhas.
 
+**Versão atual: 0.5.2**
+
 ---
 
 # Motivação
@@ -45,8 +47,13 @@ Permite filtrar os dados por:
 - **Escola**
 - **Turma**
 - **Nome do aluno**
+- **Alunos inativos**, pelo botão de ícone ao lado dos filtros
 
 Os filtros funcionam em tempo real, facilitando a navegação em turmas grandes.
+
+## Edição de Notas
+
+Ative **Editar** no menu do dashboard e clique em uma nota no período para alterá-la pelo tooltip. Notas regulares e de ER podem ser editadas; deixe o campo vazio para limpar a nota. Use **Salvar alterações** para enviar as mudanças ao EscolaRS.
 
 ---
 

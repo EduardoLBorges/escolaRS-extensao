@@ -461,37 +461,36 @@ main {
   background: var(--surface);
 }
 
-.filter-toggle-label {
+.filter-icon-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.85rem;
-  font-weight: 500;
   color: var(--text-muted);
   cursor: pointer;
-  user-select: none;
-  padding: 6px 12px;
+  justify-content: center;
+  padding: 0;
+  width: 38px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--bg-color);
   height: 38px;
   box-sizing: border-box;
   transition: border-color 0.2s, background-color 0.2s, color 0.2s;
-  white-space: nowrap;
 }
 
-.filter-toggle-label:hover {
+.filter-icon-toggle:hover,
+.filter-icon-toggle.active {
   border-color: var(--primary);
-  color: var(--text-main);
+  color: var(--primary);
   background: var(--surface);
 }
 
-.filter-toggle-label input[type="checkbox"] {
-  cursor: pointer;
-  accent-color: var(--primary);
-  width: 15px;
-  height: 15px;
-  margin: 0;
+.filter-icon-toggle.active {
+  background: color-mix(in srgb, var(--primary) 9%, var(--surface));
+}
+
+.filter-icon-toggle svg {
+  width: 17px;
+  height: 17px;
 }
 
 /* ========================================
@@ -518,6 +517,8 @@ button:hover {
 }
 
 .clearfilters {
+  box-sizing: border-box;
+  height: 38px;
   background: var(--text-muted);
   color: white;
 }
@@ -527,6 +528,8 @@ button:hover {
 }
 
 .export-btn {
+  box-sizing: border-box;
+  height: 38px;
   background: var(--primary);
   color: white;
   padding: 8px 12px;
