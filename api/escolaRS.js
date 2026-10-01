@@ -278,3 +278,28 @@ async function listarAvaliacoesTurma(turmaId, discId, profId) {
 async function registrarResultadoInstrumentoLista(payload) {
   return fetchEscolaRS(`registrarResultadoInstrumentoLista`, { method: 'POST', body: payload });
 }
+
+/**
+ * Grava o resultado/aproveitamento de período dos alunos em lote.
+ *
+ * Formato esperado de cada item:
+ * {
+ *   idAluno: number,
+ *   idTurma: number,
+ *   idDisciplina: number,
+ *   idProfessor: number,
+ *   idPeriodo: number,
+ *   idAproveitAval: number,
+ *   idArea: number,
+ *   aproveitamento: string, // ex: "6.0"
+ *   tpExpRes: string,       // ex: "N"
+ *   area: boolean           // ex: false
+ * }
+ *
+ * @param {Array<Object>|Object} payload - Lista de resultados ou objeto único a ser gravado
+ * @returns {Promise<Object>} Resposta da API
+ */
+async function gravarResultadoPeriodoEmLista(payload) {
+  const body = Array.isArray(payload) ? payload : [payload];
+  return fetchEscolaRS(`gravarResultadoPeriodoEmLista`, { method: 'POST', body });
+}

@@ -1373,6 +1373,80 @@ tr:hover td {
   pointer-events: auto;
 }
 
+.tooltip-edit-label {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+  margin: 0 0 4px;
+}
+
+.tooltip-edit-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: var(--text-main);
+  font: inherit;
+}
+
+.tooltip-edit-input:focus {
+  outline: 2px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  border-color: var(--primary);
+}
+
+.period-save-toast {
+  position: fixed;
+  z-index: 3000;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  font-size: 13px;
+}
+
+.period-save-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 7px;
+  padding: 8px 11px;
+  background: var(--primary);
+  color: white;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.period-save-button:disabled {
+  opacity: .65;
+  cursor: wait;
+}
+
+.dashboard-toast {
+  position: fixed;
+  z-index: 3100;
+  left: 50%;
+  bottom: 82px;
+  transform: translateX(-50%);
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: #263238;
+  color: white;
+  box-shadow: var(--shadow-md);
+  font-size: 13px;
+}
+
+.dashboard-toast-error { background: #b42318; }
+.dashboard-toast-success { background: #1f822b; }
+
 @keyframes tooltipFadeIn {
   from {
     opacity: 0;
