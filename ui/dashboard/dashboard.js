@@ -284,7 +284,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const button = e.currentTarget;
     button.setAttribute('aria-pressed', String(periodoEdicaoAtivo));
     button.classList.toggle('active', periodoEdicaoAtivo);
-    button.querySelector('span').textContent = `Editar resultados: ${periodoEdicaoAtivo ? 'ligado' : 'desligado'}`;
+    button.querySelector('span').textContent = `Editar: ${periodoEdicaoAtivo ? 'ligado' : 'desligado'}`;
     closeActiveNotaTooltip();
   });
 
@@ -641,22 +641,27 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
   const notaER = getNotaValorBruto(aluno.notas, periodo, true);
   const notaFinal = getNotaTexto(aluno.notas, periodo);
   const isErSemTrimestre = (notaER !== '--' && notaRegular === '--');
-  const temER = notaER !== '--';
   const temRegular = notaRegular !== '--';
   const periodoMatch = periodo.toLowerCase().match(/(\d+)/);
   const tipoPeriodo = periodo.toLowerCase().includes('sem') ? 'sem' : 'trim';
   const encontrarResultadoPeriodo = (isER) => (aluno.listaResultados || []).find(r => {
     const nome = (r.nomePeriodo || '').toLowerCase();
-    return nome.includes(tipoPeriodo) && nome.includes(periodoMatch?.[1] || '') && nome.includes('er') === isER;
+    if (!nome.includes(periodoMatch?.[1] || '')) return false;
+    // Algumas respostas do ER vêm nomeadas apenas como "Exame de Recuperação" e
+    // não repetem "Trimestre/Semestre" no nome do período.
+    if (isER) return ehResultadoER(nome);
+    return nome.includes(tipoPeriodo) && !ehResultadoER(nome);
   });
   const resultadoRegular = encontrarResultadoPeriodo(false);
   const resultadoER = encontrarResultadoPeriodo(true);
+  // Um ER pode existir antes de receber nota; mantenha a linha visível e editável.
+  const temER = notaER !== '--' || Boolean(resultadoER);
   const valorEditavel = (resultado, valor, badgeClass, id) => {
     if (!resultado) return `<span class="tooltip-val ${badgeClass}">${valor}</span>`;
     const index = aluno.listaResultados.indexOf(resultado);
     const key = `${aluno.matricula}_${disciplina.id}_${index}`;
-    const editado = resultadosPeriodoAlterados.get(key)?.aproveitamento;
-    const exibido = editado ?? valor;
+    const alteracaoPendente = resultadosPeriodoAlterados.get(key);
+    const exibido = alteracaoPendente ? (alteracaoPendente.aproveitamento ?? '') : valor;
     const editClass = periodoEdicaoAtivo ? ' tooltip-editable-value' : '';
     return `<span class="tooltip-val ${getValBadgeClass(exibido)}${editClass}" data-period-edit-key="${key}" data-period-result-index="${index}" id="${id}">${exibido}</span>`;
   };
@@ -707,11 +712,6 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
       <div class="tooltip-row">
         <span class="tooltip-lbl">Nota ER:</span>
         ${valorEditavel(resultadoER, notaER, getValBadgeClass(notaER), 'tooltip-period-er')}
-      </div>
-      <div class="tooltip-divider"></div>
-      <div class="tooltip-row highlight">
-        <span class="tooltip-lbl">Final Exibida:</span>
-        <span class="tooltip-val ${getValBadgeClass(notaFinal)}">${notaFinal}</span>
       </div>
     `;
   } else {
@@ -790,7 +790,9 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
         type: 'text',
         inputMode: 'decimal',
         maxLength: 5,
-        value: resultadosPeriodoAlterados.get(key)?.aproveitamento ?? result.resultado,
+        value: resultadosPeriodoAlterados.has(key)
+          ? (resultadosPeriodoAlterados.get(key).aproveitamento ?? '')
+          : (result.resultado ?? ''),
         ariaLabel: 'Editar nota do período'
       });
       valueElement.replaceWith(input);
@@ -801,15 +803,25 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
       const saveDraft = () => {
         if (draftSaved) return;
         const raw = input.value.trim().replace(',', '.');
+        if (raw === '') {
+          resultadosPeriodoAlterados.set(key, {
+            key, aluno, disciplina, periodo, resultado: result,
+            aproveitamento: null, tdElement
+          });
+          atualizarToastSalvarResultados();
+          draftSaved = true;
+          return;
+        }
         const value = Number(raw);
-        if (!raw || !Number.isFinite(value) || value < 0 || value > 10) {
+        if (!Number.isFinite(value) || value < 0 || value > 10) {
           input.setCustomValidity('Informe uma nota entre 0 e 10.');
           input.reportValidity();
           return;
         }
         input.setCustomValidity('');
-        const original = Number(String(result.resultado).replace(',', '.'));
-        if (value === original) {
+        const originalRaw = String(result.resultado ?? '').trim().replace(',', '.');
+        const original = Number(originalRaw);
+        if (originalRaw !== '' && Number.isFinite(original) && value === original) {
           resultadosPeriodoAlterados.delete(key);
         } else {
           resultadosPeriodoAlterados.set(key, {
@@ -911,20 +923,33 @@ async function salvarResultadosPeriodoAlterados(e) {
   const button = e.currentTarget;
   const alteracoes = [...resultadosPeriodoAlterados.values()];
   if (!alteracoes.length) return;
-  const payload = alteracoes.map(({ aluno, disciplina, resultado, aproveitamento }) => ({
-    idAluno: resultado.idAluno || aluno.matricula,
-    idTurma: disciplina.turmaId,
-    idDisciplina: disciplina.id,
-    idProfessor: dashboardData.idRecHumano,
-    idPeriodo: resultado.idPeriodo,
-    idArea: resultado.idArea,
-    aproveitamento,
-    tpExpRes: 'N',
-    area: resultado.area ?? false
-  }));
+  const payload = alteracoes.map(({ aluno, disciplina, resultado, aproveitamento }) => {
+    const item = {
+      idAluno: resultado.idAluno || aluno.matricula,
+      idTurma: disciplina.turmaId,
+      idDisciplina: disciplina.id,
+      idProfessor: dashboardData.idRecHumano,
+      idPeriodo: resultado.idPeriodo,
+      idArea: resultado.idArea,
+      aproveitamento: aproveitamento ?? null,
+      tpExpRes: 'N',
+      area: resultado.area ?? false
+    };
+    // A API exige esses identificadores extras para gravar resultados de ER.
+    if (ehResultadoER(resultado.nomePeriodo)) {
+      if (resultado.idAproveitAval != null) item.idAproveitAval = resultado.idAproveitAval;
+      if (resultado.idResultadoPeriodo != null) item.idResultadoPeriodo = resultado.idResultadoPeriodo;
+    }
+    return item;
+  });
 
   if (payload.some(item => !item.idAluno || !item.idTurma || !item.idDisciplina || !item.idProfessor || !item.idPeriodo || item.idArea == null)) {
     showToast('Não foi possível salvar: faltam identificadores em um ou mais resultados.', 'error');
+    return;
+  }
+  if (alteracoes.some(({ resultado }) => ehResultadoER(resultado.nomePeriodo) &&
+    (resultado.idAproveitAval == null || resultado.idResultadoPeriodo == null))) {
+    showToast('Não foi possível salvar o ER: faltam os identificadores da avaliação ou do resultado.', 'error');
     return;
   }
 
@@ -938,7 +963,7 @@ async function salvarResultadosPeriodoAlterados(e) {
       const nota = (item.aluno.notas || []).find(n => {
         return (n.trimestre || n.nomePeriodo || '') === item.resultado.nomePeriodo;
       });
-      if (nota) nota.nota = item.aproveitamento.replace('.', ',');
+      if (nota) nota.nota = item.aproveitamento == null ? null : item.aproveitamento.replace('.', ',');
       item.aluno.mediaFinal = calcularMediaFinal(item.aluno.listaResultados || []);
       item.tdElement.textContent = getNotaTexto(item.aluno.notas, item.periodo);
       resultadosPeriodoAlterados.delete(item.key);
@@ -1421,7 +1446,7 @@ function aplicarPreVisualizacao(tipo) {
                 let found = false;
                 for (const n of aluno.notas) {
                   const nomeTrim = (n.trimestre || n.nomePeriodo || '').toLowerCase();
-                  if (nomeTrim.includes(periodoLower) && nomeTrim.includes(idPeriodo) && !nomeTrim.includes('er')) {
+                  if (nomeTrim.includes(periodoLower) && nomeTrim.includes(idPeriodo) && !ehResultadoER(nomeTrim)) {
                     if (n.originalNota === undefined) n.originalNota = n.nota;
                     n.nota = notaStr;
                     found = true;
@@ -2035,7 +2060,7 @@ function renderRecuperacaoChart(ctx, alunos, periodos, container) {
         const nome = (item.trimestre || item.nomePeriodo || '').toLowerCase();
         if (!nome || !nome.includes(numPeriodo)) continue;
 
-        if (nome.includes('er')) {
+        if (ehResultadoER(nome)) {
           const val = parseFloat(String(item.nota || '').replace(',', '.'));
           if (!isNaN(val)) erNota = val;
         } else if ((isSemestre && nome.includes('sem')) || (!isSemestre && nome.includes('trim'))) {

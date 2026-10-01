@@ -344,7 +344,7 @@ async function fetchPreVisualizacao(dashboardData, periodoStr, callbacks = {}) {
             if (!aluno.listaResultados) continue;
             const res = aluno.listaResultados.find(r => {
               const nomeP = (r.nomePeriodo || '').toLowerCase();
-              return nomeP.includes(targetType) && nomeP.includes(idPeriodo) && !nomeP.includes('er');
+              return nomeP.includes(targetType) && nomeP.includes(idPeriodo) && !ehResultadoER(nomeP);
             });
             if (res) {
               idPeriodoCalculo = res.idPeriodoAvaliacao || res.idPeriodo || res.periodoId || res.id;
@@ -360,7 +360,7 @@ async function fetchPreVisualizacao(dashboardData, periodoStr, callbacks = {}) {
             if (Array.isArray(arrayAvals)) {
               const avEncontrada = arrayAvals.find(a => {
                 const desc = (a.descricao || '').toLowerCase();
-                return desc.includes(targetType) && desc.includes(idPeriodo) && !desc.includes('er');
+                return desc.includes(targetType) && desc.includes(idPeriodo) && !ehResultadoER(desc);
               });
               if (avEncontrada) idPeriodoCalculo = avEncontrada.id;
             }

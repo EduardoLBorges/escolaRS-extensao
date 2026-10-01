@@ -28,6 +28,12 @@ function parseNota(valor) {
   return parseFloat(String(valor).replace(',', '.'));
 }
 
+/** Identifica resultados de Exame de Recuperação mesmo quando o nome não usa a sigla "ER". */
+function ehResultadoER(nomePeriodo) {
+  const nome = String(nomePeriodo || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return /(^|[^a-z])er([^a-z]|$)/.test(nome) || nome.includes('exame') || nome.includes('recuperacao');
+}
+
 /**
  * Extrai as notas dos períodos a partir de um mapa de períodos.
  * Busca padrões como "1° trim", "trim 1", "1° sem", etc.
@@ -46,7 +52,7 @@ function extrairNotasPorPeriodo(periodos, tipo, indices) {
     for (const [chave, valor] of Object.entries(periodos)) {
       const matchTipo = chave.includes(tipo);
       const matchNum = chave.includes(numStr);
-      const isER = chave.includes('er');
+      const isER = ehResultadoER(chave);
 
       if (matchNum) {
         if (isER) {
@@ -414,7 +420,7 @@ function getNotaTexto(lista, periodo) {
     const itemEhTrimestre = nomePeriodo.includes('trim');
 
     if (((isSemestre && itemEhSemestre) || (isTrimestre && itemEhTrimestre)) &&
-      nomePeriodo.includes(numPeriodo) && !nomePeriodo.includes('er')) {
+      nomePeriodo.includes(numPeriodo) && !ehResultadoER(nomePeriodo)) {
       if (item.nota && item.nota !== '--') {
         periodoValor = item.nota;
         break;
@@ -427,7 +433,7 @@ function getNotaTexto(lista, periodo) {
     const nomePeriodo = (item.trimestre || item.nomePeriodo || '').toLowerCase();
     if (!nomePeriodo) continue;
 
-    if (nomePeriodo.includes('er') && nomePeriodo.includes(numPeriodo)) {
+    if (ehResultadoER(nomePeriodo) && nomePeriodo.includes(numPeriodo)) {
       if (item.nota && item.nota !== '--') {
         erValor = item.nota;
         break;
@@ -469,12 +475,12 @@ function getNotaValorBruto(lista, periodo, isER) {
     const itemEhTrimestre = nomePeriodo.includes('trim');
 
     if (isER) {
-      if (nomePeriodo.includes('er') && nomePeriodo.includes(numPeriodo)) {
+      if (ehResultadoER(nomePeriodo) && nomePeriodo.includes(numPeriodo)) {
         return item.nota && item.nota !== '--' ? normalizarNota(item.nota) : '--';
       }
     } else {
       if (((isSemestre && itemEhSemestre) || (isTrimestre && itemEhTrimestre)) &&
-        nomePeriodo.includes(numPeriodo) && !nomePeriodo.includes('er')) {
+        nomePeriodo.includes(numPeriodo) && !ehResultadoER(nomePeriodo)) {
         return item.nota && item.nota !== '--' ? normalizarNota(item.nota) : '--';
       }
     }

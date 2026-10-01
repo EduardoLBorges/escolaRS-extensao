@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Extensão EscolaRS",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "icons": {
     "16": "images/icons/icon16.png",
     "48": "images/icons/icon48.png",

@@ -1401,9 +1401,11 @@ tr:hover td {
 }
 
 .tooltip-edit-input-inline {
-  width: 64px;
+  box-sizing: border-box;
+  width: 52px;
+  height: 24px;
   padding: 2px 4px;
-  text-align: right;
+  text-align: center;
   font-size: 12px;
 }
 
@@ -1547,10 +1549,17 @@ tr:hover td {
 }
 
 .tooltip-val {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  height: 24px;
   font-weight: 700;
   font-size: 0.82rem;
-  padding: 1px 6px;
+  padding: 1px 5px;
   border-radius: 4px;
+  line-height: 1;
 }
 
 .tooltip-val.val-aprov {
