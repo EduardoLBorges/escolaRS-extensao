@@ -248,14 +248,24 @@ function calculateFilteredStats(dashboardData, escolaFiltro, turmaFiltro, alunoF
 
   if (!dashboardData || !dashboardData.escolas) return null;
 
+  const filterStr = String(alunoFiltro || '').trim();
+  const compiledFilter = (typeof compileAlunoFilter === 'function' && filterStr) ? compileAlunoFilter(filterStr) : null;
+
   for (const escola of dashboardData.escolas) {
     if (escolaFiltro && escola.nome !== escolaFiltro) continue;
     for (const turma of escola.turmas) {
       if (turmaFiltro && turma.nome !== turmaFiltro) continue;
       for (const disc of turma.disciplinas) {
+        const { periodos, isSemestre } = typeof detectarTipoEPeriodos === 'function'
+          ? detectarTipoEPeriodos(disc.alunos || [])
+          : { periodos: [], isSemestre: false };
         const alunosAtivos = getAlunosAtivos(disc.alunos || []);
         for (const aluno of alunosAtivos) {
-          if (alunoFiltro && !aluno.nome.toLowerCase().includes(alunoFiltro)) continue;
+          if (compiledFilter) {
+            if (!matchesCompiledFilter(aluno, periodos, isSemestre, compiledFilter)) continue;
+          } else if (filterStr && !aluno.nome.toLowerCase().includes(filterStr.toLowerCase())) {
+            continue;
+          }
           allAlunos.push(aluno);
         }
       }

@@ -7,6 +7,7 @@ importScripts(
   'utils/aluno.js',
   'utils/string.js',
   'utils/notas.js',
+  'utils/filtroParser.js',
   'services/dashboardService.js'
 );
 

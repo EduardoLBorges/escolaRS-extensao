@@ -593,10 +593,14 @@ function createStudentsTable(alunos, disciplina) {
       ds[`periodo${sanitizePeriodoKey(p)}`] = pStatus;
     });
 
-    return createEl('tr', {
+    const tr = createEl('tr', {
       className: isInativo ? 'aluno-inativo' : '',
       dataset: ds
     }, cells);
+    tr._alunoData = aluno;
+    tr._periodos = periodos;
+    tr._isSemestre = isSemestre;
+    return tr;
   });
 
   return createEl('table', { style: 'table-layout: fixed; width: 100%;' }, [
@@ -835,7 +839,7 @@ function attachControlEvents() {
   document.querySelector(SELECTORS.exportXlsx)?.addEventListener('click', () => {
     const escola = document.querySelector(SELECTORS.filterEscola).value;
     const turma = document.querySelector(SELECTORS.filterTurma).value;
-    const aluno = document.querySelector(SELECTORS.filterAluno).value.toLowerCase();
+    const aluno = document.querySelector(SELECTORS.filterAluno).value;
     exportarXLSX(dashboardData, escola, turma, aluno);
   });
 }
@@ -885,8 +889,10 @@ function updateTurmaDropdown() {
 function applyFilters() {
   const escolaFiltro = document.querySelector(SELECTORS.filterEscola).value;
   const turmaFiltro = document.querySelector(SELECTORS.filterTurma).value;
-  const alunoFiltro = document.querySelector(SELECTORS.filterAluno).value.toLowerCase();
+  const alunoFiltro = document.querySelector(SELECTORS.filterAluno).value.trim();
   const ocultarInativos = document.querySelector(SELECTORS.filterOcultarInativos)?.checked ?? ocultarInativosState;
+
+  const compiledFilter = (typeof compileAlunoFilter === 'function' && alunoFiltro) ? compileAlunoFilter(alunoFiltro) : null;
 
   document.querySelectorAll(SELECTORS.escolaCard).forEach(escolaCard => {
     const escolaNome = escolaCard.dataset.escolaNome;
@@ -904,8 +910,18 @@ function applyFilters() {
         let algumAlunoVisivelNaDisciplina = false;
 
         disciplinaCard.querySelectorAll(SELECTORS.alunoRow).forEach(alunoRow => {
-          const alunoNome = alunoRow.dataset.alunoNome || '';
-          const alunoMatch = !alunoFiltro || alunoNome.includes(alunoFiltro);
+          let alunoMatch = true;
+          if (compiledFilter) {
+            if (alunoRow._alunoData) {
+              alunoMatch = matchesCompiledFilter(alunoRow._alunoData, alunoRow._periodos, alunoRow._isSemestre, compiledFilter);
+            } else {
+              const alunoNome = alunoRow.dataset.alunoNome || '';
+              alunoMatch = alunoNome.includes(alunoFiltro.toLowerCase());
+            }
+          } else if (alunoFiltro) {
+            const alunoNome = alunoRow.dataset.alunoNome || '';
+            alunoMatch = alunoNome.includes(alunoFiltro.toLowerCase());
+          }
           const isAtivo = alunoRow.dataset.alunoAtivo === 'true';
 
           let filterMatch = true;

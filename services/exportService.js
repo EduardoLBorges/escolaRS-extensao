@@ -41,10 +41,16 @@ function exportarXLSX(dashboardData, escolaSelecionada, turmaSelecionada, alunoF
       cabecalho.push('Disciplina', 'Média Final', 'Status');
       dados.push(cabecalho);
 
-      let temAlunosTurma = false;
+      const filterStr = String(alunoFiltro || '').trim();
+      const compiledFilter = (typeof compileAlunoFilter === 'function' && filterStr) ? compileAlunoFilter(filterStr) : null;
 
       for (const disc of turma.disciplinas) {
-        const alunosFiltrados = getAlunosAtivos(disc.alunos || []).filter(a => a.nome.toLowerCase().includes(alunoFiltro));
+        const alunosFiltrados = getAlunosAtivos(disc.alunos || []).filter(a => {
+          if (compiledFilter) {
+            return matchesCompiledFilter(a, periodos, isSemestre, compiledFilter);
+          }
+          return !filterStr || a.nome.toLowerCase().includes(filterStr.toLowerCase());
+        });
 
         for (const aluno of alunosFiltrados) {
           temAlunosTurma = true;
