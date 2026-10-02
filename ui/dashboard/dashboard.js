@@ -2,6 +2,8 @@ let dashboardData = null;
 let ocultarInativosState = localStorage.getItem('escolaRs_ocultarInativos') === 'true';
 let periodoEdicaoAtivo = false;
 const resultadosPeriodoAlterados = new Map();
+const STORAGE_RESULTADOS_PERIODO_PENDENTES = 'escolaRsResultadosPeriodoPendentes';
+let persistenciaResultadosPeriodo = Promise.resolve();
 
 const SELECTORS = {
   // Containers
@@ -102,7 +104,7 @@ function loadDashboard(forceRefresh = false) {
     }, 300);
   }
 
-  chrome.runtime.sendMessage({ action: forceRefresh ? 'refreshDashboardData' : 'getDashboardData' }, (response) => {
+  chrome.runtime.sendMessage({ action: forceRefresh ? 'refreshDashboardData' : 'getDashboardData' }, async (response) => {
     if (showProgressTimeout) clearTimeout(showProgressTimeout);
     loadingDiv.style.display = 'none';
     progressContainer.style.display = 'none';
@@ -146,9 +148,111 @@ function loadDashboard(forceRefresh = false) {
     }
 
     dashboardData = response.data;
+    await restaurarResultadosPeriodoPendentes();
     fstatInitialized = false;
     renderApp();
   });
+}
+
+function persistirResultadosPeriodoPendentes() {
+  const pendentes = [...resultadosPeriodoAlterados.values()].map(alteracao => ({
+    idAluno: alteracao.resultado.idAluno ?? alteracao.aluno.matricula ?? alteracao.aluno.idAluno ?? alteracao.aluno.id,
+    idTurma: alteracao.disciplina.turmaId,
+    idDisciplina: alteracao.disciplina.id,
+    nomeAluno: alteracao.aluno.nome,
+    nroNaTurma: alteracao.aluno.nroNaTurma,
+    resultIndex: alteracao.resultIndex ?? (alteracao.aluno.listaResultados || []).indexOf(alteracao.resultado),
+    idPeriodo: alteracao.resultado.idPeriodo,
+    idArea: alteracao.resultado.idArea,
+    nomePeriodo: alteracao.resultado.nomePeriodo,
+    aproveitamento: alteracao.aproveitamento
+  }));
+  persistenciaResultadosPeriodo = persistenciaResultadosPeriodo
+    .catch(() => {})
+    .then(() => chrome.storage.local.set({ [STORAGE_RESULTADOS_PERIODO_PENDENTES]: pendentes }))
+    .catch(error => console.error('[Dashboard] Falha ao persistir notas editadas:', error));
+  return persistenciaResultadosPeriodo;
+}
+
+async function restaurarResultadosPeriodoPendentes() {
+  try {
+    const armazenado = await chrome.storage.local.get(STORAGE_RESULTADOS_PERIODO_PENDENTES);
+    const pendentes = armazenado[STORAGE_RESULTADOS_PERIODO_PENDENTES] || [];
+    for (const pendente of pendentes) {
+      for (const escola of dashboardData.escolas || []) {
+        for (const turma of escola.turmas || []) {
+          if (String(turma.id) !== String(pendente.idTurma)) continue;
+          for (const disciplina of turma.disciplinas || []) {
+            if (String(disciplina.id) !== String(pendente.idDisciplina)) continue;
+            const aluno = (disciplina.alunos || []).find(item => {
+              const ids = [item.matricula, item.idAluno, item.id, item.listaResultados?.[pendente.resultIndex]?.idAluno];
+              const possuiIdCorrespondente = pendente.idAluno != null && ids.some(id =>
+                id != null && String(id) === String(pendente.idAluno)
+              );
+              return possuiIdCorrespondente || (pendente.idAluno == null &&
+                item.nome === pendente.nomeAluno && String(item.nroNaTurma) === String(pendente.nroNaTurma));
+            });
+            let resultado = aluno?.listaResultados?.[pendente.resultIndex];
+            if (aluno && (!resultado || String(resultado.idPeriodo) !== String(pendente.idPeriodo) ||
+              String(resultado.idArea) !== String(pendente.idArea) ||
+              resultado.nomePeriodo !== pendente.nomePeriodo)) {
+              resultado = aluno.listaResultados.find(item =>
+                String(item.idPeriodo) === String(pendente.idPeriodo) &&
+                String(item.idArea) === String(pendente.idArea) &&
+                item.nomePeriodo === pendente.nomePeriodo
+              );
+            }
+            if (!aluno || !resultado) continue;
+            const resultIndex = indiceResultado(aluno, resultado);
+            const nota = (aluno.notas || []).find(item =>
+              (item.trimestre || item.nomePeriodo || '') === resultado.nomePeriodo
+            );
+            const key = `${chaveIdentificadorAluno(aluno)}_${turma.id}_${disciplina.id}_${resultIndex}`;
+            resultadosPeriodoAlterados.set(key, {
+              key,
+              aluno,
+              disciplina: { id: disciplina.id, turmaId: turma.id },
+              resultado,
+              periodo: resultado.nomePeriodo,
+              aproveitamento: pendente.aproveitamento,
+              resultIndex,
+              originalNota: nota?.nota,
+              tdElement: null
+            });
+            aplicarNotaPendenteLocal(aluno, resultado, pendente.aproveitamento);
+          }
+        }
+      }
+    }
+    if (resultadosPeriodoAlterados.size !== pendentes.length) {
+      await persistirResultadosPeriodoPendentes();
+    }
+  } catch (error) {
+    console.error('[Dashboard] Falha ao restaurar notas editadas:', error);
+  }
+}
+
+function indiceResultado(aluno, resultado) {
+  return (aluno.listaResultados || []).indexOf(resultado);
+}
+
+function chaveIdentificadorAluno(aluno) {
+  return aluno.matricula ?? aluno.idAluno ?? aluno.id;
+}
+
+function aplicarNotaPendenteLocal(aluno, resultado, aproveitamento) {
+  const nota = (aluno.notas || []).find(item =>
+    (item.trimestre || item.nomePeriodo || '') === resultado.nomePeriodo
+  );
+  if (nota) nota.nota = aproveitamento == null ? null : String(aproveitamento).replace('.', ',');
+
+  const listaComAlteracoes = (aluno.listaResultados || []).map(item => {
+    const alteracao = [...resultadosPeriodoAlterados.values()].find(pendente =>
+      pendente.aluno === aluno && pendente.resultado === item
+    );
+    return alteracao ? { ...item, resultado: alteracao.aproveitamento } : item;
+  });
+  aluno.mediaFinal = calcularMediaFinal(listaComAlteracoes);
 }
 
 /**
@@ -664,7 +768,7 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
   const valorEditavel = (resultado, valor, badgeClass, id) => {
     if (!resultado) return `<span class="tooltip-val ${badgeClass}">${valor}</span>`;
     const index = aluno.listaResultados.indexOf(resultado);
-    const key = `${aluno.matricula}_${disciplina.id}_${index}`;
+    const key = `${chaveIdentificadorAluno(aluno)}_${disciplina.turmaId}_${disciplina.id}_${index}`;
     const alteracaoPendente = resultadosPeriodoAlterados.get(key);
     const exibido = alteracaoPendente ? (alteracaoPendente.aproveitamento ?? '') : valor;
     const editClass = periodoEdicaoAtivo ? ' tooltip-editable-value' : '';
@@ -807,12 +911,27 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
       input.addEventListener('input', () => { draftSaved = false; });
       const saveDraft = () => {
         if (draftSaved) return;
+        const alteracaoAnterior = resultadosPeriodoAlterados.get(key);
+        const notaOriginal = alteracaoAnterior
+          ? alteracaoAnterior.originalNota
+          : (aluno.notas || []).find(n =>
+            (n.trimestre || n.nomePeriodo || '') === result.nomePeriodo
+          )?.nota;
         const raw = input.value.trim().replace(',', '.');
+        const originalRaw = String(result.resultado ?? '').trim().replace(',', '.');
         if (raw === '') {
-          resultadosPeriodoAlterados.set(key, {
-            key, aluno, disciplina, periodo, resultado: result,
-            aproveitamento: null, tdElement
-          });
+          if (originalRaw === '') {
+            resultadosPeriodoAlterados.delete(key);
+            aplicarNotaPendenteLocal(aluno, result, notaOriginal);
+          } else {
+            resultadosPeriodoAlterados.set(key, {
+              key, aluno, disciplina, periodo, resultado: result,
+              aproveitamento: null, tdElement, resultIndex: index, originalNota: notaOriginal
+            });
+            aplicarNotaPendenteLocal(aluno, result, null);
+          }
+          tdElement.textContent = getNotaTexto(aluno.notas, periodo);
+          persistirResultadosPeriodoPendentes();
           atualizarToastSalvarResultados();
           draftSaved = true;
           return;
@@ -824,16 +943,20 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
           return;
         }
         input.setCustomValidity('');
-        const originalRaw = String(result.resultado ?? '').trim().replace(',', '.');
         const original = Number(originalRaw);
         if (originalRaw !== '' && Number.isFinite(original) && value === original) {
           resultadosPeriodoAlterados.delete(key);
+          aplicarNotaPendenteLocal(aluno, result, notaOriginal);
+          tdElement.textContent = getNotaTexto(aluno.notas, periodo);
         } else {
           resultadosPeriodoAlterados.set(key, {
             key, aluno, disciplina, periodo, resultado: result,
-            aproveitamento: value.toFixed(1), tdElement
+            aproveitamento: value.toFixed(1), tdElement, resultIndex: index, originalNota: notaOriginal
           });
+          aplicarNotaPendenteLocal(aluno, result, value.toFixed(1));
+          tdElement.textContent = getNotaTexto(aluno.notas, periodo);
         }
+        persistirResultadosPeriodoPendentes();
         atualizarToastSalvarResultados();
         input.value = value.toFixed(1);
         draftSaved = true;
@@ -980,36 +1103,43 @@ async function salvarResultadosPeriodoAlterados(e) {
   button.disabled = true;
   button.innerHTML = '<i data-lucide="loader-circle"></i> Salvando…';
   if (window.lucide) lucide.createIcons({ nodes: [button] });
-  try {
-    const payloadPorTurma = new Map();
-    for (const { item } of resultadosValidos) {
-      const turmaId = String(item.idTurma);
-      if (!payloadPorTurma.has(turmaId)) payloadPorTurma.set(turmaId, []);
-      payloadPorTurma.get(turmaId).push(item);
+  const payloadPorTurma = new Map();
+  for (const registro of resultadosValidos) {
+    const { item } = registro;
+    const turmaId = String(item.idTurma);
+    if (!payloadPorTurma.has(turmaId)) payloadPorTurma.set(turmaId, []);
+    payloadPorTurma.get(turmaId).push(registro);
+  }
+
+  let salvos = 0;
+  let descartadosPorErro = 0;
+  for (const registrosTurma of payloadPorTurma.values()) {
+    try {
+      await gravarResultadoPeriodoEmLista(registrosTurma.map(({ item }) => item));
+      for (const { alteracao } of registrosTurma) {
+        alteracao.resultado.resultado = alteracao.aproveitamento;
+        resultadosPeriodoAlterados.delete(alteracao.key);
+        aplicarNotaPendenteLocal(alteracao.aluno, alteracao.resultado, alteracao.aproveitamento);
+        salvos++;
+      }
+    } catch (error) {
+      console.error(`[Dashboard] Erro ao salvar resultados da turma ${registrosTurma[0].item.idTurma}; alterações descartadas:`, error);
+      for (const { alteracao } of registrosTurma) {
+        resultadosPeriodoAlterados.delete(alteracao.key);
+        aplicarNotaPendenteLocal(alteracao.aluno, alteracao.resultado, alteracao.originalNota);
+        descartadosPorErro++;
+      }
     }
-    for (const resultadosTurma of payloadPorTurma.values()) {
-      await gravarResultadoPeriodoEmLista(resultadosTurma);
-    }
-    for (const { item, alteracao } of resultadosValidos) {
-      alteracao.resultado.resultado = alteracao.aproveitamento;
-      const nota = (alteracao.aluno.notas || []).find(n => {
-        return (n.trimestre || n.nomePeriodo || '') === alteracao.resultado.nomePeriodo;
-      });
-      if (nota) nota.nota = alteracao.aproveitamento == null
-        ? null
-        : alteracao.aproveitamento.replace('.', ',');
-      alteracao.aluno.mediaFinal = calcularMediaFinal(alteracao.aluno.listaResultados || []);
-      alteracao.tdElement.textContent = getNotaTexto(alteracao.aluno.notas, alteracao.periodo);
-      resultadosPeriodoAlterados.delete(alteracao.key);
-    }
-    atualizarToastSalvarResultados();
-    closeActiveNotaTooltip();
-    showToast(`${resultadosValidos.length} resultado(s) salvo(s).`, 'success');
-  } catch (error) {
-    console.error('[Dashboard] Erro ao salvar resultados por período:', error);
-    showToast(`Erro ao salvar resultados: ${error.message || error}`, 'error');
-    button.disabled = false;
-    atualizarToastSalvarResultados();
+  }
+
+  await persistirResultadosPeriodoPendentes();
+  closeActiveNotaTooltip();
+  renderApp();
+  atualizarToastSalvarResultados();
+  if (descartadosPorErro) {
+    showToast(`${salvos} resultado(s) salvo(s); ${descartadosPorErro} alteração(ões) descartada(s) após erro.`, 'error');
+  } else {
+    showToast(`${salvos} resultado(s) salvo(s).`, 'success');
   }
 }
 
