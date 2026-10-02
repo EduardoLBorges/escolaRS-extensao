@@ -937,7 +937,7 @@ async function salvarResultadosPeriodoAlterados(e) {
       idPeriodo: resultado.idPeriodo,
       idArea: resultado.idArea,
       aproveitamento: aproveitamento ?? null,
-      tpExpRes: 'N',
+      tpExpRes: resultado.tpExpRes,
       area: resultado.area ?? false
     };
     // A API exige esses identificadores extras para gravar resultados de ER.
@@ -948,34 +948,61 @@ async function salvarResultadosPeriodoAlterados(e) {
     return item;
   });
 
-  if (payload.some(item => !item.idAluno || !item.idTurma || !item.idDisciplina || !item.idProfessor || !item.idPeriodo || item.idArea == null)) {
-    showToast('Não foi possível salvar: faltam identificadores em um ou mais resultados.', 'error');
-    return;
-  }
-  if (alteracoes.some(({ resultado }) => ehResultadoER(resultado.nomePeriodo) &&
-    (resultado.idAproveitAval == null || resultado.idResultadoPeriodo == null))) {
-    showToast('Não foi possível salvar o ER: faltam os identificadores da avaliação ou do resultado.', 'error');
-    return;
+  const camposObrigatorios = ['idAluno', 'idTurma', 'idDisciplina', 'idProfessor', 'idPeriodo', 'idArea', 'tpExpRes'];
+  const itensComAlteracao = payload.map((item, index) => ({ item, alteracao: alteracoes[index] }));
+  const camposAusentes = ({ item, alteracao }) => {
+    const obrigatorios = [...camposObrigatorios];
+    if (ehResultadoER(alteracao.resultado.nomePeriodo)) {
+      obrigatorios.push('idAproveitAval', 'idResultadoPeriodo');
+    }
+    return obrigatorios.filter(campo => item[campo] == null || item[campo] === '');
+  };
+  const resultadosInvalidos = itensComAlteracao.filter(registro => camposAusentes(registro).length);
+  const resultadosValidos = itensComAlteracao.filter(registro => !camposAusentes(registro).length);
+
+  if (resultadosInvalidos.length) {
+    console.error('[Dashboard] Resultados ignorados por campos ausentes:', resultadosInvalidos.map(({ item, alteracao }) => ({
+      aluno: alteracao.aluno.nome || alteracao.aluno.matricula,
+      matricula: alteracao.aluno.matricula,
+      turma: item.idTurma,
+      disciplina: item.idDisciplina,
+      periodo: item.idPeriodo,
+      faltando: camposAusentes({ item, alteracao })
+    })));
   }
 
+  if (!resultadosValidos.length) {
+    if (resultadosInvalidos.length) {
+      showToast('Nenhum resultado foi enviado. Consulte o console para ver os campos ausentes.', 'error');
+    }
+    return;
+  }
   button.disabled = true;
   button.innerHTML = '<i data-lucide="loader-circle"></i> Salvando…';
   if (window.lucide) lucide.createIcons({ nodes: [button] });
   try {
-    await gravarResultadoPeriodoEmLista(payload);
-    for (const item of alteracoes) {
-      item.resultado.resultado = item.aproveitamento;
-      const nota = (item.aluno.notas || []).find(n => {
-        return (n.trimestre || n.nomePeriodo || '') === item.resultado.nomePeriodo;
+    const payloadPorTurma = new Map();
+    for (const { item } of resultadosValidos) {
+      const turmaId = String(item.idTurma);
+      if (!payloadPorTurma.has(turmaId)) payloadPorTurma.set(turmaId, []);
+      payloadPorTurma.get(turmaId).push(item);
+    }
+    for (const resultadosTurma of payloadPorTurma.values()) {
+      await gravarResultadoPeriodoEmLista(resultadosTurma);
+    }
+    for (const { item, alteracao } of resultadosValidos) {
+      alteracao.resultado.resultado = alteracao.aproveitamento;
+      const nota = (alteracao.aluno.notas || []).find(n => {
+        return (n.trimestre || n.nomePeriodo || '') === alteracao.resultado.nomePeriodo;
       });
-      if (nota) nota.nota = item.aproveitamento == null ? null : item.aproveitamento.replace('.', ',');
-      item.aluno.mediaFinal = calcularMediaFinal(item.aluno.listaResultados || []);
-      item.tdElement.textContent = getNotaTexto(item.aluno.notas, item.periodo);
-      resultadosPeriodoAlterados.delete(item.key);
+      if (nota) nota.nota = alteracao.aproveitamento.replace('.', ',');
+      alteracao.aluno.mediaFinal = calcularMediaFinal(alteracao.aluno.listaResultados || []);
+      alteracao.tdElement.textContent = getNotaTexto(alteracao.aluno.notas, alteracao.periodo);
+      resultadosPeriodoAlterados.delete(alteracao.key);
     }
     atualizarToastSalvarResultados();
     closeActiveNotaTooltip();
-    showToast(`${alteracoes.length} resultado(s) salvo(s).`, 'success');
+    showToast(`${resultadosValidos.length} resultado(s) salvo(s).`, 'success');
   } catch (error) {
     console.error('[Dashboard] Erro ao salvar resultados por período:', error);
     showToast(`Erro ao salvar resultados: ${error.message || error}`, 'error');
