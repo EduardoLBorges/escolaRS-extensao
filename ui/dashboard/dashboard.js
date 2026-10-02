@@ -995,7 +995,9 @@ async function salvarResultadosPeriodoAlterados(e) {
       const nota = (alteracao.aluno.notas || []).find(n => {
         return (n.trimestre || n.nomePeriodo || '') === alteracao.resultado.nomePeriodo;
       });
-      if (nota) nota.nota = alteracao.aproveitamento.replace('.', ',');
+      if (nota) nota.nota = alteracao.aproveitamento == null
+        ? null
+        : alteracao.aproveitamento.replace('.', ',');
       alteracao.aluno.mediaFinal = calcularMediaFinal(alteracao.aluno.listaResultados || []);
       alteracao.tdElement.textContent = getNotaTexto(alteracao.aluno.notas, alteracao.periodo);
       resultadosPeriodoAlterados.delete(alteracao.key);
