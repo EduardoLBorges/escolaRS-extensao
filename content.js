@@ -30,6 +30,19 @@ function extractDocFromJwt(jwtStr) {
   }
 }
 
+function extractClientIdFromJwt(jwtStr) {
+  try {
+    const raw = String(jwtStr).replace(/^Bearer\s+/i, '');
+    const parts = raw.split('.');
+    if (parts.length < 2) return null;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    const audience = payload.aud;
+    return typeof audience === 'string' ? audience : Array.isArray(audience) ? audience[0] : null;
+  } catch {
+    return null;
+  }
+}
+
 function captureIndexedDbInfo() {
   try {
     if (typeof indexedDB === 'undefined') return;
@@ -92,10 +105,14 @@ function captureOidcInfo() {
               });
               const docFromAccess = extractDocFromJwt(parsed.access_token);
               if (docFromAccess) saveNrDocIfFound(docFromAccess);
+              const clientId = extractClientIdFromJwt(parsed.access_token);
+              if (clientId) chrome.storage.local.set({ escolaRsClientId: clientId });
             }
             if (parsed.id_token) {
               const docFromId = extractDocFromJwt(parsed.id_token);
               if (docFromId) saveNrDocIfFound(docFromId);
+              const clientId = extractClientIdFromJwt(parsed.id_token);
+              if (clientId) chrome.storage.local.set({ escolaRsClientId: clientId });
             }
             if (parsed.profile) {
               const profileDoc = parsed.profile.nrDoc || parsed.profile.cpf || parsed.profile.preferred_username || parsed.profile.sub;

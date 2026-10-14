@@ -1,6 +1,6 @@
 # Documentação Técnica e Conceitual — Extensão EscolaRS
 
-> **Versão da Extensão:** 0.5.2  
+> **Versão da Extensão:** 0.5.3  
 > **Plataforma:** Google Chrome (Manifest V3)  
 > **Público-Alvo:** Professores da rede pública estadual do Rio Grande do Sul (SEDUC-RS / PROCERGS)  
 > **Repositório:** [https://github.com/EduardoLBorges/escolaRS-extensao](https://github.com/EduardoLBorges/escolaRS-extensao)

@@ -4,7 +4,7 @@ Extensão para Google Chrome que permite **visualizar, filtrar, analisar e expor
 
 A ferramenta foi criada para **facilitar o trabalho de professores**, permitindo analisar rapidamente o desempenho das turmas e exportar dados organizados em planilhas.
 
-**Versão atual: 0.5.2**
+**Versão atual: 0.5.3**
 
 ---
 

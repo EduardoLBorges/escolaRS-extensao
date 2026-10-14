@@ -100,11 +100,33 @@ async function fetchEscolaRS(endpoint, options = {}, timeout = API_TIMEOUT) {
  */
 async function executeBackgroundTokenRefresh(refreshToken) {
   try {
+    const { escolaRsClientId, escolaRsToken } = await chrome.storage.local.get([
+      'escolaRsClientId',
+      'escolaRsToken',
+    ]);
+    const token = String(escolaRsToken || '').replace(/^Bearer\s+/i, '');
+    const tokenPayload = token.split('.')[1];
+    let clientId = escolaRsClientId || null;
+
+    // Migra instalações existentes: o access token emitido pelo portal inclui
+    // o client_id na claim aud (string ou array, conforme o formato do JWT).
+    if (!clientId && tokenPayload) {
+      try {
+        const payload = JSON.parse(atob(tokenPayload.replace(/-/g, '+').replace(/_/g, '/')));
+        clientId = typeof payload.aud === 'string'
+          ? payload.aud
+          : Array.isArray(payload.aud) ? payload.aud[0] : null;
+      } catch {
+        // O erro abaixo informa que não há client_id disponível sem expor tokens.
+      }
+    }
+    if (!clientId) throw new Error('client_id não encontrado nos dados de autenticação. Faça login novamente no portal.');
+
     const url = 'https://www.soe.rs.gov.br/soeauth/connect/token';
     const body = new URLSearchParams({
       refresh_token: refreshToken,
       grant_type: 'refresh_token',
-      client_id: 'ise.i2.qAeyKT7HD0RZ7N1t76Q5etE',
+      client_id: clientId,
     });
 
     const res = await fetch(url, {
