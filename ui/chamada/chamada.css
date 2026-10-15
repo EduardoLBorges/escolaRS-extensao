@@ -1101,6 +1101,7 @@ header h1 {
 }
 
 .plano-chip {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -1122,10 +1123,39 @@ header h1 {
   box-shadow: var(--shadow-sm);
 }
 
+.plano-chip.used-chip {
+  border-color: #a5d6a7;
+  background: #e8f5e9;
+}
+
+.plano-chip-used-indicator {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #dcfce7;
+  color: #166534;
+}
+
+.plano-chip-used-indicator svg {
+  width: 13px;
+  height: 13px;
+}
+
 .plano-chip--active {
   background: var(--primary) !important;
   color: white !important;
   transform: scale(0.97);
+}
+
+.plano-chip--active .plano-chip-used-indicator {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
 }
 
 .plano-chip--active .plano-chip-num,

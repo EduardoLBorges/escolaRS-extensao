@@ -912,14 +912,24 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
   if (todasAulasDosPlanos.length > 0) {
     // Analisar histórico para autopreenchimento
     const historicoConteudos = (disciplina.chamadas || [])
-      .filter(c => c.data !== isoDate)
+      .filter(c => normalizeDateStr(c.data) !== normalizeDateStr(isoDate))
       .map(c => c.registroConteudo || '');
+
+    const normalizeConteudo = texto => String(texto || '').trim().toLocaleLowerCase('pt-BR').replace(/\s+/g, ' ');
+    const objetosJaRegistrados = new Set(
+      historicoConteudos.flatMap(conteudo =>
+        conteudo.split(/\r?\n/).map(linha => normalizeConteudo(linha)).filter(Boolean)
+      )
+    );
+    const indicesUsados = new Set();
 
     let highestUsedIndex = -1;
     todasAulasDosPlanos.forEach((aula, idx) => {
-      const objText = (aula.objetoConhecimento || '').trim();
-      const hasMatch = objText && historicoConteudos.some(hc => hc.includes(objText));
-      if (hasMatch) highestUsedIndex = idx;
+      const objText = normalizeConteudo(aula.objetoConhecimento);
+      if (objText && objetosJaRegistrados.has(objText)) {
+        indicesUsados.add(idx);
+        highestUsedIndex = idx;
+      }
     });
 
     let autoFillIndex = -1;
@@ -940,22 +950,22 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
     }
 
     const chips = todasAulasDosPlanos.map((aula, idx) => {
-      const isUsed = idx <= highestUsedIndex;
+      const isUsed = indicesUsados.has(idx);
       const isAutoFilled = idx === autoFillIndex;
       const extraClass = isUsed ? 'used-chip' : (isAutoFilled ? 'plano-chip--active' : '');
-      const icon = isUsed ? '<i data-lucide="check" style="width:12px;height:12px;margin-right:4px;"></i>' : '';
-      const opacity = isUsed ? 'opacity: 0.6;' : '';
+      const indicator = isUsed
+        ? '<span class="plano-chip-used-indicator" title="Aula já registrada" aria-label="Aula já registrada"><i data-lucide="check"></i></span>'
+        : '';
 
       return `
         <div class="plano-chip ${extraClass}" 
-             style="${opacity}"
              data-form-index="${index}" 
              data-habilidade="${(aula.habilidade || '').replace(/"/g, '&quot;')}" 
              data-estrategia="${(aula.estrategia || '').replace(/"/g, '&quot;')}"
              data-objeto="${(aula.objetoConhecimento || '').replace(/"/g, '&quot;')}"
-             title="Estratégia: ${(aula.estrategia || '').replace(/"/g, '&quot;')}"
-             role="button">
-          ${icon}<span class="plano-chip-num">Aula ${aula.ordem}</span>
+             title="${isUsed ? 'Aula já registrada. ' : ''}Estratégia: ${(aula.estrategia || '').replace(/"/g, '&quot;')}"
+             role="button" tabindex="0" aria-label="Aula ${aula.ordem}: ${(aula.objetoConhecimento || '').replace(/"/g, '&quot;')}${isUsed ? ', já registrada' : ''}">
+          ${indicator}<span class="plano-chip-num">Aula ${aula.ordem}</span>
           <span class="plano-chip-text">${aula.objetoConhecimento || '—'}</span>
         </div>
       `;
@@ -1018,6 +1028,11 @@ function createClassForm(aulaConfig, dataStr, index, isoDate) {
 
   // Event Listener do slider (auto-fill)
   div.querySelectorAll('.plano-chip').forEach(chip => {
+    chip.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      chip.click();
+    });
     chip.addEventListener('click', (e) => {
       const applyToForm = (targetDiv, formIndex, targetChip) => {
         const textarea = document.getElementById(`conteudo-${formIndex}`);
