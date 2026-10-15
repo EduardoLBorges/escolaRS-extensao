@@ -97,16 +97,18 @@ function setupEventListeners() {
 
   // Event Delegation para botões de presença e botões de envio (corrige erro CSP do Chrome)
   document.getElementById('classesList').addEventListener('click', (e) => {
-    if (e.target.classList.contains('attendance-btn')) {
-      const row = e.target.closest('.attendance-toggle');
+    const attendanceButton = e.target.closest('.attendance-btn');
+    if (attendanceButton) {
+      const row = attendanceButton.closest('.attendance-toggle');
       row.querySelectorAll('.attendance-btn').forEach(b => b.classList.remove('active'));
-      e.target.classList.add('active');
-      const card = e.target.closest('.class-card');
+      attendanceButton.classList.add('active');
+      const card = attendanceButton.closest('.class-card');
       if (card) card.classList.add('has-changes');
     }
 
-    if (e.target.classList.contains('submit-attendance')) {
-      const btn = e.target;
+    const submitButton = e.target.closest('.submit-attendance');
+    if (submitButton) {
+      const btn = submitButton;
       submitAttendance(
         btn.dataset.formIndex,
         parseInt(btn.dataset.idTurma),
@@ -118,18 +120,19 @@ function setupEventListeners() {
       );
     }
 
-    if (e.target.classList.contains('toggle-attendance-btn')) {
-      const targetId = e.target.dataset.target;
+    const toggleButton = e.target.closest('.toggle-attendance-btn');
+    if (toggleButton) {
+      const targetId = toggleButton.dataset.target;
       const targetEl = document.getElementById(targetId);
       if (targetEl) {
         if (targetEl.style.display === 'none') {
           targetEl.style.display = 'block';
-          e.target.innerHTML = '<i data-lucide="chevron-up"></i> Ocultar Alunos';
-          lucide.createIcons({ nodes: [e.target] });
+          toggleButton.innerHTML = '<i data-lucide="chevron-up"></i> Ocultar Alunos';
+          lucide.createIcons({ nodes: [toggleButton] });
         } else {
           targetEl.style.display = 'none';
-          e.target.innerHTML = '<i data-lucide="chevron-down"></i> Mostrar Alunos';
-          lucide.createIcons({ nodes: [e.target] });
+          toggleButton.innerHTML = '<i data-lucide="chevron-down"></i> Mostrar Alunos';
+          lucide.createIcons({ nodes: [toggleButton] });
         }
       }
     }

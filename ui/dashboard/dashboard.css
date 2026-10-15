@@ -1465,6 +1465,42 @@ tr:hover td {
 .dashboard-toast-error { background: #b42318; }
 .dashboard-toast-success { background: #1f822b; }
 
+.dashboard-refresh-error {
+  position: fixed;
+  z-index: 3200;
+  right: 20px;
+  bottom: 20px;
+  width: min(440px, calc(100vw - 40px));
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid #fecdca;
+  border-radius: 10px;
+  background: #fff4f2;
+  color: #7a271a;
+  box-shadow: var(--shadow-md);
+  font-size: 13px;
+}
+
+.dashboard-refresh-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dashboard-refresh-retry {
+  flex: none;
+  border: 0;
+  border-radius: 6px;
+  padding: 7px 10px;
+  background: #b42318;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 @keyframes tooltipFadeIn {
   from {
     opacity: 0;

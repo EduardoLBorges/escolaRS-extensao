@@ -394,27 +394,34 @@ class TabController {
 
         try {
             const enviosObj = listToPost.map(l => ({ payload: l.payload }));
-            await service.enviarNotas(enviosObj, 
+            const resultado = await service.enviarNotas(enviosObj,
                 (p) => {}, 
                 (logMsg, tpo) => { console.log(`[Aba ${this.id}]`, logMsg); }
             );
 
-            window.showToast(`Sucesso! ${listToPost.length} notas gravadas.`, 'success');
-            
-            listToPost.forEach(item => {
+            const failedPayloads = new Set(resultado.failedPayloads);
+            listToPost.forEach((item, index) => {
+                if (failedPayloads.has(item.payload)) return;
+
                 item.inputRef.classList.remove('changed');
                 item.inputRef.classList.add('saved');
                 item.inputRef.setAttribute('data-original-val', item.payload.dsAproveitamento);
+                delete this.statePayloads[ks[index]];
                 setTimeout(() => item.inputRef.classList.remove('saved'), 3000);
             });
-            this.statePayloads = {};
             this.atualizarFooter();
+
+            if (resultado.failedPayloads.length) {
+                window.showToast(`${resultado.saved} nota(s) salvas; ${resultado.failedPayloads.length} falharam e continuam pendentes.`, 'error');
+            } else {
+                window.showToast(`Sucesso! ${resultado.saved} nota(s) gravadas.`, 'success');
+            }
 
         } catch (err) {
             window.showToast(`Falha no envio da Aba: ${err.message}`, 'error');
         } finally {
             this.btnSalvar.innerHTML = `<i data-lucide="save"></i> Salvar Lançamentos Aba`;
-            this.btnSalvar.disabled = false;
+            this.btnSalvar.disabled = Object.keys(this.statePayloads).length === 0;
             if (window.lucide) window.lucide.createIcons();
         }
     }

@@ -436,11 +436,12 @@ class AvaliacoesService {
         if (finalQueue.length === 0) {
             onLog("\n[CHECK] Tudo em dia! Nenhuma nova alteração detectada em relação ao portal.", "success");
             onProgress({ pct: 100 });
-            return 0;
+            return { saved: 0, failedPayloads: [], total: 0 };
         }
 
         let sent = 0;
         let successCount = 0;
+        const failedPayloads = [];
         const total = finalQueue.length;
         const PAYLOAD_BATCH = 20;
 
@@ -453,13 +454,14 @@ class AvaliacoesService {
                 successCount += batch.length;
             } catch (err) {
                 onLog(`[ERROR] Falha em um lote de envio: ${err.message}`, 'error');
+                failedPayloads.push(...batch);
             } finally {
                 onProgress({ pct: Math.round((sent / total) * 100) });
             }
         }
 
         onLog(`\n[FINALIZADO] ${successCount} notas atualizadas com sucesso no EscolaRS!`, 'success');
-        return successCount;
+        return { saved: successCount, failedPayloads, total };
     }
 
     // --- Lançamento Direto (DataGrid Native) --- //

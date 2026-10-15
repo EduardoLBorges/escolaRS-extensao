@@ -80,6 +80,7 @@ function loadDashboard(forceRefresh = false) {
   const loadingDiv = document.querySelector(SELECTORS.loading);
   const progressContainer = document.querySelector(SELECTORS.progressContainer);
   const refreshBtn = document.querySelector(SELECTORS.headerRefresh);
+  document.querySelector('#dashboard-refresh-error')?.remove();
 
   let showProgressTimeout = null;
 
@@ -120,20 +121,7 @@ function loadDashboard(forceRefresh = false) {
       console.error('Falha ao atualizar dados:', errorMsg);
 
       if (dashboardData && forceRefresh) {
-        const pCont = document.querySelector('#refresh-progress');
-        const pBar = document.querySelector('#refresh-progress-bar');
-
-        pCont.style.display = 'block';
-        pBar.style.width = '100%';
-        pBar.classList.add('blink-error');
-
-        setTimeout(() => {
-          pCont.style.display = 'none';
-          pBar.classList.remove('blink-error');
-          pBar.style.width = '0%';
-        }, 3000);
-
-        alert(`Erro ao sincronizar dados com o Portal EscolaRS:\n\n${errorMsg}\n\nCertifique-se de que você está logado no portal EscolaRS em outra aba e tente novamente.`);
+        showRefreshError(errorMsg);
         return;
       }
 
@@ -1045,6 +1033,24 @@ function showToast(message, type = 'info') {
   const toast = createEl('div', { className: `dashboard-toast dashboard-toast-${type}`, textContent: message });
   document.body.appendChild(toast);
   setTimeout(() => toast.remove(), 3500);
+}
+
+function showRefreshError(message) {
+  document.querySelector('#dashboard-refresh-error')?.remove();
+  const banner = createEl('div', {
+    id: 'dashboard-refresh-error',
+    className: 'dashboard-refresh-error',
+    role: 'alert',
+    'aria-live': 'assertive'
+  }, [
+    createEl('span', { textContent: `Não foi possível sincronizar. Os dados exibidos continuam disponíveis. ${message}` }),
+    createEl('span', { className: 'dashboard-refresh-actions' }, [
+      createEl('span', { textContent: 'Confirme que você está conectado ao portal EscolaRS.' }),
+      createEl('button', { type: 'button', className: 'dashboard-refresh-retry', textContent: 'Tentar novamente' })
+    ])
+  ]);
+  banner.querySelector('button').addEventListener('click', () => loadDashboard(true));
+  document.body.appendChild(banner);
 }
 
 async function salvarResultadosPeriodoAlterados(e) {
