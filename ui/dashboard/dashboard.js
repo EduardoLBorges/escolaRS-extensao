@@ -15,8 +15,6 @@ const SELECTORS = {
   professorInfo: '#professor-info',
   exportDate: '#export-date',
   headerRefresh: '#header-refresh',
-  headerChamadas: '#header-chamadas',
-  headerAvaliacoes: '#header-avaliacoes',
 
   // Progress Bar
   progressFill: '#progress-fill',
@@ -386,81 +384,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Botões do Header
   document.querySelector(SELECTORS.headerRefresh)?.addEventListener('click', () => loadDashboard(true));
-  document.querySelector('#nav-chamadas')?.addEventListener('click', () => {
-    window.location.href = '../chamada/chamada.html';
-  });
-  document.querySelector('#nav-avaliacoes')?.addEventListener('click', () => {
-    window.location.href = '../avaliacoes/avaliacoes.html';
-  });
-  document.querySelector('#nav-omr')?.addEventListener('click', () => {
-    window.location.href = '../avaliacoes/avaliacoes.html?open=omr';
-  });
-  // Backup Handlers
-  document.querySelector('#nav-export-backup')?.addEventListener('click', async () => {
-    const data = await chrome.storage.local.get([
-      'escolaRsHorariosCustomizados',
-      'escolaRsInfrequentes',
-      'escolaRsPlanosDeAula',
-      'escolaRsDiasLetivos'
-    ]);
-
-    const config = {
-      horariosCustomizados: data.escolaRsHorariosCustomizados || [],
-      infrequentes: data.escolaRsInfrequentes || [],
-      planosDeAula: data.escolaRsPlanosDeAula || [],
-      diasLetivos: data.escolaRsDiasLetivos || []
-    };
-
-    if (!config.horariosCustomizados.length && !config.infrequentes.length && !config.planosDeAula.length && !config.diasLetivos.length) {
-      alert("Não há dados de configurações para exportar.");
-      return;
-    }
-
-    const jsonStr = JSON.stringify(config, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `backup_escolaRS_${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  });
-
-  const navImportFile = document.querySelector('#nav-import-file');
-  document.querySelector('#nav-import-backup')?.addEventListener('click', () => {
-    navImportFile?.click();
-  });
-
-  navImportFile?.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      try {
-        const parsed = JSON.parse(evt.target.result);
-        let storageUpdate = {};
-
-        if (Array.isArray(parsed)) {
-          storageUpdate.escolaRsHorariosCustomizados = parsed;
-        } else if (parsed && typeof parsed === 'object') {
-          if (parsed.horariosCustomizados) storageUpdate.escolaRsHorariosCustomizados = parsed.horariosCustomizados;
-          if (parsed.infrequentes) storageUpdate.escolaRsInfrequentes = parsed.infrequentes;
-          if (parsed.planosDeAula) storageUpdate.escolaRsPlanosDeAula = parsed.planosDeAula;
-          if (parsed.diasLetivos) storageUpdate.escolaRsDiasLetivos = parsed.diasLetivos;
-        } else {
-          throw new Error('Formato JSON inválido.');
-        }
-
-        await chrome.storage.local.set(storageUpdate);
-        alert('Backup das configurações importado com sucesso!');
-        window.location.reload();
-      } catch (err) {
-        alert('Erro ao importar backup: ' + err.message);
-      }
-      e.target.value = '';
-    };
-    reader.readAsText(file);
-  });
 
   // Carga inicial
   loadDashboard(false);
