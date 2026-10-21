@@ -1427,7 +1427,22 @@ tr:hover td {
   background: var(--surface);
   box-shadow: var(--shadow-md);
   font-size: 13px;
+  flex-wrap: wrap;
+  max-width: min(680px, calc(100vw - 32px));
 }
+
+.period-save-failures {
+  flex-basis: 100%;
+  max-height: 180px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 8px 0 0 20px;
+  border-top: 1px solid var(--border);
+  color: #b42318;
+  font-size: 12px;
+}
+
+.period-save-failures li + li { margin-top: 5px; }
 
 .period-save-button {
   display: inline-flex;
