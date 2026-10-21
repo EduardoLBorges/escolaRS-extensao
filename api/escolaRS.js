@@ -239,10 +239,26 @@ async function trySilentTokenRefresh(staleToken = null) {
       windowRemovedListener = (removedWinId) => {
         if (removedWinId === windowId) {
           windowId = null;
-          cleanup();
-          if (!resolved) {
-            reject(new Error('Janela de login fechada pelo usuário.'));
-          }
+          // O portal pode fechar a janela ao concluir o login antes de o
+          // content script/webRequest terminar de persistir o token.
+          // Aguarda essa gravação final antes de tratar o fechamento como cancelamento.
+          setTimeout(async () => {
+            if (resolved) return;
+            try {
+              const { escolaRsToken: currentToken } = await chrome.storage.local.get('escolaRsToken');
+              if (currentToken && currentToken !== staleToken) {
+                finishSuccess(currentToken);
+                return;
+              }
+            } catch (error) {
+              console.warn(`${LOG_PREFIX} Não foi possível verificar o token após fechar o popup.`, error);
+            }
+
+            if (!resolved) {
+              cleanup();
+              reject(new Error('Janela de login fechada pelo usuário.'));
+            }
+          }, 2000);
         }
       };
       chrome.windows.onRemoved.addListener(windowRemovedListener);
