@@ -229,16 +229,23 @@ Possíveis melhorias:
 
 Sugestões e melhorias são bem-vindas.
 
-1. Faça um fork do projeto  
-2. Crie uma branch para sua feature
+## Fluxo de branches
+
+- `release` é a versão pública distribuída aos professores. Ela contém o dashboard para acompanhamento de notas, sem os recursos de edição.
+- `main` é a versão completa para uso pessoal, com todas as funções disponíveis.
+- `develop` recebe o desenvolvimento e a integração de mudanças antes de serem promovidas para `main` ou `release`.
+
+Fluxo recomendado:
+
+1. Desenvolva funcionalidades em branches criadas a partir de `develop` (por exemplo, `feat/nome-da-funcao`).
+2. Abra um pull request para `develop` e valide a integração.
+3. Quando estiver estável, promova `develop` para `main` para atualizar a versão completa.
+4. Para publicar uma atualização aos professores, leve para `release` somente as mudanças apropriadas à edição pública. Não faça merge direto de `main` em `release` se isso incluir recursos pessoais, como edição de notas.
 
 ```
-
-git checkout -b minha-feature
-
+git switch develop
+git switch -c feat/minha-funcionalidade
 ```
-
-3. Envie um pull request
 
 ---
 
