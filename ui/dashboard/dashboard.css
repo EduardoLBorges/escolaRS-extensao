@@ -117,6 +117,17 @@ header h1 {
   gap: 10px;
 }
 
+.btn-nota-minima {
+  display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface);
+  color: var(--text-muted); font: inherit; font-size: 0.78rem; cursor: pointer;
+}
+.nota-minima-switch { width: 24px; height: 14px; border-radius: 999px; background: #cbd5e1; position: relative; transition: background-color 0.15s ease; }
+.nota-minima-switch::after { content: ''; position: absolute; width: 10px; height: 10px; top: 2px; left: 2px; border-radius: 50%; background: white; transition: transform 0.15s ease; }
+.btn-nota-minima.active { color: var(--primary); border-color: var(--secondary); }
+.btn-nota-minima.active .nota-minima-switch { background: var(--primary); }
+.btn-nota-minima.active .nota-minima-switch::after { transform: translateX(10px); }
+
 /* ========================================
    FLOATING LEFT NAVBAR & HEADER BUTTONS
    ======================================== */
@@ -1352,6 +1363,9 @@ tr:hover td {
   position: relative;
   user-select: none;
 }
+
+.nota-periodo-valor, .nota-minima-preview { display: block; }
+.nota-minima-preview { color: var(--text-muted); font-size: 0.65rem; line-height: 1.1; font-weight: 500; }
 
 .nota-periodo-cell:hover {
   background-color: #e2e8f0 !important;

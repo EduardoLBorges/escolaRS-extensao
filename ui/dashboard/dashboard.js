@@ -1,4 +1,5 @@
 let dashboardData = null;
+let preVisualizarNotaMinima = localStorage.getItem('escolaRs_preVisualizarNotaMinima') === 'true';
 let ocultarInativosState = localStorage.getItem('escolaRs_ocultarInativos') === 'true';
 let periodoEdicaoAtivo = false;
 const resultadosPeriodoAlterados = new Map();
@@ -386,6 +387,18 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Botões do Header
+  const toggleNotaMinima = document.querySelector('#toggle-nota-minima');
+  if (toggleNotaMinima) {
+    toggleNotaMinima.setAttribute('aria-checked', String(preVisualizarNotaMinima));
+    toggleNotaMinima.classList.toggle('active', preVisualizarNotaMinima);
+    toggleNotaMinima.addEventListener('click', () => {
+      preVisualizarNotaMinima = !preVisualizarNotaMinima;
+      localStorage.setItem('escolaRs_preVisualizarNotaMinima', String(preVisualizarNotaMinima));
+      toggleNotaMinima.setAttribute('aria-checked', String(preVisualizarNotaMinima));
+      toggleNotaMinima.classList.toggle('active', preVisualizarNotaMinima);
+      if (dashboardData) renderApp();
+    });
+  }
   document.querySelector(SELECTORS.headerRefresh)?.addEventListener('click', () => loadDashboard(true));
   document.querySelector('#nav-chamadas')?.addEventListener('click', () => {
     window.location.href = '../chamada/chamada.html';
@@ -654,7 +667,12 @@ function createStudentsTable(alunos, disciplina, disciplinaInfo) {
           cellTitle = `⚠️ Atenção: Nota de ER (${notaER}) registrada sem nota do ${p.toLowerCase()}! Clique para detalhes.`;
           cellContent = `<span class="alerta-er-wrap"><span>${nota}</span><span class="alerta-er-icon" title="Atenção: Nota de ER (${notaER}) registrada sem nota regular do trimestre"><i data-lucide="alert-triangle"></i></span></span>`;
         } else {
-          cellContent = nota;
+          const infoMinima = preVisualizarNotaMinima && typeof calcularNotaMinimaPeriodo === 'function'
+            ? calcularNotaMinimaPeriodo(aluno, p)
+            : null;
+          cellContent = infoMinima?.aplicavel
+            ? `<span class="nota-periodo-valor">${nota}</span><span class="nota-minima-preview" title="Nota mínima necessária">mín. ${infoMinima.formatada}</span>`
+            : nota;
         }
 
         const td = createEl('td', {
