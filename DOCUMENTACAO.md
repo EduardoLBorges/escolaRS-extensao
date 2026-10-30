@@ -216,6 +216,8 @@ Array de itens enviado em lotes de até 20. O fluxo de planilha monta cada item 
 
 Array de itens com `idAluno`, `idTurma`, `idDisciplina`, `idProfessor`, `idPeriodo`, `idArea`, `aproveitamento` (string ou `null`), `tpExpRes` e `area` (boolean). Para períodos de recuperação (ER), o dashboard também exige `idAproveitAval` e `idResultadoPeriodo`; quando disponíveis, esses campos são enviados para os demais períodos.
 
+Antes de gravar uma edição, o dashboard consulta novamente `listarAulasDaTurmaComResultado` para a turma e disciplina alteradas e localiza o aluno e o resultado correspondente ao período/área. Se `idPeriodo`, `idArea`, `tpExpRes` ou `idAproveitAval` não vierem nesse resultado, tenta resolvê-los nos dados unívocos do mesmo período da disciplina e, quando necessário, em `listarAvaliacoesTurma`. `idResultadoPeriodo` só é aceito do resultado do aluno correspondente; nunca é reutilizado de outro aluno. Se os dados continuarem ausentes ou ambíguos, a nota permanece pendente sem ser enviada.
+
 ### Respostas POST observadas
 
 - `/chamada`: objeto do registro gravado com `nrAulasDadas` e `respostaTransacao`. A amostra apresenta `respostaTransacao.falhou: false` e `codStatusHttp: 0`. `alunoFaltas` na resposta lista os alunos com faltas.
