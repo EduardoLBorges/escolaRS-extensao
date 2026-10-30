@@ -1295,7 +1295,8 @@ async function resolverPayloadResultadoPeriodo(alteracao, caches) {
   const idProfessorAtual = valorPresente(resultadoAtual.idProfessor,
     buscarCampoAninhadoUnico(resultadoAtual, 'idProfessor'), valoresUnicosCampo(resultadosPeriodo, 'idProfessor'));
   const idAreaAtual = valorPresente(resultadoAtual.idArea,
-    buscarCampoAninhadoUnico(resultadoAtual, 'idArea'), valoresUnicosCampo(resultadosPeriodo, 'idArea'));
+    buscarCampoAninhadoUnico(resultadoAtual, 'idArea'), resultado.idArea,
+    valoresUnicosCampo(resultadosPeriodo, 'idArea'));
   const tpExpResAtual = valorPresente(resultadoAtual.tpExpRes,
     buscarCampoAninhadoUnico(resultadoAtual, 'tpExpRes'), valoresUnicosCampo(resultadosPeriodo, 'tpExpRes'));
   const idAproveitAvalAtual = valorPresente(resultadoAtual.idAproveitAval,
