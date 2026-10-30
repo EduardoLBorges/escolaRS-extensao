@@ -1,3 +1,5 @@
+importScripts('../../utils/errors.js');
+
 /**
  * omr-worker.js — Web Worker para processamento de imagem OMR
  *

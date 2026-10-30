@@ -70,7 +70,7 @@ class AvaliacoesService {
 
             return Array.from(periodosMap.entries()).map(([id, descricao]) => ({ id, descricao }));
         } catch (err) {
-            console.error('Erro ao carregar periodos', err);
+            AppErrors.report(err, 'Erro ao carregar períodos');
             return [];
         }
     }
@@ -273,7 +273,7 @@ class AvaliacoesService {
                     XLSX.utils.book_append_sheet(wbPorEscola[task.escolaNome], newWs, sheetName);
 
                 } catch (e) {
-                    console.error(`Erro ao gerar base para ${task.turmaNome} / ${task.discNome}:`, e);
+                    AppErrors.report(e, `Erro ao gerar base para ${task.turmaNome} / ${task.discNome}`);
                 } finally {
                     concluido++;
                     onProgress({

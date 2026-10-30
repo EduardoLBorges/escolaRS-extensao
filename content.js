@@ -66,9 +66,9 @@ function captureIndexedDbInfo() {
             if (doc) saveNrDocIfFound(doc);
           }
         };
-      } catch (e) {}
+      } catch (e) { AppErrors.report(e, 'Falha ao ler IndexedDB'); }
     };
-  } catch (e) {}
+  } catch (e) { AppErrors.report(e, 'Falha ao abrir IndexedDB'); }
 }
 
 function captureOidcInfo() {
@@ -125,7 +125,7 @@ function captureOidcInfo() {
       }
     });
   } catch (err) {
-    console.warn('[EscolaRS Extensão] Erro ao tentar extrair dados OIDC do storage:', err);
+    AppErrors.report(err, 'Falha ao extrair dados OIDC do storage');
   }
 }
 

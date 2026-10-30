@@ -35,8 +35,8 @@
         handler(request)
           .then(sendResponse)
           .catch((error) => {
-            console.error(`[Background] Ação ${request.action} falhou:`, error);
-            sendResponse({ success: false, error: error.message });
+            const message = AppErrors.report(error, `Ação ${request.action} falhou`);
+            sendResponse({ success: false, error: message });
           });
         return true;
       });

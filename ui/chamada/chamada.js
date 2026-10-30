@@ -267,7 +267,7 @@ async function loadData() {
     setLoading(false);
     document.getElementById('filterContainer').classList.remove('hidden');
   } catch (err) {
-    console.error(err);
+    AppErrors.report(err, 'Erro ao carregar dados de chamadas');
     showToast('Erro ao carregar dados: ' + err.message, 'error');
     setLoading(false);
   }
@@ -1260,7 +1260,7 @@ window.submitAttendance = async (formIndex, idTurma, idDisciplina, qtPeriodos, d
     btn.disabled = false; // Permite re-enviar (atualizar) imediatamente sem refresh
     return; // Evita cair no caso de erro que restaura o texto antigo
   } catch (err) {
-    console.error(err);
+    AppErrors.report(err, 'Erro ao gravar chamada');
     showToast('Erro ao gravar: ' + err.message, 'error');
   }
 

@@ -73,7 +73,7 @@
           await AuthenticationService.ensureAuthenticated();
           await openDashboard();
         } catch (error) {
-          console.warn('[Background] Falha ao abrir dashboard:', error.message);
+          AppErrors.report(error, 'Falha ao abrir dashboard');
           notify('Falha de autenticação com o Portal EscolaRS. Tente novamente.');
         }
       });

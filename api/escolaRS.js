@@ -150,7 +150,7 @@ async function executeBackgroundTokenRefresh(refreshToken) {
     }
     return null;
   } catch (err) {
-    console.error(`${LOG_PREFIX} executeBackgroundTokenRefresh falhou:`, err);
+    AppErrors.report(err, `${LOG_PREFIX} executeBackgroundTokenRefresh falhou`);
     return null;
   }
 }
@@ -253,7 +253,7 @@ async function trySilentTokenRefresh(staleToken = null) {
                 return;
               }
             } catch (error) {
-              console.warn(`${LOG_PREFIX} Não foi possível verificar o token após fechar o popup.`, error);
+              AppErrors.report(error, `${LOG_PREFIX} Não foi possível verificar o token após fechar o popup`);
             }
 
             if (!resolved) {

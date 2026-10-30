@@ -91,7 +91,7 @@ function buildEscolasFromResults(tasks, results) {
       });
     } else {
       const mensagemErro = result.reason?.message || 'Erro desconhecido ao carregar disciplina';
-      console.warn(`[Dashboard] Erro ao carregar ${task.turmaNome} - ${task.discNome}:`, mensagemErro);
+      AppErrors.report(result.reason, `Falha ao carregar ${task.turmaNome} - ${task.discNome}`);
       turma.disciplinas.push({
         id: task.discId,
         disciplina: task.discNome,
@@ -144,7 +144,7 @@ async function getDashboardData(nrDoc, onProgress = null) {
 
   if (allResults.length > 0 && allResults.every((r) => r.status === 'rejected')) {
     const firstError = allResults[0].reason?.message || 'Erro desconhecido';
-    console.error('[Dashboard Service] Todas as requisições do batch falharam:', firstError);
+    AppErrors.report(firstError, '[Dashboard Service] Todas as requisições do batch falharam');
 
     if (firstError.includes('401') || firstError.includes('403')) {
       throw new Error('Sua sessão expirou. Por favor, faça login novamente no portal EscolaRS.');
@@ -201,7 +201,9 @@ async function buildDashboardFromStorage() {
           action: 'updateProgress',
           percentage: progress.percentage,
           status: progress.status,
-        }).catch(() => {});
+        }).catch((error) => {
+          AppErrors.report(error, '[Dashboard Service] Falha ao comunicar progresso à interface');
+        });
       });
     } finally {
       activeDashboardBuildPromise = null;
@@ -365,7 +367,7 @@ async function fetchPreVisualizacao(dashboardData, periodoStr, callbacks = {}) {
               if (avEncontrada) idPeriodoCalculo = avEncontrada.id;
             }
           } catch (err) {
-            console.warn(`[Dashboard Service] Falha ao buscar período para turma ${turma.id}:`, err.message);
+            AppErrors.report(err, `[Dashboard Service] Falha ao buscar período para turma ${turma.id}`);
           }
         }
 
@@ -397,7 +399,7 @@ async function fetchPreVisualizacao(dashboardData, periodoStr, callbacks = {}) {
           }
         }
       } catch (e) {
-        console.error('[Dashboard Service] Erro na pré-visualização:', e);
+        AppErrors.report(e, '[Dashboard Service] Erro na pré-visualização');
       } finally {
         concluidos++;
         if (onProgress) onProgress(Math.round((concluidos / tasks.length) * 100));
