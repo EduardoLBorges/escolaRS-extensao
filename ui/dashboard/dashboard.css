@@ -1458,6 +1458,31 @@ tr:hover td {
   cursor: pointer;
 }
 
+.period-save-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.period-save-clear-button {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 7px 10px;
+  background: var(--surface);
+  color: var(--text-main);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.period-save-clear-button:disabled {
+  opacity: .65;
+  cursor: wait;
+}
+
 .period-save-button:disabled {
   opacity: .65;
   cursor: wait;

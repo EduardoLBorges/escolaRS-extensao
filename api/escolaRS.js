@@ -15,6 +15,7 @@ const MAX_RETRY_ATTEMPTS = 2;
 const TOKEN_REFRESH_TIMEOUT = 60000; // Timeout de 60s do popup de login
 const PORTAL_URL = 'https://professor.escola.rs.gov.br/';
 const LOG_PREFIX = '[EscolaRS API]';
+const EMPTY_SUCCESS_RESPONSE = Object.freeze({ __emptySuccessResponse: true });
 
 // ─── Helpers de Fetch ────────────────────────────────────────────────────────
 
@@ -39,6 +40,27 @@ function isAuthError(status) {
 
 async function readErrorBody(response) {
   try { return await response.text(); } catch { return ''; }
+}
+
+async function readSuccessBody(response, endpoint, allowEmptyResponse = false) {
+  if (response.status === 204) {
+    if (allowEmptyResponse) return EMPTY_SUCCESS_RESPONSE;
+    throw new Error(`Resposta vazia inesperada da API para: ${endpoint}`);
+  }
+
+  const body = await response.text();
+  if (!body.trim()) {
+    if (allowEmptyResponse) return EMPTY_SUCCESS_RESPONSE;
+    throw new Error(`Resposta vazia inesperada da API para: ${endpoint}`);
+  }
+
+  try {
+    return JSON.parse(body);
+  } catch {
+    const error = new Error(`Resposta inválida da API para: ${endpoint}. O servidor retornou conteúdo que não é JSON.`);
+    if (allowEmptyResponse) error.resultMayHaveBeenSaved = true;
+    throw error;
+  }
 }
 
 // ─── Core Fetch ──────────────────────────────────────────────────────────────
@@ -67,14 +89,19 @@ async function fetchEscolaRS(endpoint, options = {}, timeout = API_TIMEOUT) {
       response = await fetch(url, buildFetchOptions(token, options, controller.signal));
     } catch (error) {
       if (error.name === 'AbortError') {
-        throw new Error(`Timeout na requisição (${timeout}ms) para: ${endpoint}`);
+        const timeoutError = new Error(`Timeout na requisição (${timeout}ms) para: ${endpoint}`);
+        if (options.method && options.method.toUpperCase() !== 'GET') timeoutError.resultMayHaveBeenSaved = true;
+        throw timeoutError;
       }
+      if (options.method && options.method.toUpperCase() !== 'GET') error.resultMayHaveBeenSaved = true;
       throw error;
     } finally {
       clearTimeout(timeoutId);
     }
 
-    if (response.ok) return response.json();
+    if (response.ok) {
+      return readSuccessBody(response, endpoint, options.allowEmptyResponse === true);
+    }
 
     // Na primeira tentativa com erro de auth, delega a recuperação ao AuthManager.
     if (isAuthError(response.status) && attempt === 1) {
@@ -340,5 +367,9 @@ async function registrarResultadoInstrumentoLista(payload) {
  */
 async function gravarResultadoPeriodoEmLista(payload) {
   const body = Array.isArray(payload) ? payload : [payload];
-  return fetchEscolaRS(`gravarResultadoPeriodoEmLista`, { method: 'POST', body });
+  return fetchEscolaRS(`gravarResultadoPeriodoEmLista`, {
+    method: 'POST',
+    body,
+    allowEmptyResponse: true,
+  });
 }

@@ -220,7 +220,7 @@ Array de itens com `idAluno`, `idTurma`, `idDisciplina`, `idProfessor`, `idPerio
 
 - `/chamada`: objeto do registro gravado com `nrAulasDadas` e `respostaTransacao`. A amostra apresenta `respostaTransacao.falhou: false` e `codStatusHttp: 0`. `alunoFaltas` na resposta lista os alunos com faltas.
 - `/registrarResultadoInstrumentoLista`: objeto com `falhou`, `mensagem` e `codStatusHttp`. A amostra indica sucesso com `falhou: false`.
-- `/gravarResultadoPeriodoEmLista`: array de objetos com `falhou`, `mensagem`, `obj` e `codStatusHttp`. `obj` representa o resultado retornado pelo servidor e pode diferir do payload enviado.
+- `/gravarResultadoPeriodoEmLista`: array de objetos com `falhou`, `mensagem`, `obj` e `codStatusHttp`. `obj` representa o resultado retornado pelo servidor e pode diferir do payload enviado. Resposta HTTP 2xx sem corpo também é aceita como confirmação; conteúdo presente precisa ser JSON e informar `falhou` ou um `codStatusHttp` de sucesso.
 
 As amostras disponíveis representam respostas de sucesso. A integração deve verificar o status HTTP e, quando presente, o campo `falhou`. O cliente da extensão lança erro em respostas HTTP não exitosas e inclui o corpo de erro na mensagem.
 

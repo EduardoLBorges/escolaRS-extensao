@@ -1,6 +1,7 @@
 let dashboardData = null;
 let ocultarInativosState = localStorage.getItem('escolaRs_ocultarInativos') === 'true';
 let periodoEdicaoAtivo = false;
+let salvandoResultadosPeriodo = false;
 const resultadosPeriodoAlterados = new Map();
 const resultadosPeriodoFalhas = new Map();
 const STORAGE_RESULTADOS_PERIODO_PENDENTES = 'escolaRsResultadosPeriodoPendentes';
@@ -379,6 +380,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   document.querySelector('#nav-edit-period-results')?.addEventListener('click', (e) => {
+    if (salvandoResultadosPeriodo) return;
     periodoEdicaoAtivo = !periodoEdicaoAtivo;
     const button = e.currentTarget;
     button.setAttribute('aria-pressed', String(periodoEdicaoAtivo));
@@ -744,14 +746,39 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
   const temRegular = notaRegular !== '--';
   const periodoMatch = periodo.toLowerCase().match(/(\d+)/);
   const tipoPeriodo = periodo.toLowerCase().includes('sem') ? 'sem' : 'trim';
-  const encontrarResultadoPeriodo = (isER) => (aluno.listaResultados || []).find(r => {
-    const nome = (r.nomePeriodo || '').toLowerCase();
+  let resultadoPeriodoAmbiguo = false;
+  const correspondeAoPeriodo = (nomePeriodo, isER) => {
+    const nome = String(nomePeriodo || '').toLowerCase();
     if (!nome.includes(periodoMatch?.[1] || '')) return false;
     // Algumas respostas do ER vêm nomeadas apenas como "Exame de Recuperação" e
     // não repetem "Trimestre/Semestre" no nome do período.
     if (isER) return ehResultadoER(nome);
     return nome.includes(tipoPeriodo) && !ehResultadoER(nome);
-  });
+  };
+  const encontrarResultadoPeriodo = (isER) => {
+    const candidatos = (aluno.listaResultados || []).filter(resultado =>
+      correspondeAoPeriodo(resultado.nomePeriodo, isER)
+    );
+    // A nota visível é escolhida de aluno.notas. Cada nota agora guarda o índice
+    // e o idArea do resultado de origem, evitando editar outra área do mesmo período.
+    const notaVisivel = (aluno.notas || []).find(nota =>
+      correspondeAoPeriodo(nota.trimestre || nota.nomePeriodo, isER) &&
+      isNotaValida(nota.nota)
+    );
+    if (notaVisivel && Number.isInteger(notaVisivel.resultadoIndex)) {
+      const resultado = aluno.listaResultados[notaVisivel.resultadoIndex];
+      if (resultado &&
+        String(resultado.idArea ?? '') === String(notaVisivel.idArea ?? '') &&
+        String(resultado.idPeriodo ?? '') === String(notaVisivel.idPeriodo ?? '')) {
+        return resultado;
+      }
+      resultadoPeriodoAmbiguo = candidatos.length > 1;
+    }
+    // Sem nota visível, só é seguro editar automaticamente quando há um único
+    // registro compatível. Em caso de ambiguidade a nota fica somente leitura.
+    if (candidatos.length > 1) resultadoPeriodoAmbiguo = true;
+    return candidatos.length === 1 ? candidatos[0] : null;
+  };
   const resultadoRegular = encontrarResultadoPeriodo(false);
   const resultadoER = encontrarResultadoPeriodo(true);
   // Um ER pode existir antes de receber nota; mantenha a linha visível e editável.
@@ -864,6 +891,10 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
     }
   }
 
+  if (resultadoPeriodoAmbiguo) {
+    footerHtml = '<div class="tooltip-footer tooltip-footer-muted">Edição indisponível: há mais de um resultado correspondente a esta área/período.</div>';
+  }
+
   tooltip.innerHTML = `
     <div class="tooltip-header">
       <strong class="tooltip-aluno-nome" title="${aluno.nome}">${nomeExibicao}</strong>
@@ -881,6 +912,7 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
 
   tooltip.querySelectorAll('.tooltip-editable-value').forEach(valueElement => {
     valueElement.addEventListener('click', (event) => {
+      if (salvandoResultadosPeriodo) return;
       event.stopPropagation();
       const index = Number(valueElement.dataset.periodResultIndex);
       const result = aluno.listaResultados[index];
@@ -901,7 +933,7 @@ function toggleNotaTooltip(e, tdElement, aluno, periodo, disciplina) {
       let draftSaved = false;
       input.addEventListener('input', () => { draftSaved = false; });
       const saveDraft = () => {
-        if (draftSaved) return;
+        if (draftSaved || salvandoResultadosPeriodo) return;
         const alteracaoAnterior = resultadosPeriodoAlterados.get(key);
         const notaOriginal = alteracaoAnterior
           ? alteracaoAnterior.originalNota
@@ -1026,7 +1058,10 @@ function atualizarToastSalvarResultados() {
   }
   toast.replaceChildren(
     createEl('span', {}, [`${resultadosPeriodoAlterados.size} alteração(ões) não salvas`]),
-    createEl('button', { type: 'button', className: 'period-save-button', innerHTML: '<i data-lucide="save"></i> Salvar alterações' })
+    createEl('div', { className: 'period-save-actions' }, [
+      createEl('button', { type: 'button', className: 'period-save-button', innerHTML: '<i data-lucide="save"></i> Salvar alterações' }),
+      createEl('button', { type: 'button', className: 'period-save-clear-button', textContent: 'Descartar alterações' })
+    ])
   );
   if (resultadosPeriodoFalhas.size) {
     const listaFalhas = createEl('ul', { className: 'period-save-failures', role: 'status' });
@@ -1037,8 +1072,43 @@ function atualizarToastSalvarResultados() {
     }
     toast.append(listaFalhas);
   }
-  toast.querySelector('button').addEventListener('click', salvarResultadosPeriodoAlterados);
+  toast.querySelector('.period-save-button').addEventListener('click', salvarResultadosPeriodoAlterados);
+  toast.querySelector('.period-save-clear-button').addEventListener('click', descartarResultadosPeriodoAlterados);
   if (window.lucide) lucide.createIcons({ nodes: [toast] });
+}
+
+async function descartarResultadosPeriodoAlterados(e) {
+  if (salvandoResultadosPeriodo) return;
+  const alteracoes = [...resultadosPeriodoAlterados.values()];
+  if (!alteracoes.length) return;
+  const quantidade = alteracoes.length;
+  if (!window.confirm(`Descartar as ${quantidade} alteração(ões) de nota ainda não salvas?`)) return;
+
+  const alunosAlterados = new Set();
+  for (const alteracao of alteracoes) {
+    const { aluno, resultado } = alteracao;
+    const nota = (aluno.notas || []).find(item =>
+      (item.trimestre || item.nomePeriodo || '') === resultado.nomePeriodo
+    );
+    if (nota) {
+      nota.nota = resultado.resultado == null
+        ? null
+        : String(resultado.resultado).replace('.', ',');
+    }
+    alunosAlterados.add(aluno);
+  }
+
+  resultadosPeriodoAlterados.clear();
+  resultadosPeriodoFalhas.clear();
+  for (const aluno of alunosAlterados) {
+    aluno.mediaFinal = calcularMediaFinal(aluno.listaResultados || []);
+  }
+
+  closeActiveNotaTooltip();
+  await persistirResultadosPeriodoPendentes();
+  renderApp();
+  atualizarToastSalvarResultados();
+  showToast(`${quantidade} alteração(ões) descartada(s).`, 'info');
 }
 
 function showToast(message, type = 'info') {
@@ -1066,101 +1136,145 @@ function showRefreshError(message) {
 }
 
 async function salvarResultadosPeriodoAlterados(e) {
-  const button = e.currentTarget;
+  if (salvandoResultadosPeriodo) return;
+  const button = e?.currentTarget;
   const alteracoes = [...resultadosPeriodoAlterados.values()];
   if (!alteracoes.length) return;
-  const payload = alteracoes.map(({ aluno, disciplina, resultado, aproveitamento }) => {
-    const item = {
-      idAluno: resultado.idAluno || aluno.matricula,
-      idTurma: disciplina.turmaId,
-      idDisciplina: disciplina.id,
-      idProfessor: dashboardData.idRecHumano,
-      idPeriodo: resultado.idPeriodo,
-      idArea: resultado.idArea,
-      aproveitamento: aproveitamento ?? null,
-      tpExpRes: resultado.tpExpRes,
-      area: resultado.area ?? false
+  salvandoResultadosPeriodo = true;
+
+  try {
+    if (button) button.disabled = true;
+    const editButton = document.querySelector('#nav-edit-period-results');
+    if (editButton) editButton.disabled = true;
+    const clearButton = document.querySelector('#period-results-save-toast .period-save-clear-button');
+    if (clearButton) clearButton.disabled = true;
+    if (button) {
+      button.innerHTML = '<i data-lucide="loader-circle"></i> Salvando…';
+      if (window.lucide) lucide.createIcons({ nodes: [button] });
+    }
+
+    const itensComAlteracao = alteracoes.map(({ aluno, disciplina, resultado, aproveitamento }, index) => {
+      const item = {
+        idAluno: resultado.idAluno ?? aluno.idAluno ?? aluno.matricula ?? aluno.id,
+        idTurma: disciplina.turmaId,
+        idDisciplina: disciplina.id,
+        idProfessor: dashboardData.idRecHumano,
+        idPeriodo: resultado.idPeriodo,
+        idArea: resultado.idArea,
+        aproveitamento: aproveitamento ?? null,
+        tpExpRes: resultado.tpExpRes,
+        area: resultado.area ?? false
+      };
+      // Não inventa IDs de área/período: são necessários para apontar o registro correto.
+      if (ehResultadoER(resultado.nomePeriodo)) {
+        if (resultado.idAproveitAval != null) item.idAproveitAval = resultado.idAproveitAval;
+        if (resultado.idResultadoPeriodo != null) item.idResultadoPeriodo = resultado.idResultadoPeriodo;
+      }
+      return { item, alteracao: alteracoes[index] };
+    });
+
+    const camposObrigatorios = ['idAluno', 'idTurma', 'idDisciplina', 'idProfessor', 'idPeriodo', 'idArea', 'tpExpRes'];
+    const camposAusentes = ({ item, alteracao }) => {
+      const obrigatorios = [...camposObrigatorios];
+      if (ehResultadoER(alteracao.resultado.nomePeriodo)) {
+        obrigatorios.push('idAproveitAval', 'idResultadoPeriodo');
+      }
+      return obrigatorios.filter(campo => item[campo] == null || item[campo] === '');
     };
-    // A API exige esses identificadores extras para gravar resultados de ER.
-    if (ehResultadoER(resultado.nomePeriodo)) {
-      if (resultado.idAproveitAval != null) item.idAproveitAval = resultado.idAproveitAval;
-      if (resultado.idResultadoPeriodo != null) item.idResultadoPeriodo = resultado.idResultadoPeriodo;
+    const resultadosInvalidos = itensComAlteracao.filter(registro => camposAusentes(registro).length);
+    const resultadosValidos = itensComAlteracao.filter(registro => !camposAusentes(registro).length);
+
+    if (resultadosInvalidos.length) {
+      console.warn('[Dashboard] Alterações não enviadas por falta de dados obrigatórios:', resultadosInvalidos.map(({ item, alteracao }) =>
+        `${alteracao.aluno.nome || alteracao.aluno.matricula} — ${alteracao.periodo}: faltando ${camposAusentes({ item, alteracao }).join(', ')}`
+      ));
     }
-    return item;
-  });
 
-  const camposObrigatorios = ['idAluno', 'idTurma', 'idDisciplina', 'idProfessor', 'idPeriodo', 'idArea', 'tpExpRes'];
-  const itensComAlteracao = payload.map((item, index) => ({ item, alteracao: alteracoes[index] }));
-  const camposAusentes = ({ item, alteracao }) => {
-    const obrigatorios = [...camposObrigatorios];
-    if (ehResultadoER(alteracao.resultado.nomePeriodo)) {
-      obrigatorios.push('idAproveitAval', 'idResultadoPeriodo');
-    }
-    return obrigatorios.filter(campo => item[campo] == null || item[campo] === '');
-  };
-  const resultadosInvalidos = itensComAlteracao.filter(registro => camposAusentes(registro).length);
-  const resultadosValidos = itensComAlteracao.filter(registro => !camposAusentes(registro).length);
-
-  if (resultadosInvalidos.length) {
-    console.error('[Dashboard] Resultados ignorados por campos ausentes:', resultadosInvalidos.map(({ item, alteracao }) => ({
-      aluno: alteracao.aluno.nome || alteracao.aluno.matricula,
-      matricula: alteracao.aluno.matricula,
-      turma: item.idTurma,
-      disciplina: item.idDisciplina,
-      periodo: item.idPeriodo,
-      faltando: camposAusentes({ item, alteracao })
-    })));
-  }
-
-  button.disabled = true;
-  button.innerHTML = '<i data-lucide="loader-circle"></i> Salvando…';
-  if (window.lucide) lucide.createIcons({ nodes: [button] });
-  resultadosPeriodoFalhas.clear();
-  let salvos = 0;
-  for (const registro of itensComAlteracao) {
-    const { item, alteracao } = registro;
-    const ausentes = camposAusentes(registro);
-    if (ausentes.length) {
+    resultadosPeriodoFalhas.clear();
+    let salvos = 0;
+    for (const registro of resultadosInvalidos) {
+      const { alteracao } = registro;
       resultadosPeriodoFalhas.set(alteracao.key, {
         alteracao,
-        motivo: `dados obrigatórios ausentes: ${ausentes.join(', ')}`
+        motivo: `dados obrigatórios ausentes: ${camposAusentes(registro).join(', ')}`
       });
-      continue;
     }
-    try {
-      // Envia cada nota isoladamente para que uma falha não impeça as demais.
-      const resposta = await gravarResultadoPeriodoEmLista([item]);
-      const resultadoApi = Array.isArray(resposta) ? resposta[0] : resposta;
-      // O endpoint pode confirmar a gravação com formatos distintos (ou sem
-      // corpo). Erros HTTP já são lançados por fetchEscolaRS; aqui só tratamos
-      // como falha uma rejeição explícita do próprio serviço.
-      const falhou = resultadoApi?.falhou === true
-        || resultadoApi?.falhou === 1
-        || String(resultadoApi?.falhou).toLowerCase() === 'true';
-      if (falhou) {
-        throw new Error(resultadoApi.mensagem || `O EscolaRS recusou o resultado (código ${resultadoApi.codStatusHttp ?? 'não informado'}).`);
+
+    for (const registro of resultadosValidos) {
+      const { item, alteracao } = registro;
+      try {
+        // Isola cada gravação para que uma falha não impeça as demais.
+        const resposta = await gravarResultadoPeriodoEmLista([item]);
+        if (Array.isArray(resposta) && resposta.length !== 1) {
+          throw new Error(`Resposta inesperada do EscolaRS: esperava 1 resultado e recebi ${resposta.length}.`);
+        }
+        const resultadoApi = Array.isArray(resposta) ? resposta[0] : resposta;
+        validarRespostaGravacaoPeriodo(resultadoApi, resposta);
+
+        // Confirma o estado remoto antes de recalcular a projeção visual local.
+        alteracao.resultado.resultado = alteracao.aproveitamento;
+        resultadosPeriodoAlterados.delete(alteracao.key);
+        resultadosPeriodoFalhas.delete(alteracao.key);
+        salvos++;
+        try {
+          aplicarNotaPendenteLocal(alteracao.aluno, alteracao.resultado, alteracao.aproveitamento);
+        } catch (error) {
+          AppErrors.report(error, `[Dashboard] Nota salva, mas falhou a atualização visual de ${alteracao.aluno.nome || alteracao.aluno.matricula}`);
+        }
+      } catch (error) {
+        const mensagemErro = error?.message || 'Erro desconhecido ao salvar.';
+        const motivo = error?.resultMayHaveBeenSaved
+          ? `resultado não confirmado; pode ter sido salvo. Confira no EscolaRS antes de reenviar. (${mensagemErro})`
+          : mensagemErro;
+        AppErrors.report(error, `[Dashboard] Falha ao salvar nota de ${alteracao.aluno.nome || alteracao.aluno.matricula}, período ${alteracao.periodo}`);
+        resultadosPeriodoFalhas.set(alteracao.key, { alteracao, motivo });
       }
-      alteracao.resultado.resultado = alteracao.aproveitamento;
-      resultadosPeriodoAlterados.delete(alteracao.key);
-      resultadosPeriodoFalhas.delete(alteracao.key);
-      aplicarNotaPendenteLocal(alteracao.aluno, alteracao.resultado, alteracao.aproveitamento);
-      salvos++;
-    } catch (error) {
-      const motivo = error?.message || 'Erro desconhecido ao salvar.';
-      AppErrors.report(error, `[Dashboard] Falha ao salvar nota de ${alteracao.aluno.nome || alteracao.aluno.matricula}, período ${alteracao.periodo}`);
-      resultadosPeriodoFalhas.set(alteracao.key, { alteracao, motivo });
     }
+
+    await persistirResultadosPeriodoPendentes();
+    closeActiveNotaTooltip();
+    renderApp();
+    atualizarToastSalvarResultados();
+    if (resultadosPeriodoFalhas.size) {
+      showToast(`${salvos} resultado(s) confirmado(s); ${resultadosPeriodoFalhas.size} alteração(ões) pendente(s). Confira os detalhes antes de reenviar.`, 'error');
+    } else {
+      showToast(`${salvos} resultado(s) salvo(s).`, 'success');
+    }
+  } catch (error) {
+    AppErrors.report(error, '[Dashboard] Falha ao concluir o salvamento dos resultados');
+    showToast('Ocorreu um erro ao concluir o salvamento. As alterações restantes continuam pendentes.', 'error');
+  } finally {
+    salvandoResultadosPeriodo = false;
+    const currentEditButton = document.querySelector('#nav-edit-period-results');
+    if (currentEditButton) currentEditButton.disabled = false;
+    atualizarToastSalvarResultados();
+  }
+}
+
+function validarRespostaGravacaoPeriodo(resultadoApi, respostaCompleta) {
+  // HTTP 2xx vazio (incluindo 204) é uma confirmação aceita pelo endpoint.
+  if (respostaCompleta?.__emptySuccessResponse === true) return;
+  if (!resultadoApi || typeof resultadoApi !== 'object' || Array.isArray(resultadoApi)) {
+    throw new Error('Resposta inesperada do EscolaRS ao salvar o resultado.');
   }
 
-  await persistirResultadosPeriodoPendentes();
-  closeActiveNotaTooltip();
-  renderApp();
-  atualizarToastSalvarResultados();
-  if (resultadosPeriodoFalhas.size) {
-    showToast(`${salvos} resultado(s) salvo(s); ${resultadosPeriodoFalhas.size} não salvo(s). Consulte os detalhes junto ao botão de salvar.`, 'error');
-  } else {
-    showToast(`${salvos} resultado(s) salvo(s).`, 'success');
+  const codigo = resultadoApi.codStatusHttp == null ? null : Number(resultadoApi.codStatusHttp);
+  if (codigo != null && codigo !== 0 && (codigo < 200 || codigo >= 300)) {
+    throw new Error(resultadoApi.mensagem || `O EscolaRS recusou o resultado (código ${resultadoApi.codStatusHttp}).`);
   }
+
+  if ('falhou' in resultadoApi) {
+    const valor = String(resultadoApi.falhou).trim().toLowerCase();
+    if (resultadoApi.falhou === true || resultadoApi.falhou === 1 || ['true', '1', 's', 'sim'].includes(valor)) {
+      throw new Error(resultadoApi.mensagem || `O EscolaRS recusou o resultado (código ${resultadoApi.codStatusHttp ?? 'não informado'}).`);
+    }
+    if (resultadoApi.falhou === false || resultadoApi.falhou === 0 || ['false', '0', 'n', 'nao', 'não'].includes(valor)) return;
+    throw new Error('Resposta inesperada do EscolaRS: campo "falhou" tem um valor desconhecido.');
+  }
+
+  if (codigo === 0 || (codigo != null && codigo >= 200 && codigo < 300)) return;
+
+  throw new Error('Resposta inesperada do EscolaRS: não foi possível confirmar se o resultado foi salvo.');
 }
 
 function renderFooter() {

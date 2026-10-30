@@ -16,7 +16,9 @@ const SOMA_PESOS_TRIMESTRE = PESOS_TRIMESTRE.reduce((a, b) => a + b, 0);
  * @returns {boolean}
  */
 function isNotaValida(valor) {
-  return valor && valor !== '--' && valor !== '-';
+  if (valor === null || valor === undefined) return false;
+  const texto = String(valor).trim();
+  return texto !== '' && texto !== '--' && texto !== '-';
 }
 
 /**
@@ -128,9 +130,12 @@ function processarAluno(aluno) {
     ...aluno,
     mediaFinal: calcularMediaFinal(listaResultados),
     // Mapeia as notas para o formato esperado pelo dashboard
-    notas: listaResultados.map((res) => ({
+    notas: listaResultados.map((res, resultadoIndex) => ({
       trimestre: res.nomePeriodo,
       nota: res.resultado,
+      resultadoIndex,
+      idArea: res.idArea,
+      idPeriodo: res.idPeriodo,
     })),
   };
 }
@@ -421,7 +426,7 @@ function getNotaTexto(lista, periodo) {
 
     if (((isSemestre && itemEhSemestre) || (isTrimestre && itemEhTrimestre)) &&
       nomePeriodo.includes(numPeriodo) && !ehResultadoER(nomePeriodo)) {
-      if (item.nota && item.nota !== '--') {
+      if (isNotaValida(item.nota)) {
         periodoValor = item.nota;
         break;
       }
@@ -434,7 +439,7 @@ function getNotaTexto(lista, periodo) {
     if (!nomePeriodo) continue;
 
     if (ehResultadoER(nomePeriodo) && nomePeriodo.includes(numPeriodo)) {
-      if (item.nota && item.nota !== '--') {
+      if (isNotaValida(item.nota)) {
         erValor = item.nota;
         break;
       }
@@ -476,12 +481,12 @@ function getNotaValorBruto(lista, periodo, isER) {
 
     if (isER) {
       if (ehResultadoER(nomePeriodo) && nomePeriodo.includes(numPeriodo)) {
-        return item.nota && item.nota !== '--' ? normalizarNota(item.nota) : '--';
+        return isNotaValida(item.nota) ? normalizarNota(item.nota) : '--';
       }
     } else {
       if (((isSemestre && itemEhSemestre) || (isTrimestre && itemEhTrimestre)) &&
         nomePeriodo.includes(numPeriodo) && !ehResultadoER(nomePeriodo)) {
-        return item.nota && item.nota !== '--' ? normalizarNota(item.nota) : '--';
+        return isNotaValida(item.nota) ? normalizarNota(item.nota) : '--';
       }
     }
   }
