@@ -1139,7 +1139,7 @@ function showRefreshError(message) {
 function identidadePeriodo(nome) {
   const nomeNormalizado = String(nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const numero = nomeNormalizado.match(/\d+/)?.[0] || null;
-  const tipo = nomeNormalizado.includes('sem') ? 'sem' : nomeNormalizado.includes('trim') ? 'trim' : null;
+  const tipo = nomeNormalizado.includes('sem') ? 'sem' : nomeNormalizado.includes('tri') ? 'trim' : null;
   return { numero, tipo, exame: ehResultadoER(nomeNormalizado), nomeNormalizado };
 }
 
@@ -1149,14 +1149,27 @@ function periodoCorresponde(nomeA, nomeB) {
   const a = identidadePeriodo(limpar(nomeA));
   const b = identidadePeriodo(limpar(nomeB));
   if (a.nomeNormalizado && a.nomeNormalizado === b.nomeNormalizado) return true;
-  return Boolean(a.numero && b.numero && a.numero === b.numero && a.tipo && a.tipo === b.tipo);
+  return Boolean(a.numero && b.numero && a.numero === b.numero && (!a.tipo || !b.tipo || a.tipo === b.tipo));
+}
+
+function valorPresente(...valores) {
+  for (const valor of valores) {
+    if (valor === null || valor === undefined) continue;
+    if (typeof valor === 'string') {
+      if (valor.trim() !== '') return valor.trim();
+      continue;
+    }
+    return valor;
+  }
+  return undefined;
 }
 
 function valoresUnicosCampo(registros, campo) {
   const valores = new Map();
   for (const registro of registros) {
     const valor = registro?.[campo];
-    if (valor != null && valor !== '') valores.set(String(valor), valor);
+    const normalizado = valorPresente(valor);
+    if (normalizado !== undefined) valores.set(String(normalizado), normalizado);
   }
   return valores.size === 1 ? valores.values().next().value : undefined;
 }
@@ -1167,8 +1180,9 @@ function buscarCampoAninhadoUnico(objeto, campo) {
   const visitar = (valor, profundidade = 0) => {
     if (!valor || typeof valor !== 'object' || visitados.has(valor) || profundidade > 6) return;
     visitados.add(valor);
-    if (Object.prototype.hasOwnProperty.call(valor, campo) && valor[campo] != null && valor[campo] !== '') {
-      valores.set(String(valor[campo]), valor[campo]);
+    if (Object.prototype.hasOwnProperty.call(valor, campo) && valorPresente(valor[campo]) !== undefined) {
+      const normalizado = valorPresente(valor[campo]);
+      valores.set(String(normalizado), normalizado);
     }
     for (const filho of Object.values(valor)) visitar(filho, profundidade + 1);
   };
@@ -1187,34 +1201,73 @@ async function resolverPayloadResultadoPeriodo(alteracao, caches) {
     ));
   }
   const dadosDisciplina = await caches.resultados.get(chaveDisciplina);
-  const idsAluno = [resultado.idAluno, aluno.idAluno, aluno.matricula, aluno.id]
-    .filter(id => id != null)
-    .map(String);
-  const alunosCorrespondentes = (dadosDisciplina.alunos || []).filter(item => {
-    const ids = [item.idAluno, item.matricula, item.id].filter(id => id != null).map(String);
-    return idsAluno.some(id => ids.includes(id));
-  });
+  const alunosDisciplina = dadosDisciplina.alunos || [];
+  const normalizarId = id => valorPresente(id) === undefined ? null : String(id).trim();
+  const buscarAlunoPorId = (id, campos, incluiIdResultado = false) => {
+    const chave = normalizarId(id);
+    if (!chave) return [];
+    return alunosDisciplina.filter(item => {
+      const ids = campos.map(campo => normalizarId(item[campo])).filter(Boolean);
+      if (incluiIdResultado) {
+        ids.push(...(item.listaResultados || []).map(resultadoItem => normalizarId(resultadoItem.idAluno)).filter(Boolean));
+      }
+      return ids.includes(chave);
+    });
+  };
+  let alunosCorrespondentes = [];
+  const estrategiasIdAluno = [
+    [resultado.idAluno, ['idAluno', 'matricula', 'id'], true],
+    [aluno.idAluno, ['idAluno', 'matricula', 'id'], false],
+    [aluno.matricula, ['matricula'], false],
+    [aluno.id, ['id'], false],
+  ];
+  for (const [id, campos, incluiIdResultado] of estrategiasIdAluno) {
+    const encontrados = buscarAlunoPorId(id, campos, incluiIdResultado);
+    if (encontrados.length === 1) {
+      alunosCorrespondentes = encontrados;
+      break;
+    }
+    if (encontrados.length > 1) {
+      throw new Error('A consulta atual da disciplina encontrou mais de um aluno com o mesmo identificador.');
+    }
+  }
+  if (!alunosCorrespondentes.length && aluno.nome && aluno.nroNaTurma != null) {
+    alunosCorrespondentes = alunosDisciplina.filter(item =>
+      String(item.nome || '').trim().toLocaleLowerCase() === String(aluno.nome).trim().toLocaleLowerCase()
+      && String(item.nroNaTurma ?? '') === String(aluno.nroNaTurma)
+    );
+  }
   if (alunosCorrespondentes.length !== 1) {
     throw new Error(alunosCorrespondentes.length
       ? 'A consulta atual da disciplina encontrou mais de um aluno correspondente.'
-      : 'A consulta atual da disciplina não encontrou o aluno alterado.');
+      : 'A consulta atual da disciplina não encontrou o aluno alterado pelos identificadores, nome e número na turma.');
   }
 
   const alunoAtual = alunosCorrespondentes[0];
   const resultadosAluno = alunoAtual.listaResultados || [];
   const mesmoResultado = (item) => {
-    if (resultado.idResultadoPeriodo != null && item.idResultadoPeriodo != null) {
+    if (valorPresente(resultado.idResultadoPeriodo) !== undefined && valorPresente(item.idResultadoPeriodo) !== undefined) {
       return String(resultado.idResultadoPeriodo) === String(item.idResultadoPeriodo);
     }
     const nomeAtual = identidadePeriodo(resultado.nomePeriodo);
     const nomeItem = identidadePeriodo(item.nomePeriodo);
     if (nomeAtual.exame !== nomeItem.exame) return false;
+
+    // IDs da disciplina/período/área são mais confiáveis que descrições, que
+    // variam entre componentes curriculares e retornos do portal.
+    if (valorPresente(resultado.idPeriodo) !== undefined && valorPresente(item.idPeriodo) !== undefined) {
+      if (String(resultado.idPeriodo) !== String(item.idPeriodo)) return false;
+      if (valorPresente(resultado.idArea) !== undefined && valorPresente(item.idArea) !== undefined && String(resultado.idArea) !== String(item.idArea)) return false;
+      if (valorPresente(resultado.idAproveitAval) !== undefined && valorPresente(item.idAproveitAval) !== undefined && String(resultado.idAproveitAval) !== String(item.idAproveitAval)) return false;
+      return true;
+    }
+
     const periodoIgual = nomeAtual.nomeNormalizado === nomeItem.nomeNormalizado
       || periodoCorresponde(alteracao.periodo, item.nomePeriodo);
     if (!periodoIgual) return false;
-    if (resultado.idPeriodo != null && item.idPeriodo != null && String(resultado.idPeriodo) !== String(item.idPeriodo)) return false;
-    if (resultado.idArea != null && item.idArea != null && String(resultado.idArea) !== String(item.idArea)) return false;
-    if (resultado.idAproveitAval != null && item.idAproveitAval != null && String(resultado.idAproveitAval) !== String(item.idAproveitAval)) return false;
+    if (valorPresente(resultado.idPeriodo) !== undefined && valorPresente(item.idPeriodo) !== undefined && String(resultado.idPeriodo) !== String(item.idPeriodo)) return false;
+    if (valorPresente(resultado.idArea) !== undefined && valorPresente(item.idArea) !== undefined && String(resultado.idArea) !== String(item.idArea)) return false;
+    if (valorPresente(resultado.idAproveitAval) !== undefined && valorPresente(item.idAproveitAval) !== undefined && String(resultado.idAproveitAval) !== String(item.idAproveitAval)) return false;
     return true;
   };
   const correspondencias = resultadosAluno.filter(mesmoResultado);
@@ -1228,20 +1281,26 @@ async function resolverPayloadResultadoPeriodo(alteracao, caches) {
   const resultadosPeriodo = (dadosDisciplina.alunos || []).flatMap(item => item.listaResultados || [])
     .filter(item => {
       if (identidadePeriodo(resultadoAtual.nomePeriodo).exame !== identidadePeriodo(item.nomePeriodo).exame) return false;
-      if (resultadoAtual.idPeriodo != null && item.idPeriodo != null) {
+      if (valorPresente(resultadoAtual.idPeriodo) !== undefined && valorPresente(item.idPeriodo) !== undefined) {
         return String(item.idPeriodo) === String(resultadoAtual.idPeriodo);
       }
       return periodoCorresponde(resultadoAtual.nomePeriodo, item.nomePeriodo);
     });
 
   let avaliacaoPeriodo = null;
-  let idPeriodo = resultadoAtual.idPeriodo ?? resultadoAtual.idPeriodoAvaliacao ?? resultadoAtual.periodoId ?? resultadoAtual.id;
-  const idProfessorAtual = resultadoAtual.idProfessor ?? valoresUnicosCampo(resultadosPeriodo, 'idProfessor');
-  const idAreaAtual = resultadoAtual.idArea ?? valoresUnicosCampo(resultadosPeriodo, 'idArea');
-  const tpExpResAtual = resultadoAtual.tpExpRes ?? valoresUnicosCampo(resultadosPeriodo, 'tpExpRes');
-  const idAproveitAvalAtual = resultadoAtual.idAproveitAval ?? valoresUnicosCampo(resultadosPeriodo, 'idAproveitAval');
-  const precisaConsultarAvaliacao = idPeriodo == null || idAreaAtual == null || tpExpResAtual == null
-    || (ehResultadoER(resultadoAtual.nomePeriodo) && idAproveitAvalAtual == null);
+  // Não usa o `id` genérico do resultado: ele pode identificar o próprio
+  // registro, não o período da disciplina.
+  let idPeriodo = valorPresente(resultadoAtual.idPeriodo, resultadoAtual.idPeriodoAvaliacao,
+    resultadoAtual.periodoId, buscarCampoAninhadoUnico(resultadoAtual, 'idPeriodo'));
+  const idProfessorAtual = valorPresente(resultadoAtual.idProfessor,
+    buscarCampoAninhadoUnico(resultadoAtual, 'idProfessor'), valoresUnicosCampo(resultadosPeriodo, 'idProfessor'));
+  const idAreaAtual = valorPresente(resultadoAtual.idArea,
+    buscarCampoAninhadoUnico(resultadoAtual, 'idArea'), valoresUnicosCampo(resultadosPeriodo, 'idArea'));
+  const tpExpResAtual = valorPresente(resultadoAtual.tpExpRes,
+    buscarCampoAninhadoUnico(resultadoAtual, 'tpExpRes'), valoresUnicosCampo(resultadosPeriodo, 'tpExpRes'));
+  const idAproveitAvalAtual = valorPresente(resultadoAtual.idAproveitAval,
+    buscarCampoAninhadoUnico(resultadoAtual, 'idAproveitAval'), valoresUnicosCampo(resultadosPeriodo, 'idAproveitAval'));
+  const precisaConsultarAvaliacao = idPeriodo == null || idAreaAtual == null || tpExpResAtual == null;
   if (precisaConsultarAvaliacao) {
     if (!caches.avaliacoes.has(chaveDisciplina)) {
       caches.avaliacoes.set(chaveDisciplina, listarAvaliacoesTurma(
@@ -1260,29 +1319,27 @@ async function resolverPayloadResultadoPeriodo(alteracao, caches) {
     const avaliacoesCorrespondentes = mesmoTipoER.length ? mesmoTipoER : candidatasPeriodo;
     if (avaliacoesCorrespondentes.length === 1) {
       avaliacaoPeriodo = avaliacoesCorrespondentes[0];
-      idPeriodo ??= avaliacaoPeriodo.idPeriodo
-        ?? buscarCampoAninhadoUnico(avaliacaoPeriodo, 'idPeriodo')
-        ?? avaliacaoPeriodo.id;
+      idPeriodo = valorPresente(idPeriodo, avaliacaoPeriodo.idPeriodo,
+        buscarCampoAninhadoUnico(avaliacaoPeriodo, 'idPeriodo'), avaliacaoPeriodo.id);
     } else if (avaliacoesCorrespondentes.length > 1) {
       throw new Error('A disciplina possui mais de um período correspondente; não foi possível resolver o idPeriodo.');
     }
   }
 
-  const idProfessor = idProfessorAtual
-    ?? (avaliacaoPeriodo && buscarCampoAninhadoUnico(avaliacaoPeriodo, 'idProfessor'))
-    ?? dashboardData.idRecHumano;
-  const idArea = idAreaAtual
-    ?? (avaliacaoPeriodo && buscarCampoAninhadoUnico(avaliacaoPeriodo, 'idArea'));
-  const tpExpRes = tpExpResAtual
-    ?? (avaliacaoPeriodo && buscarCampoAninhadoUnico(avaliacaoPeriodo, 'tpExpRes'));
-  const idAproveitAval = idAproveitAvalAtual
-    ?? (avaliacaoPeriodo && buscarCampoAninhadoUnico(avaliacaoPeriodo, 'idAproveitAval'));
-  const idResultadoPeriodo = resultadoAtual.idResultadoPeriodo
-    ?? buscarCampoAninhadoUnico(resultadoAtual, 'idResultadoPeriodo')
-    ?? resultado.idResultadoPeriodo;
+  const idProfessor = valorPresente(idProfessorAtual,
+    avaliacaoPeriodo && buscarCampoAninhadoUnico(avaliacaoPeriodo, 'idProfessor'), dashboardData.idRecHumano);
+  const idArea = valorPresente(idAreaAtual,
+    avaliacaoPeriodo && buscarCampoAninhadoUnico(avaliacaoPeriodo, 'idArea'));
+  const tpExpRes = valorPresente(tpExpResAtual,
+    avaliacaoPeriodo && buscarCampoAninhadoUnico(avaliacaoPeriodo, 'tpExpRes'));
+  const idAproveitAval = valorPresente(idAproveitAvalAtual,
+    avaliacaoPeriodo && buscarCampoAninhadoUnico(avaliacaoPeriodo, 'idAproveitAval'));
+  const idResultadoPeriodo = valorPresente(resultadoAtual.idResultadoPeriodo,
+    buscarCampoAninhadoUnico(resultadoAtual, 'idResultadoPeriodo'), resultado.idResultadoPeriodo);
 
   const payload = {
-    idAluno: resultadoAtual.idAluno ?? alunoAtual.idAluno ?? alunoAtual.matricula ?? resultado.idAluno ?? aluno.matricula ?? aluno.idAluno ?? aluno.id,
+    idAluno: valorPresente(resultadoAtual.idAluno, alunoAtual.idAluno, alunoAtual.matricula,
+      resultado.idAluno, aluno.matricula, aluno.idAluno, aluno.id),
     idTurma: disciplina.turmaId,
     idDisciplina: disciplina.id,
     idProfessor,
@@ -1316,13 +1373,8 @@ async function salvarResultadosPeriodoAlterados(e) {
     }
 
     const camposObrigatorios = ['idAluno', 'idTurma', 'idDisciplina', 'idProfessor', 'idPeriodo', 'idArea', 'tpExpRes'];
-    const camposAusentes = ({ item, alteracao }) => {
-      const obrigatorios = [...camposObrigatorios];
-      if (ehResultadoER(alteracao.resultado.nomePeriodo)) {
-        obrigatorios.push('idAproveitAval', 'idResultadoPeriodo');
-      }
-      return obrigatorios.filter(campo => item[campo] == null || item[campo] === '');
-    };
+    const camposAusentes = ({ item }) => camposObrigatorios
+      .filter(campo => valorPresente(item[campo]) === undefined);
     const caches = { resultados: new Map(), avaliacoes: new Map() };
     const resultadosInvalidos = [];
     const resultadosValidos = [];

@@ -214,9 +214,9 @@ Array de itens enviado em lotes de até 20. O fluxo de planilha monta cada item 
 
 #### `/gravarResultadoPeriodoEmLista`
 
-Array de itens com `idAluno`, `idTurma`, `idDisciplina`, `idProfessor`, `idPeriodo`, `idArea`, `aproveitamento` (string ou `null`), `tpExpRes` e `area` (boolean). Para períodos de recuperação (ER), o dashboard também exige `idAproveitAval` e `idResultadoPeriodo`; quando disponíveis, esses campos são enviados para os demais períodos.
+Array de itens com `idAluno`, `idTurma`, `idDisciplina`, `idProfessor`, `idPeriodo`, `idArea`, `aproveitamento` (string ou `null`), `tpExpRes` e `area` (boolean). Os campos `idAproveitAval` e `idResultadoPeriodo` são enviados quando disponíveis, mas não são obrigatórios; a amostra de POST para o período ER `827` não os inclui.
 
-Antes de gravar uma edição, o dashboard consulta novamente `listarAulasDaTurmaComResultado` para a turma e disciplina alteradas e localiza o aluno e o resultado correspondente ao período/área. Se `idPeriodo`, `idArea`, `tpExpRes` ou `idAproveitAval` não vierem nesse resultado, tenta resolvê-los nos dados unívocos do mesmo período da disciplina e, quando necessário, em `listarAvaliacoesTurma`. `idResultadoPeriodo` só é aceito do resultado do aluno correspondente; nunca é reutilizado de outro aluno. Se os dados continuarem ausentes ou ambíguos, a nota permanece pendente sem ser enviada.
+Antes de gravar uma edição, o dashboard consulta novamente `listarAulasDaTurmaComResultado` para a turma e disciplina alteradas e localiza o aluno e o resultado correspondente ao período/área. Se `idPeriodo`, `idArea` ou `tpExpRes` não vierem nesse resultado, tenta resolvê-los nos dados unívocos do mesmo período da disciplina e, quando necessário, em `listarAvaliacoesTurma`. `idAproveitAval` e `idResultadoPeriodo` são incluídos apenas quando encontrados no resultado do aluno; sua ausência não impede o envio. Se os campos obrigatórios continuarem ausentes ou ambíguos, a nota permanece pendente sem ser enviada.
 
 ### Respostas POST observadas
 
