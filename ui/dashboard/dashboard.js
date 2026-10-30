@@ -1278,20 +1278,14 @@ async function resolverPayloadResultadoPeriodo(alteracao, caches) {
   }
   const resultadoAtual = correspondencias[0];
 
-  const todosResultadosDisciplina = (dadosDisciplina.alunos || []).flatMap(item => item.listaResultados || []);
-  const resultadosPeriodo = todosResultadosDisciplina
+  const resultadosPeriodo = (dadosDisciplina.alunos || []).flatMap(item => item.listaResultados || [])
     .filter(item => {
       if (identidadePeriodo(resultadoAtual.nomePeriodo).exame !== identidadePeriodo(item.nomePeriodo).exame) return false;
       if (valorPresente(resultadoAtual.idPeriodo) !== undefined && valorPresente(item.idPeriodo) !== undefined) {
-        if (String(item.idPeriodo) !== String(resultadoAtual.idPeriodo)) return false;
-      } else if (!periodoCorresponde(resultadoAtual.nomePeriodo, item.nomePeriodo)) {
-        return false;
+        return String(item.idPeriodo) === String(resultadoAtual.idPeriodo);
       }
-      return resultadoAtual.area == null || item.area == null || item.area === resultadoAtual.area;
+      return periodoCorresponde(resultadoAtual.nomePeriodo, item.nomePeriodo);
     });
-  const resultadosMesmoTipoArea = registros => resultadoAtual.area == null
-    ? []
-    : registros.filter(item => item.area === resultadoAtual.area);
 
   let avaliacaoPeriodo = null;
   // Não usa o `id` genérico do resultado: ele pode identificar o próprio
@@ -1301,10 +1295,7 @@ async function resolverPayloadResultadoPeriodo(alteracao, caches) {
   const idProfessorAtual = valorPresente(resultadoAtual.idProfessor,
     buscarCampoAninhadoUnico(resultadoAtual, 'idProfessor'), valoresUnicosCampo(resultadosPeriodo, 'idProfessor'));
   const idAreaAtual = valorPresente(resultadoAtual.idArea,
-    buscarCampoAninhadoUnico(resultadoAtual, 'idArea'), resultado.idArea,
-    valoresUnicosCampo(resultadosPeriodo, 'idArea'),
-    valoresUnicosCampo(resultadosMesmoTipoArea(resultadosAluno), 'idArea'),
-    valoresUnicosCampo(resultadosMesmoTipoArea(todosResultadosDisciplina), 'idArea'));
+    buscarCampoAninhadoUnico(resultadoAtual, 'idArea'), resultado.idArea);
   const tpExpResAtual = valorPresente(resultadoAtual.tpExpRes,
     buscarCampoAninhadoUnico(resultadoAtual, 'tpExpRes'), valoresUnicosCampo(resultadosPeriodo, 'tpExpRes'));
   const idAproveitAvalAtual = valorPresente(resultadoAtual.idAproveitAval,
@@ -1339,8 +1330,7 @@ async function resolverPayloadResultadoPeriodo(alteracao, caches) {
 
   const idProfessor = valorPresente(idProfessorAtual,
     avaliacaoPeriodo && buscarCampoAninhadoUnico(avaliacaoPeriodo, 'idProfessor'), dashboardData.idRecHumano);
-  const idArea = valorPresente(idAreaAtual,
-    avaliacaoPeriodo && buscarCampoAninhadoUnico(avaliacaoPeriodo, 'idArea'));
+  const idArea = idAreaAtual;
   const tpExpRes = valorPresente(tpExpResAtual,
     avaliacaoPeriodo && buscarCampoAninhadoUnico(avaliacaoPeriodo, 'tpExpRes'));
   const idAproveitAval = valorPresente(idAproveitAvalAtual,
@@ -1355,11 +1345,11 @@ async function resolverPayloadResultadoPeriodo(alteracao, caches) {
     idDisciplina: disciplina.id,
     idProfessor,
     idPeriodo,
-    idArea,
     aproveitamento: alteracao.aproveitamento ?? null,
     tpExpRes,
     area: resultadoAtual.area ?? resultado.area ?? false
   };
+  if (idArea != null) payload.idArea = idArea;
   if (idAproveitAval != null) payload.idAproveitAval = idAproveitAval;
   if (idResultadoPeriodo != null) payload.idResultadoPeriodo = idResultadoPeriodo;
   return payload;
@@ -1383,7 +1373,7 @@ async function salvarResultadosPeriodoAlterados(e) {
       if (window.lucide) lucide.createIcons({ nodes: [button] });
     }
 
-    const camposObrigatorios = ['idAluno', 'idTurma', 'idDisciplina', 'idProfessor', 'idPeriodo', 'idArea', 'tpExpRes'];
+    const camposObrigatorios = ['idAluno', 'idTurma', 'idDisciplina', 'idProfessor', 'idPeriodo', 'tpExpRes'];
     const camposAusentes = ({ item }) => camposObrigatorios
       .filter(campo => valorPresente(item[campo]) === undefined);
     const caches = { resultados: new Map(), avaliacoes: new Map() };
