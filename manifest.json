@@ -33,6 +33,7 @@
         "https://www.soe.rs.gov.br/*"
       ],
       "js": [
+        "utils/errors.js",
         "content.js"
       ],
       "run_at": "document_idle"
@@ -48,7 +49,8 @@
         "ui/omr/omr-worker.js",
         "libs/xlsx.full.min.js",
         "tests/gerar_dados_xls.html",
-        "tests/gerar_dados_xls.js"
+        "tests/gerar_dados_xls.js",
+        "utils/errors.js"
       ],
       "matches": [
         "<all_urls>"

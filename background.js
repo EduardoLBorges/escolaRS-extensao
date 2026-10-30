@@ -1,4 +1,5 @@
 importScripts(
+  'utils/errors.js',
   'auth/authManager.js',
   'api/escolaRS.js',
   'utils/aluno.js',

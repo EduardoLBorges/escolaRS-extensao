@@ -46,7 +46,8 @@ const AuthManager = (() => {
       const raw = token.replace(/^Bearer\s+/i, '');
       const parts = raw.split('.');
       if (parts.length < 2) return false;
-      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+        .padEnd(Math.ceil(parts[1].length / 4) * 4, '=');
       const payload = JSON.parse(atob(base64));
       // Margem de segurança de 30 segundos
       if (payload.exp) {
@@ -108,8 +109,10 @@ const AuthManager = (() => {
           });
         }
 
-        if (refreshedToken) {
+        if (refreshedToken && !isJwtExpired(refreshedToken)) {
           _token = refreshedToken;
+        } else {
+          refreshedToken = null;
         }
         return refreshedToken;
       } finally {
@@ -140,7 +143,7 @@ const AuthManager = (() => {
 
       console.log(`${LOG} Token ausente ou expirado. Tentando renovação...`);
       const refreshed = await _doRefresh(stored || _token || null);
-      if (refreshed) {
+      if (refreshed && !isJwtExpired(refreshed)) {
         _token = refreshed;
         return refreshed;
       }
@@ -171,10 +174,11 @@ const AuthManager = (() => {
       }
 
       const refreshed = await _doRefresh(staleToken);
-      if (refreshed) {
+      if (refreshed && !isJwtExpired(refreshed)) {
         _token = refreshed;
+        return refreshed;
       }
-      return refreshed;
+      return null;
     },
 
     /**
@@ -191,6 +195,11 @@ const AuthManager = (() => {
      */
     invalidate() {
       _token = null;
+    },
+
+    /** Retorna false apenas quando o JWT expirou; tokens opacos permanecem aceitos. */
+    isValid(token) {
+      return Boolean(token) && !isJwtExpired(token);
     },
   };
 })();

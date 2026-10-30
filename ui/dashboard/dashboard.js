@@ -157,9 +157,11 @@ function persistirResultadosPeriodoPendentes() {
     aproveitamento: alteracao.aproveitamento
   }));
   persistenciaResultadosPeriodo = persistenciaResultadosPeriodo
-    .catch(() => {})
+    .catch(error => {
+      AppErrors.report(error, 'Falha em gravação anterior de notas pendentes');
+    })
     .then(() => chrome.storage.local.set({ [STORAGE_RESULTADOS_PERIODO_PENDENTES]: pendentes }))
-    .catch(error => console.error('[Dashboard] Falha ao persistir notas editadas:', error));
+    .catch(error => AppErrors.report(error, 'Falha ao persistir notas editadas'));
   return persistenciaResultadosPeriodo;
 }
 
@@ -217,7 +219,7 @@ async function restaurarResultadosPeriodoPendentes() {
       await persistirResultadosPeriodoPendentes();
     }
   } catch (error) {
-    console.error('[Dashboard] Falha ao restaurar notas editadas:', error);
+    AppErrors.report(error, '[Dashboard] Falha ao restaurar notas editadas');
   }
 }
 
@@ -1129,10 +1131,13 @@ async function salvarResultadosPeriodoAlterados(e) {
       // Envia cada nota isoladamente para que uma falha não impeça as demais.
       const resposta = await gravarResultadoPeriodoEmLista([item]);
       const resultadoApi = Array.isArray(resposta) ? resposta[0] : resposta;
-      if (!resultadoApi || typeof resultadoApi.falhou !== 'boolean') {
-        throw new Error('Resposta inesperada do EscolaRS ao salvar este resultado.');
-      }
-      if (resultadoApi.falhou) {
+      // O endpoint pode confirmar a gravação com formatos distintos (ou sem
+      // corpo). Erros HTTP já são lançados por fetchEscolaRS; aqui só tratamos
+      // como falha uma rejeição explícita do próprio serviço.
+      const falhou = resultadoApi?.falhou === true
+        || resultadoApi?.falhou === 1
+        || String(resultadoApi?.falhou).toLowerCase() === 'true';
+      if (falhou) {
         throw new Error(resultadoApi.mensagem || `O EscolaRS recusou o resultado (código ${resultadoApi.codStatusHttp ?? 'não informado'}).`);
       }
       alteracao.resultado.resultado = alteracao.aproveitamento;
@@ -1142,7 +1147,7 @@ async function salvarResultadosPeriodoAlterados(e) {
       salvos++;
     } catch (error) {
       const motivo = error?.message || 'Erro desconhecido ao salvar.';
-      console.error(`[Dashboard] Falha ao salvar nota de ${alteracao.aluno.nome || alteracao.aluno.matricula}, período ${alteracao.periodo}:`, error);
+      AppErrors.report(error, `[Dashboard] Falha ao salvar nota de ${alteracao.aluno.nome || alteracao.aluno.matricula}, período ${alteracao.periodo}`);
       resultadosPeriodoFalhas.set(alteracao.key, { alteracao, motivo });
     }
   }
@@ -1559,7 +1564,7 @@ async function carregarPreVisualizacaoPeriodo(periodoStr) {
       alert("Nenhum cálculo de aproveitamento encontrado para o período selecionado.");
     }
   } catch (err) {
-    console.error("[Dashboard] Erro ao carregar pré-visualização:", err);
+    AppErrors.report(err, '[Dashboard] Erro ao carregar pré-visualização');
     alert(`Erro ao calcular pré-visualização: ${err.message || err}`);
     preVisuCalculos = {};
   }

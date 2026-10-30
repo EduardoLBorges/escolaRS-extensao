@@ -426,7 +426,7 @@ async function loadInstrumentos(turmaId, discId) {
         if (selectedOpt?.dataset?.instrumento) {
           try {
             state.instrumentoObj = JSON.parse(selectedOpt.dataset.instrumento);
-          } catch (e) { console.error(e); }
+          } catch (e) { AppErrors.report(e, 'Falha ao ler configuração do instrumento'); }
         }
       }
       if (state.instrumento) {
@@ -457,7 +457,7 @@ async function loadInstrumentos(turmaId, discId) {
           newInstrSel.appendChild(opt);
         });
         newInstrSel.disabled = false;
-      } catch (e) { console.error(e); }
+      } catch (e) { AppErrors.report(e, 'Falha ao atualizar instrumentos'); }
     });
 
   } catch (err) {
@@ -592,7 +592,7 @@ function initStep2() {
             showToast(`Nenhuma imagem suportada encontrada dentro de ${file.name}.`, 'warning');
           }
         } catch (err) {
-          console.error('[OMR ZIP]', err);
+          AppErrors.report(err, '[OMR ZIP] Falha ao abrir arquivo');
           showToast(`Erro ao abrir o arquivo ZIP ${file.name}: ${err.message}`, 'error');
         }
       } else if (file.type.startsWith('image/') || /\.(jpe?g|png|webp|bmp|heic)$/i.test(file.name)) {
@@ -1284,7 +1284,7 @@ async function rotateCurrentFoto(direction) {
     recalcularNota(state.resultados[rIdx]);
     showToast('Imagem rotacionada e marcadores lidos!', 'success');
   } catch (err) {
-    console.error('[OMR Rotate]', err);
+    AppErrors.report(err, '[OMR Rotate] Falha ao processar imagem');
     state.resultados[rIdx] = {
       ...r,
       answers: null,
@@ -1515,7 +1515,7 @@ function initStep4() {
         sent += batch.length;
       } catch (err) {
         errors += batch.length;
-        console.error('[OMR Leitor] Erro no lote:', err);
+        AppErrors.report(err, '[OMR Leitor] Erro no lote');
         showToast(`Erro em lote: ${err.message}`, 'error');
       }
       const pct = Math.round(((i + BATCH) / payloads.length) * 100);

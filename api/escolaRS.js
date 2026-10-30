@@ -150,7 +150,7 @@ async function executeBackgroundTokenRefresh(refreshToken) {
     }
     return null;
   } catch (err) {
-    console.error(`${LOG_PREFIX} executeBackgroundTokenRefresh falhou:`, err);
+    AppErrors.report(err, `${LOG_PREFIX} executeBackgroundTokenRefresh falhou`);
     return null;
   }
 }
@@ -183,14 +183,16 @@ async function trySilentTokenRefresh(staleToken = null) {
   try {
     // 1. Verifica se já existe token mais novo no storage (outra requisição pode ter renovado).
     const { escolaRsToken: stored } = await chrome.storage.local.get('escolaRsToken');
-    if (stored && stored !== staleToken) return stored;
+    // Outro contexto pode ter renovado enquanto esta chamada aguardava. Só
+    // reutilizamos o token se ele ainda puder autenticar uma requisição.
+    if (stored && stored !== staleToken && AuthManager.isValid(stored)) return stored;
 
     // 2. Tenta POST com o refresh_token (mais rápido e silencioso).
     const { escolaRsRefreshToken } = await chrome.storage.local.get('escolaRsRefreshToken');
     if (escolaRsRefreshToken) {
       console.log(`${LOG_PREFIX} Tentando renovação via POST (refresh_token)...`);
       const newToken = await executeBackgroundTokenRefresh(escolaRsRefreshToken);
-      if (newToken) {
+      if (newToken && AuthManager.isValid(newToken)) {
         console.log(`${LOG_PREFIX} Renovação via POST bem-sucedida.`);
         return newToken;
       }
@@ -216,7 +218,7 @@ async function trySilentTokenRefresh(staleToken = null) {
 
         if (changes.escolaRsToken?.newValue || changes.nrDoc?.newValue) {
           const { escolaRsToken: curToken, nrDoc: curDoc } = await chrome.storage.local.get(['escolaRsToken', 'nrDoc']);
-          if (curToken && curToken !== staleToken) {
+          if (curToken && curToken !== staleToken && AuthManager.isValid(curToken)) {
             // Se já temos ambos token e nrDoc, conclui imediatamente
             if (curDoc) {
               finishSuccess(curToken);
@@ -226,7 +228,7 @@ async function trySilentTokenRefresh(staleToken = null) {
             // Se temos apenas o token, aguarda até 2s para o nrDoc ser persistido pelo content.js/webRequest
             setTimeout(async () => {
               const { escolaRsToken: t } = await chrome.storage.local.get('escolaRsToken');
-              if (t && t !== staleToken) {
+              if (t && t !== staleToken && AuthManager.isValid(t)) {
                 finishSuccess(t);
               }
             }, 2000);
@@ -246,12 +248,12 @@ async function trySilentTokenRefresh(staleToken = null) {
             if (resolved) return;
             try {
               const { escolaRsToken: currentToken } = await chrome.storage.local.get('escolaRsToken');
-              if (currentToken && currentToken !== staleToken) {
+              if (currentToken && currentToken !== staleToken && AuthManager.isValid(currentToken)) {
                 finishSuccess(currentToken);
                 return;
               }
             } catch (error) {
-              console.warn(`${LOG_PREFIX} Não foi possível verificar o token após fechar o popup.`, error);
+              AppErrors.report(error, `${LOG_PREFIX} Não foi possível verificar o token após fechar o popup`);
             }
 
             if (!resolved) {
