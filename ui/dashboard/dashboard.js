@@ -1278,14 +1278,20 @@ async function resolverPayloadResultadoPeriodo(alteracao, caches) {
   }
   const resultadoAtual = correspondencias[0];
 
-  const resultadosPeriodo = (dadosDisciplina.alunos || []).flatMap(item => item.listaResultados || [])
+  const todosResultadosDisciplina = (dadosDisciplina.alunos || []).flatMap(item => item.listaResultados || []);
+  const resultadosPeriodo = todosResultadosDisciplina
     .filter(item => {
       if (identidadePeriodo(resultadoAtual.nomePeriodo).exame !== identidadePeriodo(item.nomePeriodo).exame) return false;
       if (valorPresente(resultadoAtual.idPeriodo) !== undefined && valorPresente(item.idPeriodo) !== undefined) {
-        return String(item.idPeriodo) === String(resultadoAtual.idPeriodo);
+        if (String(item.idPeriodo) !== String(resultadoAtual.idPeriodo)) return false;
+      } else if (!periodoCorresponde(resultadoAtual.nomePeriodo, item.nomePeriodo)) {
+        return false;
       }
-      return periodoCorresponde(resultadoAtual.nomePeriodo, item.nomePeriodo);
+      return resultadoAtual.area == null || item.area == null || item.area === resultadoAtual.area;
     });
+  const resultadosMesmoTipoArea = registros => resultadoAtual.area == null
+    ? []
+    : registros.filter(item => item.area === resultadoAtual.area);
 
   let avaliacaoPeriodo = null;
   // Não usa o `id` genérico do resultado: ele pode identificar o próprio
@@ -1296,12 +1302,16 @@ async function resolverPayloadResultadoPeriodo(alteracao, caches) {
     buscarCampoAninhadoUnico(resultadoAtual, 'idProfessor'), valoresUnicosCampo(resultadosPeriodo, 'idProfessor'));
   const idAreaAtual = valorPresente(resultadoAtual.idArea,
     buscarCampoAninhadoUnico(resultadoAtual, 'idArea'), resultado.idArea,
-    valoresUnicosCampo(resultadosPeriodo, 'idArea'));
+    valoresUnicosCampo(resultadosPeriodo, 'idArea'),
+    valoresUnicosCampo(resultadosMesmoTipoArea(resultadosAluno), 'idArea'),
+    valoresUnicosCampo(resultadosMesmoTipoArea(todosResultadosDisciplina), 'idArea'));
   const tpExpResAtual = valorPresente(resultadoAtual.tpExpRes,
     buscarCampoAninhadoUnico(resultadoAtual, 'tpExpRes'), valoresUnicosCampo(resultadosPeriodo, 'tpExpRes'));
   const idAproveitAvalAtual = valorPresente(resultadoAtual.idAproveitAval,
     buscarCampoAninhadoUnico(resultadoAtual, 'idAproveitAval'), valoresUnicosCampo(resultadosPeriodo, 'idAproveitAval'));
-  const precisaConsultarAvaliacao = idPeriodo == null || idAreaAtual == null || tpExpResAtual == null;
+  // listarAvaliacoesTurma resolve dados do período, mas não é fonte confiável
+  // de idArea; esse campo é procurado nos resultados do endpoint acima.
+  const precisaConsultarAvaliacao = idPeriodo == null || tpExpResAtual == null;
   if (precisaConsultarAvaliacao) {
     if (!caches.avaliacoes.has(chaveDisciplina)) {
       caches.avaliacoes.set(chaveDisciplina, listarAvaliacoesTurma(
